@@ -1,0 +1,446 @@
+# Tabon Coop Workflow Document
+
+## 1. Purpose
+
+Tabon Coop is a cooperative operations and accounting system prototype. Its goal is to support day-to-day cooperative transactions and produce reliable ledger-based financial reports, especially the Statement of Financial Condition and Statement of Operations.
+
+The system should be built around a simple rule: operational transactions create accounting entries, and financial statements are generated from the general ledger.
+
+## 2. Target Cooperative Users
+
+The first target is a Philippine multi-purpose or credit cooperative with member savings, share capital, loans, collections, and basic accounting operations.
+
+The prototype should support these functional areas:
+
+- Membership management
+- Share capital tracking
+- Savings and time deposit accounts
+- Loan application, approval, release, and collection
+- Teller and cashier transactions
+- General ledger posting
+- Trial balance
+- Financial statements
+- Management and audit review
+
+## 3. Recommended User Levels
+
+Multi-user accounts are a best practice because cooperative systems handle cash, member balances, loans, approvals, and financial statements. Every user should have an individual account. Shared accounts should be avoided.
+
+### 3.1 System Administrator
+
+The System Administrator manages technical and security settings.
+
+Typical access:
+
+- Create, edit, deactivate, and unlock user accounts
+- Assign user roles
+- Configure branches, departments, and system settings
+- Configure backup and restore routines
+- View audit logs
+- Reset passwords
+
+Restrictions:
+
+- Should not normally approve loans, post accounting adjustments, or override financial controls unless separately assigned by management
+
+### 3.2 General Manager
+
+The General Manager has high-level operational oversight.
+
+Typical access:
+
+- View dashboard and portfolio summaries
+- View all members, accounts, loans, and reports
+- Approve selected high-value transactions, depending on policy
+- Review branch or department performance
+- View audit logs and exception reports
+
+Restrictions:
+
+- Should not directly edit posted accounting entries
+- Should not process teller cash transactions
+
+### 3.3 Accountant / Bookkeeper
+
+The Accountant or Bookkeeper manages accounting records and reports.
+
+Typical access:
+
+- View and manage chart of accounts
+- Create and post journal vouchers
+- Review system-generated accounting entries
+- Generate trial balance
+- Generate financial statements
+- Process month-end and year-end closing
+- Review statutory fund allocations and surplus distribution
+
+Restrictions:
+
+- Should not approve own journal entries if maker-checker control is enabled
+- Should not process member cash transactions unless explicitly assigned
+
+### 3.4 Loan Officer
+
+The Loan Officer manages loan applications and monitoring.
+
+Typical access:
+
+- Create loan applications
+- View borrower profile and account history
+- Encode loan terms, collateral, co-makers, and amortization details
+- Recommend approval or rejection
+- Monitor delinquency and collection status
+
+Restrictions:
+
+- Cannot release loan proceeds
+- Cannot approve loans beyond assigned authority
+- Cannot alter posted collections
+
+### 3.5 Credit Committee / Approver
+
+The Credit Committee or Approver reviews and approves loans.
+
+Typical access:
+
+- View loan applications and supporting data
+- Approve, reject, or return applications
+- Set approved loan amount and conditions
+- Review exception cases
+
+Restrictions:
+
+- Cannot encode loan applications as the maker if strict segregation is enabled
+- Cannot release cash or post accounting entries directly
+
+### 3.6 Teller / Cashier
+
+The Teller or Cashier handles front-line transactions.
+
+Typical access:
+
+- Receive savings deposits
+- Process savings withdrawals
+- Receive share capital payments
+- Receive loan amortization payments
+- Print or issue transaction slips
+- View own teller batch and cash position
+
+Restrictions:
+
+- Cannot approve loans
+- Cannot edit member master records after approval
+- Cannot change accounting entries directly
+- Cannot view sensitive reports beyond teller scope
+
+### 3.7 Membership Officer
+
+The Membership Officer manages member records.
+
+Typical access:
+
+- Encode member applications
+- Update member contact information
+- Capture membership classification and cluster/group
+- Track member status
+
+Restrictions:
+
+- Cannot post financial transactions
+- Cannot approve withdrawals, loans, or journal entries
+
+### 3.8 Auditor / Compliance Officer
+
+The Auditor or Compliance Officer reviews records without changing normal operations.
+
+Typical access:
+
+- View all modules in read-only mode
+- View audit trail
+- Generate exception reports
+- Review user activity and transaction history
+- Review compliance reports
+
+Restrictions:
+
+- No posting, approval, deletion, or override permissions
+
+### 3.9 Board / Read-Only Executive
+
+Board users need controlled visibility for governance.
+
+Typical access:
+
+- View financial statements
+- View portfolio summaries
+- View selected management reports
+- View high-level membership and performance data
+
+Restrictions:
+
+- No encoding, approval, posting, or account maintenance access
+
+## 4. Core Workflow
+
+### 4.1 Member Registration
+
+1. Membership Officer encodes the member application.
+2. Required profile details are recorded.
+3. Initial share capital requirement is reviewed.
+4. Authorized officer approves membership.
+5. System creates the member record and member number.
+6. Member becomes available for account opening and transactions.
+
+Suggested status flow:
+
+- Draft
+- Pending Approval
+- Active
+- Suspended
+- Withdrawn
+- Deceased
+
+### 4.2 Share Capital Contribution
+
+1. Teller receives share capital payment.
+2. System validates active membership.
+3. Transaction is saved in teller batch.
+4. System generates accounting entry.
+5. Cashier or accountant reviews and posts batch.
+6. Member share capital ledger is updated.
+
+Sample accounting effect:
+
+- Debit: Cash on Hand or Cash in Bank
+- Credit: Share Capital
+
+### 4.3 Savings Deposit
+
+1. Teller selects member savings account.
+2. Teller encodes deposit amount and reference.
+3. System validates account status.
+4. Transaction is saved and receipt is generated.
+5. Teller batch is reviewed and posted.
+6. Member savings balance is updated.
+
+Sample accounting effect:
+
+- Debit: Cash on Hand or Cash in Bank
+- Credit: Savings Deposits Payable
+
+### 4.4 Savings Withdrawal
+
+1. Teller selects member account.
+2. System checks available balance and restrictions.
+3. Teller encodes withdrawal amount.
+4. Approval is required if amount exceeds threshold.
+5. Transaction is posted after approval.
+6. Member savings balance is reduced.
+
+Sample accounting effect:
+
+- Debit: Savings Deposits Payable
+- Credit: Cash on Hand or Cash in Bank
+
+### 4.5 Loan Application
+
+1. Loan Officer creates application.
+2. Borrower details, loan product, amount, term, co-maker, and collateral are encoded.
+3. System checks member standing, share capital, savings, and existing loans.
+4. Loan Officer submits recommendation.
+5. Credit Committee or authorized approver reviews.
+6. Application is approved, rejected, or returned.
+
+Suggested status flow:
+
+- Draft
+- Submitted
+- Under Review
+- Approved
+- Rejected
+- Released
+- Current
+- Past Due
+- Closed
+- Written Off
+
+### 4.6 Loan Release
+
+1. Approved loan is selected for release.
+2. System calculates deductions, charges, net proceeds, and amortization schedule.
+3. Authorized user confirms release.
+4. Teller or cashier disburses proceeds.
+5. System posts loan receivable and related cash/bank movement.
+6. Borrower loan ledger is created.
+
+Sample accounting effect:
+
+- Debit: Loans Receivable
+- Credit: Cash on Hand or Cash in Bank
+- Credit: Service Fees, if deducted
+- Credit: Savings Deposits Payable, if proceeds are credited to savings
+
+### 4.7 Loan Collection
+
+1. Teller selects loan account.
+2. System computes amount due, interest, penalties, and principal allocation.
+3. Teller receives payment.
+4. System updates loan amortization and outstanding balance.
+5. Accounting entry is generated and posted with teller batch.
+
+Sample accounting effect:
+
+- Debit: Cash on Hand or Cash in Bank
+- Credit: Loans Receivable
+- Credit: Interest Income from Loans
+- Credit: Penalties or Service Fees, if applicable
+
+### 4.8 Journal Voucher
+
+1. Accountant prepares journal voucher.
+2. Debit and credit lines are encoded.
+3. System validates that total debit equals total credit.
+4. Voucher is submitted for review.
+5. Authorized reviewer approves and posts.
+6. Entry becomes part of the general ledger.
+
+Suggested status flow:
+
+- Draft
+- For Review
+- Posted
+- Reversed
+
+### 4.9 Month-End Closing
+
+1. Ensure all teller batches are posted.
+2. Reconcile cash on hand and bank accounts.
+3. Review loan aging and interest accruals.
+4. Post depreciation, accruals, and adjustments.
+5. Generate trial balance.
+6. Generate Statement of Financial Condition.
+7. Generate Statement of Operations.
+8. Lock closed period after approval.
+
+## 5. Reporting Workflow
+
+Reports should be generated from posted ledger entries and supporting subsidiary ledgers.
+
+Priority reports:
+
+- Trial Balance
+- Statement of Financial Condition
+- Statement of Operations
+- Statement of Changes in Equity
+- Cash Flow Statement
+- Member Share Capital Subsidiary Ledger
+- Savings Subsidiary Ledger
+- Loan Portfolio Aging
+- Loan Releases and Collections
+- Teller Cash Position
+- Audit Trail
+- User Activity Report
+
+## 6. Access Control Principles
+
+Tabon Coop should use role-based access control with optional permission overrides.
+
+Recommended rules:
+
+- Every staff member has a unique username.
+- Passwords are never shared.
+- Inactive staff accounts are deactivated, not deleted.
+- Critical transactions use maker-checker approval.
+- Posted entries are reversed, not edited directly.
+- User actions are recorded in an audit trail.
+- Sensitive reports are limited by role.
+- Cashiers can see only their own teller batches unless they have supervisor access.
+- Admin access is separated from accounting approval access where possible.
+
+## 7. Audit Trail Requirements
+
+The system should record who did what, when, and from where.
+
+Minimum audit fields:
+
+- User ID
+- Role
+- Date and time
+- Module
+- Action
+- Record ID
+- Previous value, when applicable
+- New value, when applicable
+- IP address or device name, when available
+
+Events to audit:
+
+- Login and logout
+- Failed login attempts
+- Password reset
+- User role changes
+- Member creation and updates
+- Loan approval and release
+- Teller transactions
+- Journal voucher posting
+- Transaction reversal
+- Period closing and reopening
+
+## 8. Planned Database Modules
+
+For the SQLite phase, the first database tables should include:
+
+- users
+- roles
+- permissions
+- user_roles
+- members
+- member_status_history
+- savings_accounts
+- deposit_transactions
+- share_capital_transactions
+- loan_products
+- loans
+- loan_amortization
+- loan_transactions
+- chart_of_accounts
+- journal_entries
+- journal_entry_lines
+- teller_batches
+- audit_logs
+- accounting_periods
+
+## 9. Prototype Screens
+
+The current UI prototype includes:
+
+- Dashboard
+- Members
+- Accounts
+- Loans
+- General Ledger
+- Reports
+
+Next recommended screens:
+
+- Login
+- User Management
+- Role Management
+- Member Profile Detail
+- Transaction Entry
+- Loan Application Detail
+- Teller Batch Posting
+- Journal Voucher Entry
+- Audit Trail
+
+## 10. Implementation Notes
+
+When backend work begins, the application should treat the general ledger as the source of financial statements. Member savings, share capital, and loans should have subsidiary ledgers that reconcile to their related general ledger control accounts.
+
+For example:
+
+- Total savings subsidiary balances should reconcile to Savings Deposits Payable.
+- Total share capital subsidiary balances should reconcile to Share Capital.
+- Total loan outstanding balances should reconcile to Loans Receivable.
+
+This keeps the system useful for operations and credible for accounting review.
