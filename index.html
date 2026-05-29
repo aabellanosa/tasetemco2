@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tabon Coop</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">TC</div>
+          <div>
+            <h1>Tabon Coop</h1>
+            <p>Core ledger prototype</p>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-item active" data-view="dashboard" type="button">
+            <span class="icon" aria-hidden="true">▦</span>
+            Dashboard
+          </button>
+          <button class="nav-item" data-view="members" type="button">
+            <span class="icon" aria-hidden="true">◎</span>
+            Members
+          </button>
+          <button class="nav-item" data-view="accounts" type="button">
+            <span class="icon" aria-hidden="true">▤</span>
+            Accounts
+          </button>
+          <button class="nav-item" data-view="loans" type="button">
+            <span class="icon" aria-hidden="true">◇</span>
+            Loans
+          </button>
+          <button class="nav-item" data-view="ledger" type="button">
+            <span class="icon" aria-hidden="true">≡</span>
+            General Ledger
+          </button>
+          <button class="nav-item" data-view="reports" type="button">
+            <span class="icon" aria-hidden="true">▣</span>
+            Reports
+          </button>
+        </nav>
+
+        <div class="period-box">
+          <span>Reporting period</span>
+          <strong>May 2026</strong>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Philippine cooperative operations</p>
+            <h2 id="view-title">Dashboard</h2>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-button" type="button" title="Search">
+              <span aria-hidden="true">⌕</span>
+            </button>
+            <button class="icon-button" type="button" title="Notifications">
+              <span aria-hidden="true">!</span>
+            </button>
+            <button class="primary-button" type="button">New transaction</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard-view" aria-labelledby="view-title">
+          <div class="metric-grid" id="metric-grid"></div>
+
+          <div class="content-grid">
+            <section class="panel wide-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Daily Teller Activity</h3>
+                  <p>Cash movements by product line</p>
+                </div>
+                <button class="ghost-button" type="button">Post batch</button>
+              </div>
+              <div class="bar-chart" id="bar-chart" aria-label="Daily teller activity chart"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Risk Watch</h3>
+                  <p>Items needing review</p>
+                </div>
+              </div>
+              <div class="watch-list" id="watch-list"></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Recent Transactions</h3>
+                <p>Operational entries auto-posted to ledger</p>
+              </div>
+              <button class="ghost-button" type="button">Export CSV</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Member</th>
+                    <th>Transaction</th>
+                    <th class="num">Amount</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="recent-transactions"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="members-view" aria-labelledby="view-title">
+          <div class="toolbar">
+            <div class="segmented">
+              <button class="selected" type="button">Active</button>
+              <button type="button">Pending</button>
+              <button type="button">Inactive</button>
+            </div>
+            <button class="primary-button" type="button">Add member</button>
+          </div>
+          <div class="card-grid" id="member-cards"></div>
+        </section>
+
+        <section class="view" id="accounts-view" aria-labelledby="view-title">
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Deposit Products</h3>
+                  <p>Savings and time deposits</p>
+                </div>
+              </div>
+              <div id="deposit-products" class="stack"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Capital Accounts</h3>
+                  <p>Member equity balances</p>
+                </div>
+              </div>
+              <div id="capital-products" class="stack"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="loans-view" aria-labelledby="view-title">
+          <div class="toolbar">
+            <div class="segmented">
+              <button class="selected" type="button">Portfolio</button>
+              <button type="button">Applications</button>
+              <button type="button">Collections</button>
+            </div>
+            <button class="primary-button" type="button">Release loan</button>
+          </div>
+          <section class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Loan No.</th>
+                    <th>Borrower</th>
+                    <th>Product</th>
+                    <th class="num">Principal</th>
+                    <th class="num">Outstanding</th>
+                    <th>Due Date</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="loan-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="ledger-view" aria-labelledby="view-title">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>CDA-Aligned Trial Balance</h3>
+                <p>Sample accounts prepared for financial statements</p>
+              </div>
+              <button class="ghost-button" type="button">View journal</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Account Title</th>
+                    <th>Type</th>
+                    <th class="num">Debit</th>
+                    <th class="num">Credit</th>
+                  </tr>
+                </thead>
+                <tbody id="ledger-table"></tbody>
+                <tfoot>
+                  <tr>
+                    <th colspan="3">Total</th>
+                    <th class="num" id="total-debit"></th>
+                    <th class="num" id="total-credit"></th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="reports-view" aria-labelledby="view-title">
+          <div class="report-layout">
+            <section class="panel report-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Statement of Financial Condition</h3>
+                  <p>As of May 31, 2026</p>
+                </div>
+              </div>
+              <div id="balance-sheet" class="report-lines"></div>
+            </section>
+            <section class="panel report-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Statement of Operations</h3>
+                  <p>For the month ended May 31, 2026</p>
+                </div>
+              </div>
+              <div id="income-statement" class="report-lines"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
