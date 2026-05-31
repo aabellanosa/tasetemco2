@@ -7,7 +7,43 @@
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <div class="app-shell">
+    <section class="login-screen" id="login-screen">
+      <div class="login-brand">
+        <div class="brand-mark">TC</div>
+        <div>
+          <h1>Tabon Coop</h1>
+          <p>Cooperative operations and core ledger system</p>
+        </div>
+      </div>
+
+      <form class="login-card" id="login-form">
+        <div>
+          <p class="eyebrow">Staff access</p>
+          <h2>Sign in</h2>
+        </div>
+
+        <label>
+          Username
+          <input id="username" name="username" type="text" autocomplete="username" required>
+        </label>
+
+        <label>
+          Password
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+
+        <p class="login-error" id="login-error" role="alert"></p>
+        <button class="primary-button" type="submit">Sign in</button>
+
+        <div class="login-help">
+          <strong>Prototype accounts</strong>
+          <span>admin, manager, bookkeeper, teller01, loanofficer, auditor</span>
+          <span>Default password: p@55@LL</span>
+        </div>
+      </form>
+    </section>
+
+    <div class="app-shell hidden" id="app-shell">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">TC</div>
@@ -42,6 +78,10 @@
             <span class="icon" aria-hidden="true">▣</span>
             Reports
           </button>
+          <button class="nav-item" data-view="users" type="button">
+            <span class="icon" aria-hidden="true">◌</span>
+            Users
+          </button>
         </nav>
 
         <div class="period-box">
@@ -57,12 +97,17 @@
             <h2 id="view-title">Dashboard</h2>
           </div>
           <div class="topbar-actions">
+            <div class="user-chip">
+              <strong id="current-user-name">User</strong>
+              <span id="current-user-role">Role</span>
+            </div>
             <button class="icon-button" type="button" title="Search">
               <span aria-hidden="true">⌕</span>
             </button>
             <button class="icon-button" type="button" title="Notifications">
               <span aria-hidden="true">!</span>
             </button>
+            <button class="ghost-button" id="logout-button" type="button">Logout</button>
             <button class="primary-button" type="button">New transaction</button>
           </div>
         </header>
@@ -235,6 +280,45 @@
                 </div>
               </div>
               <div id="income-statement" class="report-lines"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="users-view" aria-labelledby="view-title">
+          <div class="content-grid">
+            <section class="panel wide-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>User Accounts</h3>
+                  <p>Individual logins with assigned operating roles</p>
+                </div>
+                <button class="primary-button" type="button">Add user</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Username</th>
+                      <th>Role</th>
+                      <th>Default Screen</th>
+                      <th>Status</th>
+                      <th>Last Login</th>
+                    </tr>
+                  </thead>
+                  <tbody id="users-table"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Role Levels</h3>
+                  <p>Recommended access groups</p>
+                </div>
+              </div>
+              <div id="roles-list" class="stack"></div>
             </section>
           </div>
         </section>

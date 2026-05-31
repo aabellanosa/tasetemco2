@@ -357,6 +357,32 @@ Recommended rules:
 - Cashiers can see only their own teller batches unless they have supervisor access.
 - Admin access is separated from accounting approval access where possible.
 
+## 6.1 Public Screen and Login Behavior
+
+Before anyone logs in, the system should show a public staff login screen. This screen should show the cooperative identity, system name, and login form only. Operational data such as member balances, loans, reports, teller activity, and user lists should not be visible before authentication.
+
+For this prototype, six seeded users can sign in with the same temporary password: `p@55@LL`.
+
+Best-practice production behavior:
+
+- Initial passwords are temporary.
+- Users are forced to change temporary passwords at first login.
+- Passwords are stored as salted hashes, never as plain text.
+- Sessions expire after a defined idle period.
+- Failed login attempts are logged and eventually locked out.
+- Role restrictions are enforced in both the user interface and backend API.
+
+Current seeded users:
+
+| Username | Role | Default Screen |
+| --- | --- | --- |
+| `admin` | System Administrator | Users and Roles |
+| `manager` | General Manager | Dashboard |
+| `bookkeeper` | Accountant / Bookkeeper | General Ledger |
+| `teller01` | Teller / Cashier | Dashboard |
+| `loanofficer` | Loan Officer | Loans |
+| `auditor` | Auditor / Compliance Officer | Financial Reports |
+
 ## 7. Audit Trail Requirements
 
 The system should record who did what, when, and from where.
