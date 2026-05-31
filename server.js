@@ -46,11 +46,11 @@ function sendJson(response, statusCode, payload) {
 }
 
 function sendSessionCookie(response, sessionId) {
-  response.setHeader("Set-Cookie", `tabon_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`);
+  response.setHeader("Set-Cookie", `tasetemco_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`);
 }
 
 function clearSessionCookie(response) {
-  response.setHeader("Set-Cookie", "tabon_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+  response.setHeader("Set-Cookie", "tasetemco_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
 }
 
 function parseCookies(cookieHeader = "") {
@@ -64,7 +64,7 @@ function parseCookies(cookieHeader = "") {
 
 function getSessionUser(request) {
   const cookies = parseCookies(request.headers.cookie);
-  return sessions.get(cookies.tabon_session) || null;
+  return sessions.get(cookies.tasetemco_session) || null;
 }
 
 async function readJsonBody(request) {
@@ -185,7 +185,7 @@ async function handleApi(pathname, request, response) {
 
   if (pathname === "/api/logout" && request.method === "POST") {
     const cookies = parseCookies(request.headers.cookie);
-    sessions.delete(cookies.tabon_session);
+    sessions.delete(cookies.tasetemco_session);
     clearSessionCookie(response);
     sendJson(response, 200, { ok: true });
     return;
@@ -336,5 +336,5 @@ createServer(async (request, response) => {
     sendJson(response, 500, { error: "Server error", detail: error.message });
   }
 }).listen(port, host, () => {
-  console.log(`Tabon Coop running at http://${host}:${port}`);
+  console.log(`TASETEMCO running at http://${host}:${port}`);
 });

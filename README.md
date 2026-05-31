@@ -1,6 +1,6 @@
-# Tabon Coop
+# TASETEMCO
 
-Tabon Coop is a prototype cooperative core ledger system for Philippine cooperatives. The current build uses a small Node.js server with SQLite-backed sample data. It is intended to evolve into a multi-user cooperative operations system with transaction posting and CDA-aligned financial reports.
+TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. The current build uses a small Node.js server with SQLite-backed sample data. It is intended to evolve into a multi-user cooperative operations system with transaction posting and CDA-aligned financial reports.
 
 ## Current Prototype
 
@@ -26,7 +26,7 @@ Then open:
 http://127.0.0.1:3000
 ```
 
-The SQLite file is created at `data/tabon-coop.db` and is ignored by git.
+The SQLite file is created at `data/tasetemco.db` and is ignored by git.
 
 If port 3000 is already occupied:
 
