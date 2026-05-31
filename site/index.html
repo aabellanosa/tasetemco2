@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TASETEMCO Workflow Reference</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="hero">
+      <nav class="topnav">
+        <div class="brand">
+          <span class="brand-mark">TA</span>
+          <strong>TASETEMCO</strong>
+        </div>
+        <div class="navlinks">
+          <a href="#roles">Roles</a>
+          <a href="#workflows">Workflows</a>
+          <a href="#reports">Reports</a>
+        </div>
+      </nav>
+
+      <div class="hero-content">
+        <p class="eyebrow">Cooperative operations reference</p>
+        <h1>TASETEMCO Workflow Guide</h1>
+        <p>
+          A staff onboarding reference for cooperative users, access levels,
+          transaction flow, approvals, and ledger-driven reporting.
+        </p>
+      </div>
+    </header>
+
+    <main>
+      <section class="section" id="roles">
+        <div class="section-heading">
+          <p class="eyebrow">Access control</p>
+          <h2>Recommended User Levels</h2>
+          <p>
+            Best practice is to give every staff member an individual login and
+            assign only the access needed for their role.
+          </p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Membership</th>
+                <th>Deposits / Share Capital</th>
+                <th>Loans</th>
+                <th>Teller Cash</th>
+                <th>General Ledger</th>
+                <th>Reports</th>
+                <th>Users / Security</th>
+                <th>Audit Trail</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>System Administrator</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>Admin</td>
+                <td>View</td>
+              </tr>
+              <tr>
+                <td>General Manager</td>
+                <td>View</td>
+                <td>View</td>
+                <td>Approve</td>
+                <td>View</td>
+                <td>View</td>
+                <td>Approve</td>
+                <td>None</td>
+                <td>View</td>
+              </tr>
+              <tr>
+                <td>Accountant / Bookkeeper</td>
+                <td>View</td>
+                <td>Review</td>
+                <td>Review</td>
+                <td>Review</td>
+                <td>Post</td>
+                <td>Prepare</td>
+                <td>None</td>
+                <td>View</td>
+              </tr>
+              <tr>
+                <td>Loan Officer</td>
+                <td>View</td>
+                <td>View</td>
+                <td>Process</td>
+                <td>None</td>
+                <td>None</td>
+                <td>View</td>
+                <td>None</td>
+                <td>None</td>
+              </tr>
+              <tr>
+                <td>Credit Committee / Approver</td>
+                <td>View</td>
+                <td>View</td>
+                <td>Approve</td>
+                <td>None</td>
+                <td>None</td>
+                <td>View</td>
+                <td>None</td>
+                <td>View</td>
+              </tr>
+              <tr>
+                <td>Teller / Cashier</td>
+                <td>View</td>
+                <td>Process</td>
+                <td>Collect</td>
+                <td>Process</td>
+                <td>None</td>
+                <td>Own Batch</td>
+                <td>None</td>
+                <td>None</td>
+              </tr>
+              <tr>
+                <td>Membership Officer</td>
+                <td>Process</td>
+                <td>None</td>
+                <td>None</td>
+                <td>None</td>
+                <td>None</td>
+                <td>View</td>
+                <td>None</td>
+                <td>None</td>
+              </tr>
+              <tr>
+                <td>Auditor / Compliance Officer</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>View</td>
+                <td>Admin</td>
+              </tr>
+              <tr>
+                <td>Board / Read-Only Executive</td>
+                <td>Summary</td>
+                <td>Summary</td>
+                <td>Summary</td>
+                <td>None</td>
+                <td>None</td>
+                <td>View</td>
+                <td>None</td>
+                <td>None</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="workflows">
+        <div class="section-heading">
+          <p class="eyebrow">Operating flow</p>
+          <h2>Core Cooperative Workflows</h2>
+        </div>
+
+        <div class="workflow-grid">
+          <article>
+            <h3>Member Application</h3>
+            <ol>
+              <li>Membership Officer encodes application.</li>
+              <li>Application is submitted for approval.</li>
+              <li>Initial share capital is collected.</li>
+              <li>Authorized officer activates membership.</li>
+            </ol>
+          </article>
+
+          <article>
+            <h3>Teller Transaction</h3>
+            <ol>
+              <li>Teller selects active member account.</li>
+              <li>Transaction is encoded and validated.</li>
+              <li>Receipt is issued.</li>
+              <li>Transaction stays in teller batch until posting.</li>
+            </ol>
+          </article>
+
+          <article>
+            <h3>Loan Application</h3>
+            <ol>
+              <li>Loan Officer prepares application.</li>
+              <li>Credit standing and existing balances are reviewed.</li>
+              <li>Approver approves, rejects, or returns application.</li>
+              <li>Approved loans move to release workflow.</li>
+            </ol>
+          </article>
+
+          <article>
+            <h3>Ledger Posting</h3>
+            <ol>
+              <li>Operational transaction creates draft accounting effect.</li>
+              <li>Bookkeeper reviews supporting transaction.</li>
+              <li>Balanced entry is posted to the general ledger.</li>
+              <li>Reports are generated from posted ledger entries.</li>
+            </ol>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="reports">
+        <div class="section-heading">
+          <p class="eyebrow">Accounting output</p>
+          <h2>Ledger-Driven Reports</h2>
+          <p>
+            TASETEMCO should treat the general ledger as the source of financial
+            statements. Savings, share capital, and loans should reconcile to
+            their subsidiary ledgers.
+          </p>
+        </div>
+
+        <div class="report-list">
+          <span>Trial Balance</span>
+          <span>Statement of Financial Condition</span>
+          <span>Statement of Operations</span>
+          <span>Statement of Changes in Equity</span>
+          <span>Cash Flow Statement</span>
+          <span>Loan Portfolio Aging</span>
+          <span>Member Share Capital Ledger</span>
+          <span>Audit Trail</span>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>TASETEMCO Workflow Reference</span>
+      <span>Documentation build</span>
+    </footer>
+  </body>
+</html>
