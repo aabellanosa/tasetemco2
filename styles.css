@@ -431,7 +431,9 @@ input {
 
 .watch-list,
 .stack,
-.report-lines {
+.report-lines,
+.workflow-actions,
+.workflow-detail {
   display: grid;
   gap: 12px;
   padding: 18px;
@@ -650,6 +652,97 @@ tfoot th {
   border-radius: 8px;
   padding: 12px;
   font-weight: 800;
+}
+
+.matrix-wrap table {
+  min-width: 1120px;
+}
+
+.access-matrix td:first-child {
+  white-space: normal;
+  min-width: 220px;
+}
+
+.access-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  min-height: 26px;
+  border-radius: 999px;
+  background: #eef2f0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.access-pill.admin,
+.access-pill.post,
+.access-pill.approve,
+.access-pill.prepare,
+.access-pill.process,
+.access-pill.collect {
+  background: #e3f4e8;
+  color: var(--green-dark);
+}
+
+.access-pill.review,
+.access-pill.summary,
+.access-pill.own-batch {
+  background: #fff3d7;
+  color: #765409;
+}
+
+.access-pill.none {
+  background: #f2f3f2;
+  color: #9aa49d;
+}
+
+.workflow-actions {
+  grid-template-columns: 1fr;
+}
+
+.workflow-action {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  padding: 14px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.workflow-action:hover {
+  border-color: rgba(31, 122, 76, 0.45);
+  background: var(--surface-soft);
+}
+
+.workflow-action span,
+.empty-state {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workflow-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.workflow-steps li {
+  line-height: 1.45;
+}
+
+.workflow-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
 }
 
 @media (max-width: 1100px) {

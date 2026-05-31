@@ -58,6 +58,10 @@
             <span class="icon" aria-hidden="true">▦</span>
             Dashboard
           </button>
+          <button class="nav-item" data-view="workflow" type="button">
+            <span class="icon" aria-hidden="true">⇄</span>
+            Workflow
+          </button>
           <button class="nav-item" data-view="members" type="button">
             <span class="icon" aria-hidden="true">◎</span>
             Members
@@ -101,14 +105,14 @@
               <strong id="current-user-name">User</strong>
               <span id="current-user-role">Role</span>
             </div>
-            <button class="icon-button" type="button" title="Search">
+            <button class="icon-button" type="button" title="Search" data-flow="global-search">
               <span aria-hidden="true">⌕</span>
             </button>
-            <button class="icon-button" type="button" title="Notifications">
+            <button class="icon-button" type="button" title="Notifications" data-flow="exception-review">
               <span aria-hidden="true">!</span>
             </button>
             <button class="ghost-button" id="logout-button" type="button">Logout</button>
-            <button class="primary-button" type="button">New transaction</button>
+            <button class="primary-button" type="button" data-flow="new-transaction">New transaction</button>
           </div>
         </header>
 
@@ -122,7 +126,7 @@
                   <h3>Daily Teller Activity</h3>
                   <p>Cash movements by product line</p>
                 </div>
-                <button class="ghost-button" type="button">Post batch</button>
+                <button class="ghost-button" type="button" data-flow="teller-batch">Post batch</button>
               </div>
               <div class="bar-chart" id="bar-chart" aria-label="Daily teller activity chart"></div>
             </section>
@@ -144,7 +148,7 @@
                 <h3>Recent Transactions</h3>
                 <p>Operational entries auto-posted to ledger</p>
               </div>
-              <button class="ghost-button" type="button">Export CSV</button>
+              <button class="ghost-button" type="button" data-flow="report-export">Export CSV</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -171,7 +175,7 @@
               <button type="button">Pending</button>
               <button type="button">Inactive</button>
             </div>
-            <button class="primary-button" type="button">Add member</button>
+            <button class="primary-button" type="button" data-flow="member-application">Add member</button>
           </div>
           <div class="card-grid" id="member-cards"></div>
         </section>
@@ -206,7 +210,7 @@
               <button type="button">Applications</button>
               <button type="button">Collections</button>
             </div>
-            <button class="primary-button" type="button">Release loan</button>
+            <button class="primary-button" type="button" data-flow="loan-release">Release loan</button>
           </div>
           <section class="panel">
             <div class="table-wrap">
@@ -235,7 +239,7 @@
                 <h3>CDA-Aligned Trial Balance</h3>
                 <p>Sample accounts prepared for financial statements</p>
               </div>
-              <button class="ghost-button" type="button">View journal</button>
+              <button class="ghost-button" type="button" data-flow="journal-voucher">View journal</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -292,7 +296,7 @@
                   <h3>User Accounts</h3>
                   <p>Individual logins with assigned operating roles</p>
                 </div>
-                <button class="primary-button" type="button">Add user</button>
+                <button class="primary-button" type="button" data-flow="user-setup">Add user</button>
               </div>
               <div class="table-wrap">
                 <table>
@@ -319,6 +323,57 @@
                 </div>
               </div>
               <div id="roles-list" class="stack"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="workflow-view" aria-labelledby="view-title">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Recommended Role Access Matrix</h3>
+                <p>Best-practice access levels for the 9 cooperative user roles</p>
+              </div>
+            </div>
+            <div class="table-wrap matrix-wrap">
+              <table class="access-matrix">
+                <thead>
+                  <tr>
+                    <th>Role</th>
+                    <th>Membership</th>
+                    <th>Deposits / Share Capital</th>
+                    <th>Loans</th>
+                    <th>Teller Cash</th>
+                    <th>General Ledger</th>
+                    <th>Reports</th>
+                    <th>Users / Security</th>
+                    <th>Audit Trail</th>
+                  </tr>
+                </thead>
+                <tbody id="access-matrix"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Workflow Launcher</h3>
+                  <p>Common actions route to the next controlled step</p>
+                </div>
+              </div>
+              <div class="workflow-actions" id="workflow-actions"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3 id="workflow-title">Select a workflow</h3>
+                  <p id="workflow-owner">The next screen will appear here</p>
+                </div>
+              </div>
+              <div class="workflow-detail" id="workflow-detail"></div>
             </section>
           </div>
         </section>

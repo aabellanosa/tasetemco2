@@ -10,15 +10,15 @@ const publicRoot = __dirname;
 const sessions = new Map();
 
 const roleViews = {
-  "System Administrator": ["dashboard", "members", "accounts", "loans", "ledger", "reports", "users"],
-  "General Manager": ["dashboard", "members", "accounts", "loans", "ledger", "reports"],
-  "Accountant / Bookkeeper": ["dashboard", "accounts", "ledger", "reports"],
-  "Loan Officer": ["dashboard", "members", "loans"],
-  "Credit Committee / Approver": ["dashboard", "members", "loans", "reports"],
-  "Teller / Cashier": ["dashboard", "members", "accounts", "loans"],
-  "Membership Officer": ["dashboard", "members"],
-  "Auditor / Compliance Officer": ["dashboard", "members", "accounts", "loans", "ledger", "reports", "users"],
-  "Board / Read-Only Executive": ["dashboard", "reports"]
+  "System Administrator": ["dashboard", "workflow", "members", "accounts", "loans", "ledger", "reports", "users"],
+  "General Manager": ["dashboard", "workflow", "members", "accounts", "loans", "ledger", "reports"],
+  "Accountant / Bookkeeper": ["dashboard", "workflow", "accounts", "ledger", "reports"],
+  "Loan Officer": ["dashboard", "workflow", "members", "loans"],
+  "Credit Committee / Approver": ["dashboard", "workflow", "members", "loans", "reports"],
+  "Teller / Cashier": ["dashboard", "workflow", "members", "accounts", "loans"],
+  "Membership Officer": ["dashboard", "workflow", "members"],
+  "Auditor / Compliance Officer": ["dashboard", "workflow", "members", "accounts", "loans", "ledger", "reports", "users"],
+  "Board / Read-Only Executive": ["dashboard", "workflow", "reports"]
 };
 
 const endpointViews = {

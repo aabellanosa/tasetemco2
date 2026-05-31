@@ -8,6 +8,7 @@ Tabon Coop is a prototype cooperative core ledger system for Philippine cooperat
 - Small Node.js HTTP server
 - SQLite database seeded on first run
 - Sample members, deposits, share capital, loans, teller activity, ledger accounts, users, roles, and reports
+- Workflow screen with a 9-role access matrix and guided action flows
 - CDA-style report naming:
   - Statement of Financial Condition
   - Statement of Operations
@@ -53,6 +54,12 @@ The password is stored in SQLite as a salted hash, not plain text.
 | `teller01` | Teller / Cashier | Dashboard |
 | `loanofficer` | Loan Officer | Loans |
 | `auditor` | Auditor / Compliance Officer | Financial Reports |
+
+## Workflow UI
+
+The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
+
+This is intentionally incremental. The current buttons open best-practice process guidance. Later passes can replace each workflow panel with real forms and database writes.
 
 ## Planned Stack
 

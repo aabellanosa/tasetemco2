@@ -441,11 +441,15 @@ For the SQLite phase, the first database tables should include:
 The current UI prototype includes:
 
 - Dashboard
+- Workflow
 - Members
 - Accounts
 - Loans
 - General Ledger
 - Reports
+- Users and Roles
+
+The Workflow screen includes a role access matrix for the 9 recommended user levels and guided workflow panels for common actions.
 
 Next recommended screens:
 
@@ -458,6 +462,32 @@ Next recommended screens:
 - Teller Batch Posting
 - Journal Voucher Entry
 - Audit Trail
+
+## 9.1 Incremental Button Workflow Strategy
+
+The prototype should make buttons functional in layers.
+
+Layer 1 is navigation and guidance:
+
+- Buttons route to the correct workflow panel.
+- The panel shows the responsible role, normal control points, and expected steps.
+- The user can see what should happen next even before full forms exist.
+
+Layer 2 is form capture:
+
+- Replace the workflow panel with a real form.
+- Validate required fields.
+- Save draft records to SQLite.
+- Keep status values such as Draft, Submitted, Approved, Posted, or Reversed.
+
+Layer 3 is posting and approval:
+
+- Add maker-checker controls.
+- Generate subsidiary ledger entries.
+- Generate general ledger entries.
+- Record the action in the audit trail.
+
+This avoids building large fragile screens too early while still keeping the prototype useful and testable.
 
 ## 10. Implementation Notes
 
