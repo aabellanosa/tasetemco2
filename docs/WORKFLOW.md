@@ -1,8 +1,8 @@
-# Tabon Coop Workflow Document
+# TASETEMCO Workflow Document
 
 ## 1. Purpose
 
-Tabon Coop is a cooperative operations and accounting system prototype. Its goal is to support day-to-day cooperative transactions and produce reliable ledger-based financial reports, especially the Statement of Financial Condition and Statement of Operations.
+TASETEMCO is a cooperative operations and accounting system prototype. Its goal is to support day-to-day cooperative transactions and produce reliable ledger-based financial reports, especially the Statement of Financial Condition and Statement of Operations.
 
 The system should be built around a simple rule: operational transactions create accounting entries, and financial statements are generated from the general ledger.
 
@@ -343,7 +343,7 @@ Priority reports:
 
 ## 6. Access Control Principles
 
-Tabon Coop should use role-based access control with optional permission overrides.
+TASETEMCO should use role-based access control with optional permission overrides.
 
 Recommended rules:
 

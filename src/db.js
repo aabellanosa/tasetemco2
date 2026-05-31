@@ -3,7 +3,7 @@ const { pbkdf2Sync, randomBytes, timingSafeEqual } = require("node:crypto");
 const { dirname, join } = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
-const dbPath = join(__dirname, "..", "data", "tabon-coop.db");
+const dbPath = join(__dirname, "..", "data", "tasetemco.db");
 
 mkdirSync(dirname(dbPath), { recursive: true });
 
