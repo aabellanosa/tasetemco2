@@ -5,6 +5,7 @@
   "description": "TASETEMCO prototype with a small Node.js and SQLite backend.",
   "main": "server.js",
   "scripts": {
+    "test": "echo \"No tests yet\" && exit 0",
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "check": "node --check server.js && node --check src/db.js && node --check app.js"
   },
