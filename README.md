@@ -1,4 +1,4 @@
-# TASETEMCO
+# TASETEMCO🏛️
 
 TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. The current build uses a small Node.js server with SQLite-backed sample data. It is intended to evolve into a multi-user cooperative operations system with transaction posting and CDA-aligned financial reports.
 
