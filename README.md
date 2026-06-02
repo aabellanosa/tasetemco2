@@ -64,6 +64,39 @@ The Workflow screen shows the recommended access matrix for all 9 cooperative ro
 
 This is intentionally incremental. The current buttons open best-practice process guidance. Later passes can replace each workflow panel with real forms and database writes.
 
+## Static Documentation Build
+
+The documentation branch includes a static site in `site/`. Build it with:
+
+```powershell
+npm run build
+```
+
+The generated deploy folder is:
+
+```text
+dist-docs/
+```
+
+Run the smoke test with:
+
+```powershell
+npm test
+```
+
+For GitHub Actions deployment to Namecheap, set these repository secrets:
+
+- `NAMECHEAP_FTP_SERVER`
+- `NAMECHEAP_FTP_USERNAME`
+- `NAMECHEAP_FTP_PASSWORD`
+- `NAMECHEAP_FTP_SERVER_DIR`
+
+Example server directory:
+
+```text
+/public_html/docs/
+```
+
 ## Planned Stack
 
 - Frontend: HTML/CSS/JavaScript first, upgradeable to a component framework later if needed

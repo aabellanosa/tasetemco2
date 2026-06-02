@@ -1,0 +1,50 @@
+name: Documentation Static Site
+
+on:
+  push:
+    branches:
+      - workflow-documentation-build
+  workflow_dispatch:
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+    env:
+      NAMECHEAP_FTP_SERVER: ${{ secrets.NAMECHEAP_FTP_SERVER }}
+      NAMECHEAP_FTP_USERNAME: ${{ secrets.NAMECHEAP_FTP_USERNAME }}
+      NAMECHEAP_FTP_PASSWORD: ${{ secrets.NAMECHEAP_FTP_PASSWORD }}
+      NAMECHEAP_FTP_SERVER_DIR: ${{ secrets.NAMECHEAP_FTP_SERVER_DIR }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript syntax
+        run: npm run check
+
+      - name: Build static documentation
+        run: npm run build
+
+      - name: Smoke test documentation
+        run: npm test
+
+      - name: Upload static site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tasetemco-docs-site
+          path: dist-docs/
+
+      - name: Deploy to Namecheap by FTP
+        if: env.NAMECHEAP_FTP_SERVER != '' && env.NAMECHEAP_FTP_USERNAME != '' && env.NAMECHEAP_FTP_PASSWORD != '' && env.NAMECHEAP_FTP_SERVER_DIR != ''
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ env.NAMECHEAP_FTP_SERVER }}
+          username: ${{ env.NAMECHEAP_FTP_USERNAME }}
+          password: ${{ env.NAMECHEAP_FTP_PASSWORD }}
+          local-dir: ./dist-docs/
+          server-dir: ${{ env.NAMECHEAP_FTP_SERVER_DIR }}
