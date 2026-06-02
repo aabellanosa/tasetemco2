@@ -51,8 +51,8 @@ jobs:
       - name: Deploy to Namecheap by FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.NAMECHEAP_FTP_SERVER }}
-          username: ${{ secrets.NAMECHEAP_FTP_USERNAME }}
-          password: ${{ secrets.NAMECHEAP_FTP_PASSWORD }}
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist-docs/
-          server-dir: ${{ secrets.NAMECHEAP_FTP_SERVER_DIR }}
+          server-dir: ${{ secrets.FTP_DIR }}
