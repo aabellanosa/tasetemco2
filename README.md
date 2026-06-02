@@ -51,9 +51,12 @@ The password is stored in SQLite as a salted hash, not plain text.
 | `admin` | System Administrator | Users and Roles |
 | `manager` | General Manager | Dashboard |
 | `bookkeeper` | Accountant / Bookkeeper | General Ledger |
-| `teller01` | Teller / Cashier | Dashboard |
 | `loanofficer` | Loan Officer | Loans |
+| `approver` | Credit Committee / Approver | Loans |
+| `teller01` | Teller / Cashier | Dashboard |
+| `membership` | Membership Officer | Members |
 | `auditor` | Auditor / Compliance Officer | Financial Reports |
+| `board` | Board / Read-Only Executive | Financial Reports |
 
 ## Workflow UI
 

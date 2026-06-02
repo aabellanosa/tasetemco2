@@ -361,7 +361,7 @@ Recommended rules:
 
 Before anyone logs in, the system should show a public staff login screen. This screen should show the cooperative identity, system name, and login form only. Operational data such as member balances, loans, reports, teller activity, and user lists should not be visible before authentication.
 
-For this prototype, six seeded users can sign in with the same temporary password: `p@55@LL`.
+For this prototype, nine seeded users can sign in with the same temporary password: `p@55@LL`.
 
 Best-practice production behavior:
 
@@ -379,9 +379,12 @@ Current seeded users:
 | `admin` | System Administrator | Users and Roles |
 | `manager` | General Manager | Dashboard |
 | `bookkeeper` | Accountant / Bookkeeper | General Ledger |
-| `teller01` | Teller / Cashier | Dashboard |
 | `loanofficer` | Loan Officer | Loans |
+| `approver` | Credit Committee / Approver | Loans |
+| `teller01` | Teller / Cashier | Dashboard |
+| `membership` | Membership Officer | Members |
 | `auditor` | Auditor / Compliance Officer | Financial Reports |
+| `board` | Board / Read-Only Executive | Financial Reports |
 
 ## 7. Audit Trail Requirements
 

@@ -11,6 +11,80 @@ const db = new DatabaseSync(dbPath);
 db.exec("PRAGMA foreign_keys = ON;");
 
 const defaultPassword = "p@55@LL";
+const seededUsers = [
+  {
+    fullName: "Elena D. Ramos",
+    username: "admin",
+    role: "System Administrator",
+    status: "Active",
+    defaultView: "users",
+    lastLogin: "2026-05-30 08:15"
+  },
+  {
+    fullName: "Victor M. Lim",
+    username: "manager",
+    role: "General Manager",
+    status: "Active",
+    defaultView: "dashboard",
+    lastLogin: "2026-05-30 07:48"
+  },
+  {
+    fullName: "Grace P. Uy",
+    username: "bookkeeper",
+    role: "Accountant / Bookkeeper",
+    status: "Active",
+    defaultView: "ledger",
+    lastLogin: "2026-05-29 17:22"
+  },
+  {
+    fullName: "Paolo C. Mendoza",
+    username: "loanofficer",
+    role: "Loan Officer",
+    status: "Active",
+    defaultView: "loans",
+    lastLogin: "2026-05-29 16:40"
+  },
+  {
+    fullName: "Lorna B. Aquino",
+    username: "approver",
+    role: "Credit Committee / Approver",
+    status: "Active",
+    defaultView: "loans",
+    lastLogin: "2026-05-29 15:05"
+  },
+  {
+    fullName: "Nora S. Angeles",
+    username: "teller01",
+    role: "Teller / Cashier",
+    status: "Active",
+    defaultView: "dashboard",
+    lastLogin: "2026-05-30 08:04"
+  },
+  {
+    fullName: "Arnel V. Bautista",
+    username: "membership",
+    role: "Membership Officer",
+    status: "Active",
+    defaultView: "members",
+    lastLogin: "2026-05-29 14:18"
+  },
+  {
+    fullName: "Celia T. Abad",
+    username: "auditor",
+    role: "Auditor / Compliance Officer",
+    status: "Active",
+    defaultView: "reports",
+    lastLogin: "2026-05-28 13:10"
+  },
+  {
+    fullName: "Roberto J. Villanueva",
+    username: "board",
+    role: "Board / Read-Only Executive",
+    status: "Active",
+    defaultView: "reports",
+    lastLogin: "2026-05-28 10:30"
+  }
+];
 
 function hashPassword(password, salt = randomBytes(16).toString("hex")) {
   const hash = pbkdf2Sync(password, salt, 120000, 32, "sha256").toString("hex");
@@ -171,17 +245,13 @@ function seedData() {
           must_change_password, default_view, last_login
        )
        VALUES (?, ?, (SELECT id FROM roles WHERE name = ?), ?, ?, ?, ?, ?, ?)`,
-      [
-        buildUserSeed("Elena D. Ramos", "admin", "System Administrator", "Active", "users", "2026-05-30 08:15"),
-        buildUserSeed("Victor M. Lim", "manager", "General Manager", "Active", "dashboard", "2026-05-30 07:48"),
-        buildUserSeed("Grace P. Uy", "bookkeeper", "Accountant / Bookkeeper", "Active", "ledger", "2026-05-29 17:22"),
-        buildUserSeed("Nora S. Angeles", "teller01", "Teller / Cashier", "Active", "dashboard", "2026-05-30 08:04"),
-        buildUserSeed("Paolo C. Mendoza", "loanofficer", "Loan Officer", "Active", "loans", "2026-05-29 16:40"),
-        buildUserSeed("Celia T. Abad", "auditor", "Auditor / Compliance Officer", "Active", "reports", "2026-05-28 13:10")
-      ]
+      seededUsers.map((user) =>
+        buildUserSeed(user.fullName, user.username, user.role, user.status, user.defaultView, user.lastLogin)
+      )
     );
   }
 
+  ensureSeededUsers();
   ensureUserCredentials();
 
   if (tableIsEmpty("members")) {
@@ -295,14 +365,7 @@ function buildUserSeed(fullName, username, role, status, defaultView, lastLogin)
 }
 
 function ensureUserCredentials() {
-  const defaults = {
-    admin: "users",
-    manager: "dashboard",
-    bookkeeper: "ledger",
-    teller01: "dashboard",
-    loanofficer: "loans",
-    auditor: "reports"
-  };
+  const defaults = Object.fromEntries(seededUsers.map((user) => [user.username, user.defaultView]));
 
   const users = db.prepare("SELECT id, username, password_salt, password_hash FROM users").all();
   const updateCredentials = db.prepare(
@@ -322,6 +385,32 @@ function ensureUserCredentials() {
         updateCredentials.run(salt, hash, defaultView, user.id);
       } else {
         updateDefaultView.run(defaultView, user.id);
+      }
+    }
+    db.exec("COMMIT;");
+  } catch (error) {
+    db.exec("ROLLBACK;");
+    throw error;
+  }
+}
+
+function ensureSeededUsers() {
+  const existingUsers = new Set(db.prepare("SELECT username FROM users").all().map((user) => user.username));
+  const insertUser = db.prepare(
+    `INSERT INTO users (
+        full_name, username, role_id, status, password_salt, password_hash,
+        must_change_password, default_view, last_login
+     )
+     VALUES (?, ?, (SELECT id FROM roles WHERE name = ?), ?, ?, ?, ?, ?, ?)`
+  );
+
+  db.exec("BEGIN;");
+  try {
+    for (const user of seededUsers) {
+      if (!existingUsers.has(user.username)) {
+        insertUser.run(
+          ...buildUserSeed(user.fullName, user.username, user.role, user.status, user.defaultView, user.lastLogin)
+        );
       }
     }
     db.exec("COMMIT;");
