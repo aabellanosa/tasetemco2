@@ -4,7 +4,7 @@ const { readFile } = require("node:fs/promises");
 const { extname, join, normalize } = require("node:path");
 const { all, authenticateUser, get, initDatabase } = require("./src/db");
 
-const host = "127.0.0.1";
+const host = process.env.HOST || "127.0.0.1";
 const port = Number(process.env.PORT || 3000);
 const publicRoot = __dirname;
 const sessions = new Map();
@@ -167,6 +167,11 @@ function getReportsPayload() {
 }
 
 async function handleApi(pathname, request, response) {
+  if (pathname === "/api/health") {
+    sendJson(response, 200, { ok: true, app: "TASETEMCO" });
+    return;
+  }
+
   if (pathname === "/api/login" && request.method === "POST") {
     const body = await readJsonBody(request);
     const user = authenticateUser(String(body.username || "").trim(), String(body.password || ""));

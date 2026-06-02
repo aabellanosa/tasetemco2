@@ -6,7 +6,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
-    "check": "node --check server.js && node --check src/db.js && node --check app.js"
+    "test": "node scripts/smoke-app.js",
+    "smoke": "node scripts/smoke-app.js",
+    "check": "node --check server.js && node --check src/db.js && node --check app.js && node --check scripts/smoke-app.js"
   },
   "engines": {
     "node": ">=22.5.0"
