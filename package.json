@@ -2,13 +2,19 @@
   "name": "tasetemco",
   "version": "0.1.0",
   "private": true,
-  "description": "TASETEMCO prototype with a small Node.js and SQLite backend.",
-  "main": "server.js",
+  "description": "TASETEMCO cooperative system prototype spike.",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
-    "build": "node scripts/build-docs.js",
-    "test": "node scripts/smoke-docs.js",
-    "start": "node --disable-warning=ExperimentalWarning server.js",
-    "check": "node --check server.js && node --check src/db.js && node --check app.js && node --check scripts/build-docs.js && node --check scripts/smoke-docs.js"
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start",
+    "test": "node scripts/smoke-spike.js",
+    "smoke": "node scripts/smoke-spike.js",
+    "check": "node --check backend/src/server.js && node --check backend/src/data.js && node --check scripts/smoke-spike.js && npm --prefix frontend run check"
   },
   "engines": {
     "node": ">=22.5.0"
