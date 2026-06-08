@@ -208,6 +208,7 @@ function Members({ user }) {
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canViewApplications = user.permissions.includes("members:applications:view");
   const canApproveApplication = user.permissions.includes("members:applications:approve");
+  const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
 
   async function loadMembersWorkflow() {
     const [memberRows, applicationRows] = await Promise.all([
@@ -330,7 +331,7 @@ function Members({ user }) {
                 </Tr>
               </Thead>
               <Tbody>
-                {applications.map((application) => (
+                {pendingApplications.map((application) => (
                   <Tr key={application.id}>
                     <Td>{application.id}</Td>
                     <Td>{application.fullName}</Td>
@@ -354,6 +355,13 @@ function Members({ user }) {
                   ) : null}
                 </Tr>
                 ))}
+                {pendingApplications.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={canApproveApplication ? 7 : 6} color="gray.500">
+                      No pending applications.
+                    </Td>
+                  </Tr>
+                ) : null}
               </Tbody>
             </Table>
           </TableContainer>
