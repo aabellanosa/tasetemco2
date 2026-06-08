@@ -53,9 +53,42 @@ async function run() {
       body: JSON.stringify({ username: "membership", password: "p@55@LL" })
     });
     const loginBody = await login.json();
+    const cookie = login.headers.get("set-cookie")?.split(";")[0];
 
     if (!login.ok || loginBody.user.defaultView !== "members") {
       throw new Error("Membership login did not return the expected default view.");
+    }
+
+    if (!cookie) {
+      throw new Error("Login did not set a session cookie.");
+    }
+
+    const createApplication = await fetch(`${baseUrl}/api/member-applications`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie
+      },
+      body: JSON.stringify({
+        fullName: "Smoke Test Applicant",
+        clusterName: "General Membership",
+        contactNumber: "0999-000-0000",
+        initialShareCapital: 5000
+      })
+    });
+    const createBody = await createApplication.json();
+
+    if (!createApplication.ok || createBody.application.status !== "Pending Approval") {
+      throw new Error("Member application was not created as Pending Approval.");
+    }
+
+    const listApplications = await fetch(`${baseUrl}/api/member-applications`, {
+      headers: { Cookie: cookie }
+    });
+    const applications = await listApplications.json();
+
+    if (!applications.some((application) => application.id === createBody.application.id)) {
+      throw new Error("Created member application was not returned by the list endpoint.");
     }
 
     console.log("React/MySQL spike API smoke test passed.");

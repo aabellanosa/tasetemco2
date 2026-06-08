@@ -8,10 +8,13 @@ import {
   Flex,
   FormControl,
   FormLabel,
+  HStack,
   Grid,
   GridItem,
   Heading,
   Input,
+  NumberInput,
+  NumberInputField,
   Stat,
   StatHelpText,
   StatLabel,
@@ -193,46 +196,169 @@ function Dashboard() {
 
 function Members() {
   const [members, setMembers] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [form, setForm] = useState({
+    fullName: "",
+    clusterName: "General Membership",
+    contactNumber: "",
+    initialShareCapital: 5000
+  });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function loadMembersWorkflow() {
+    const [memberRows, applicationRows] = await Promise.all([
+      api("/api/members"),
+      api("/api/member-applications")
+    ]);
+    setMembers(memberRows);
+    setApplications(applicationRows);
+  }
 
   useEffect(() => {
-    api("/api/members").then(setMembers);
+    loadMembersWorkflow();
   }, []);
 
+  function updateForm(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitApplication(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api("/api/member-applications", {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setMessage(`${data.application.id} saved as Pending Approval.`);
+      setForm({
+        fullName: "",
+        clusterName: "General Membership",
+        contactNumber: "",
+        initialShareCapital: 5000
+      });
+      await loadMembersWorkflow();
+    } catch (submitError) {
+      setError(submitError.message);
+    }
+  }
+
   return (
-    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-      <Flex justify="space-between" mb={4}>
-        <Heading size="md">Members</Heading>
-        <Button colorScheme="green">Add member application</Button>
-      </Flex>
-      <TableContainer>
-        <Table size="sm">
-          <Thead>
-            <Tr>
-              <Th>Member No.</Th>
-              <Th>Name</Th>
-              <Th>Cluster</Th>
-              <Th isNumeric>Share Capital</Th>
-              <Th isNumeric>Savings</Th>
-              <Th>Status</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {members.map((member) => (
-              <Tr key={member.id}>
-                <Td>{member.id}</Td>
-                <Td>{member.name}</Td>
-                <Td>{member.group}</Td>
-                <Td isNumeric>{formatMoney(member.share)}</Td>
-                <Td isNumeric>{formatMoney(member.savings)}</Td>
-                <Td>
-                  <Badge colorScheme="green">{member.status}</Badge>
-                </Td>
+    <VStack align="stretch" spacing={5}>
+      <Box as="form" onSubmit={submitApplication} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="md" mb={1}>
+          New Member Application
+        </Heading>
+        <Text color="gray.600" mb={5}>
+          Membership Officer encodes the application. Approval will become the next workflow slice.
+        </Text>
+        <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={4}>
+          <FormControl isRequired>
+            <FormLabel>Full name</FormLabel>
+            <Input value={form.fullName} onChange={(event) => updateForm("fullName", event.target.value)} />
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>Cluster</FormLabel>
+            <Input value={form.clusterName} onChange={(event) => updateForm("clusterName", event.target.value)} />
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>Contact number</FormLabel>
+            <Input
+              value={form.contactNumber}
+              onChange={(event) => updateForm("contactNumber", event.target.value)}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Initial share capital</FormLabel>
+            <NumberInput
+              min={0}
+              value={form.initialShareCapital}
+              onChange={(value) => updateForm("initialShareCapital", Number(value || 0))}
+            >
+              <NumberInputField />
+            </NumberInput>
+          </FormControl>
+        </Grid>
+        <HStack mt={5} spacing={4} align="center">
+          <Button type="submit" colorScheme="green">
+            Submit application
+          </Button>
+          {message ? <Text color="green.600">{message}</Text> : null}
+          {error ? <Text color="red.500">{error}</Text> : null}
+        </HStack>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="md" mb={4}>
+          Pending Applications
+        </Heading>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Application No.</Th>
+                <Th>Name</Th>
+                <Th>Cluster</Th>
+                <Th>Contact</Th>
+                <Th isNumeric>Initial Share</Th>
+                <Th>Status</Th>
               </Tr>
-            ))}
-          </Tbody>
-        </Table>
-      </TableContainer>
-    </Box>
+            </Thead>
+            <Tbody>
+              {applications.map((application) => (
+                <Tr key={application.id}>
+                  <Td>{application.id}</Td>
+                  <Td>{application.fullName}</Td>
+                  <Td>{application.clusterName}</Td>
+                  <Td>{application.contactNumber}</Td>
+                  <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
+                  <Td>
+                    <Badge colorScheme="yellow">{application.status}</Badge>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" mb={4}>
+          <Heading size="md">Active Members</Heading>
+        </Flex>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Member No.</Th>
+                <Th>Name</Th>
+                <Th>Cluster</Th>
+                <Th isNumeric>Share Capital</Th>
+                <Th isNumeric>Savings</Th>
+                <Th>Status</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {members.map((member) => (
+                <Tr key={member.id}>
+                  <Td>{member.id}</Td>
+                  <Td>{member.name}</Td>
+                  <Td>{member.group}</Td>
+                  <Td isNumeric>{formatMoney(member.share)}</Td>
+                  <Td isNumeric>{formatMoney(member.savings)}</Td>
+                  <Td>
+                    <Badge colorScheme="green">{member.status}</Badge>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+    </VStack>
   );
 }
 

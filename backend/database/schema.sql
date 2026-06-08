@@ -18,3 +18,15 @@ CREATE TABLE IF NOT EXISTS members (
   savings_balance INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS member_applications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  application_no VARCHAR(40) NOT NULL UNIQUE,
+  full_name VARCHAR(180) NOT NULL,
+  cluster_name VARCHAR(160) NOT NULL,
+  contact_number VARCHAR(60) NOT NULL,
+  initial_share_capital INT NOT NULL DEFAULT 0,
+  status VARCHAR(40) NOT NULL DEFAULT 'Pending Approval',
+  created_by VARCHAR(80) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

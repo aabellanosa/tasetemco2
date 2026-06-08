@@ -24,3 +24,16 @@ ON DUPLICATE KEY UPDATE
   status = VALUES(status),
   share_capital = VALUES(share_capital),
   savings_balance = VALUES(savings_balance);
+
+INSERT INTO member_applications (
+  application_no, full_name, cluster_name, contact_number,
+  initial_share_capital, status, created_by
+) VALUES
+  ('MA-2026-0001', 'Julieta M. Navarro', 'General Membership', '0917-555-0148', 5000, 'Pending Approval', 'membership')
+ON DUPLICATE KEY UPDATE
+  full_name = VALUES(full_name),
+  cluster_name = VALUES(cluster_name),
+  contact_number = VALUES(contact_number),
+  initial_share_capital = VALUES(initial_share_capital),
+  status = VALUES(status),
+  created_by = VALUES(created_by);

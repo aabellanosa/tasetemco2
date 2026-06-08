@@ -117,6 +117,18 @@ export const members = [
   }
 ];
 
+export const memberApplications = [
+  {
+    id: "MA-2026-0001",
+    fullName: "Julieta M. Navarro",
+    clusterName: "General Membership",
+    contactNumber: "0917-555-0148",
+    initialShareCapital: 5000,
+    status: "Pending Approval",
+    createdBy: "membership"
+  }
+];
+
 export const dashboard = {
   metrics: [
     { label: "Total assets", value: 14525300, note: "Seeded spike data" },

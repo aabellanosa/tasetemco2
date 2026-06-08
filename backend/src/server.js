@@ -3,7 +3,15 @@ import cookie from "cookie";
 import dotenv from "dotenv";
 import express from "express";
 import mysql from "mysql2/promise";
-import { dashboard, defaultPassword, members, publicUser, roles, users } from "./data.js";
+import {
+  dashboard,
+  defaultPassword,
+  memberApplications,
+  members,
+  publicUser,
+  roles,
+  users
+} from "./data.js";
 
 dotenv.config();
 
@@ -107,6 +115,93 @@ async function listMembers() {
   return rows;
 }
 
+async function listMemberApplications() {
+  const db = await getPool();
+
+  if (!db) {
+    return memberApplications;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
+            contact_number AS contactNumber, initial_share_capital AS initialShareCapital,
+            status, created_by AS createdBy, created_at AS createdAt
+     FROM member_applications
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows;
+}
+
+async function createMemberApplication(input, user) {
+  const db = await getPool();
+  const application = {
+    id: `MA-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+    fullName: input.fullName,
+    clusterName: input.clusterName,
+    contactNumber: input.contactNumber,
+    initialShareCapital: input.initialShareCapital,
+    status: "Pending Approval",
+    createdBy: user.username
+  };
+
+  if (!db) {
+    memberApplications.unshift(application);
+    return application;
+  }
+
+  await db.execute(
+    `INSERT INTO member_applications (
+       application_no, full_name, cluster_name, contact_number,
+       initial_share_capital, status, created_by
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      application.id,
+      application.fullName,
+      application.clusterName,
+      application.contactNumber,
+      application.initialShareCapital,
+      application.status,
+      application.createdBy
+    ]
+  );
+
+  return application;
+}
+
+function validateMemberApplication(body) {
+  const fullName = String(body.fullName || "").trim();
+  const clusterName = String(body.clusterName || "").trim();
+  const contactNumber = String(body.contactNumber || "").trim();
+  const initialShareCapital = Number(body.initialShareCapital || 0);
+
+  if (!fullName) {
+    return { error: "Full name is required." };
+  }
+
+  if (!clusterName) {
+    return { error: "Cluster is required." };
+  }
+
+  if (!contactNumber) {
+    return { error: "Contact number is required." };
+  }
+
+  if (!Number.isInteger(initialShareCapital) || initialShareCapital < 0) {
+    return { error: "Initial share capital must be a whole peso amount." };
+  }
+
+  return {
+    value: {
+      fullName,
+      clusterName,
+      contactNumber,
+      initialShareCapital
+    }
+  };
+}
+
 app.get("/api/health", async (request, response) => {
   const db = await getPool();
   let database = "seed-memory";
@@ -168,6 +263,46 @@ app.get("/api/members", async (request, response) => {
   }
 
   response.json(await listMembers());
+});
+
+app.get("/api/member-applications", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!user.allowedViews.includes("members")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listMemberApplications());
+});
+
+app.post("/api/member-applications", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!user.allowedViews.includes("members")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = validateMemberApplication(request.body);
+
+  if (result.error) {
+    response.status(400).json({ error: result.error });
+    return;
+  }
+
+  const application = await createMemberApplication(result.value, user);
+  response.status(201).json({ application });
 });
 
 app.get("/api/roles", (request, response) => {
