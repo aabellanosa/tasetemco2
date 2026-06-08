@@ -58,6 +58,22 @@ The password is stored in SQLite as a salted hash, not plain text.
 | `auditor` | Auditor / Compliance Officer | Financial Reports |
 | `board` | Board / Read-Only Executive | Financial Reports |
 
+## Spike Role Permissions
+
+The React/MySQL spike uses action-level permissions, not just screen access. For membership workflows:
+
+| Role | View Members | View Applications | Create Applications |
+| --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes |
+| General Manager | Yes | Yes | No |
+| Accountant / Bookkeeper | No | No | No |
+| Loan Officer | Yes | No | No |
+| Credit Committee / Approver | Yes | Yes | No |
+| Teller / Cashier | Yes | No | No |
+| Membership Officer | Yes | Yes | Yes |
+| Auditor / Compliance Officer | Yes | Yes | No |
+| Board / Read-Only Executive | No | No | No |
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.

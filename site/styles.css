@@ -156,6 +156,13 @@ td:first-child {
   font-weight: 800;
 }
 
+.table-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .workflow-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(210px, 1fr));

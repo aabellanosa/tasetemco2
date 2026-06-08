@@ -180,6 +180,22 @@ Restrictions:
 
 - No encoding, approval, posting, or account maintenance access
 
+### 3.10 Current Spike Membership Permissions
+
+The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
+
+| Role | View Members | View Applications | Create Applications |
+| --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes |
+| General Manager | Yes | Yes | No |
+| Accountant / Bookkeeper | No | No | No |
+| Loan Officer | Yes | No | No |
+| Credit Committee / Approver | Yes | Yes | No |
+| Teller / Cashier | Yes | No | No |
+| Membership Officer | Yes | Yes | Yes |
+| Auditor / Compliance Officer | Yes | Yes | No |
+| Board / Read-Only Executive | No | No | No |
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
