@@ -184,17 +184,17 @@ Restrictions:
 
 The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
-| Role | View Members | View Applications | Create Applications |
-| --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes |
-| General Manager | Yes | Yes | No |
-| Accountant / Bookkeeper | No | No | No |
-| Loan Officer | Yes | No | No |
-| Credit Committee / Approver | Yes | Yes | No |
-| Teller / Cashier | Yes | No | No |
-| Membership Officer | Yes | Yes | Yes |
-| Auditor / Compliance Officer | Yes | Yes | No |
-| Board / Read-Only Executive | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications |
+| --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes |
+| General Manager | Yes | Yes | No | No |
+| Accountant / Bookkeeper | No | No | No | No |
+| Loan Officer | Yes | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No |
+| Teller / Cashier | Yes | No | No | No |
+| Membership Officer | Yes | Yes | Yes | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No |
+| Board / Read-Only Executive | No | No | No | No |
 
 ## 4. Core Workflow
 

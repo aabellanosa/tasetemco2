@@ -1,38 +1,57 @@
-# TASETEMCO🏛️
+# TASETEMCO
 
-TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. The current build uses a small Node.js server with SQLite-backed sample data. It is intended to evolve into a multi-user cooperative operations system with transaction posting and CDA-aligned financial reports.
+TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. This branch is the React, Chakra UI, and MySQL/MariaDB spike for the next working prototype.
 
-## Current Prototype
+## React/MySQL Spike
 
-- Static HTML, CSS, and JavaScript frontend
-- Small Node.js HTTP server
-- SQLite database seeded on first run
-- Sample members, deposits, share capital, loans, teller activity, ledger accounts, users, roles, and reports
-- Workflow screen with a 9-role access matrix and guided action flows
-- CDA-style report naming:
-  - Statement of Financial Condition
-  - Statement of Operations
-- Balanced sample trial balance
+The spike is split into:
 
-## Running Locally
+- `frontend/` - Vite, React, Chakra UI
+- `backend/` - Node.js, Express, optional MySQL/MariaDB
 
-```powershell
-npm start
-```
-
-Then open:
+The backend runs with in-memory seed data if MySQL is not configured yet. To use MySQL, copy `backend/.env.example` to `backend/.env`, fill in the database settings, then apply:
 
 ```text
-http://127.0.0.1:3000
+backend/database/schema.sql
+backend/database/seed.sql
 ```
 
-The SQLite file is created at `data/tasetemco.db` and is ignored by git.
+## Running The Spike
 
-If port 3000 is already occupied:
+Install dependencies:
 
 ```powershell
-$env:PORT="3010"; npm start
+npm install
 ```
+
+Run the backend:
+
+```powershell
+npm run dev:backend
+```
+
+Run the frontend in another terminal:
+
+```powershell
+npm run dev:frontend
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173
+```
+
+The Vite dev server proxies `/api` requests to `http://127.0.0.1:4000`.
+
+## Spike Checks
+
+```powershell
+npm run check
+npm test
+```
+
+`npm test` starts the spike API, checks `/api/health`, and verifies that the `membership` user can log in.
 
 ## Prototype Login Accounts
 
@@ -62,17 +81,17 @@ The password is stored in SQLite as a salted hash, not plain text.
 
 The React/MySQL spike uses action-level permissions, not just screen access. For membership workflows:
 
-| Role | View Members | View Applications | Create Applications |
-| --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes |
-| General Manager | Yes | Yes | No |
-| Accountant / Bookkeeper | No | No | No |
-| Loan Officer | Yes | No | No |
-| Credit Committee / Approver | Yes | Yes | No |
-| Teller / Cashier | Yes | No | No |
-| Membership Officer | Yes | Yes | Yes |
-| Auditor / Compliance Officer | Yes | Yes | No |
-| Board / Read-Only Executive | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications |
+| --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes |
+| General Manager | Yes | Yes | No | No |
+| Accountant / Bookkeeper | No | No | No | No |
+| Loan Officer | Yes | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No |
+| Teller / Cashier | Yes | No | No | No |
+| Membership Officer | Yes | Yes | Yes | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No |
+| Board / Read-Only Executive | No | No | No | No |
 
 ## Workflow UI
 
