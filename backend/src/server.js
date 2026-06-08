@@ -202,6 +202,10 @@ function validateMemberApplication(body) {
   };
 }
 
+function hasPermission(user, permission) {
+  return Array.isArray(user?.permissions) && user.permissions.includes(permission);
+}
+
 app.get("/api/health", async (request, response) => {
   const db = await getPool();
   let database = "seed-memory";
@@ -257,7 +261,7 @@ app.get("/api/members", async (request, response) => {
     return;
   }
 
-  if (!user.allowedViews.includes("members")) {
+  if (!hasPermission(user, "members:view")) {
     response.status(403).json({ error: "Access denied" });
     return;
   }
@@ -273,7 +277,7 @@ app.get("/api/member-applications", async (request, response) => {
     return;
   }
 
-  if (!user.allowedViews.includes("members")) {
+  if (!hasPermission(user, "members:applications:view")) {
     response.status(403).json({ error: "Access denied" });
     return;
   }
@@ -289,7 +293,7 @@ app.post("/api/member-applications", async (request, response) => {
     return;
   }
 
-  if (!user.allowedViews.includes("members")) {
+  if (!hasPermission(user, "members:applications:create")) {
     response.status(403).json({ error: "Access denied" });
     return;
   }

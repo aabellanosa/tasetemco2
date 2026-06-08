@@ -90,6 +90,23 @@ export const roleViews = {
   "Board / Read-Only Executive": ["dashboard", "reports"]
 };
 
+export const rolePermissions = {
+  "System Administrator": [
+    "members:view",
+    "members:applications:view",
+    "members:applications:create",
+    "members:applications:approve"
+  ],
+  "General Manager": ["members:view", "members:applications:view", "members:applications:approve"],
+  "Accountant / Bookkeeper": [],
+  "Loan Officer": ["members:view"],
+  "Credit Committee / Approver": ["members:view", "members:applications:view", "members:applications:approve"],
+  "Teller / Cashier": ["members:view"],
+  "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
+  "Auditor / Compliance Officer": ["members:view", "members:applications:view"],
+  "Board / Read-Only Executive": []
+};
+
 export const members = [
   {
     id: "M-000482",
@@ -145,6 +162,7 @@ export const dashboard = {
 
 export function publicUser(user) {
   const allowedViews = roleViews[user.role] || ["dashboard"];
+  const permissions = rolePermissions[user.role] || [];
 
   return {
     id: user.id,
@@ -152,6 +170,7 @@ export function publicUser(user) {
     username: user.username,
     role: user.role,
     defaultView: allowedViews.includes(user.defaultView) ? user.defaultView : allowedViews[0],
-    allowedViews
+    allowedViews,
+    permissions
   };
 }

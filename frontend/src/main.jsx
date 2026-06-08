@@ -194,7 +194,7 @@ function Dashboard() {
   );
 }
 
-function Members() {
+function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [applications, setApplications] = useState([]);
   const [form, setForm] = useState({
@@ -205,11 +205,13 @@ function Members() {
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const canCreateApplication = user.permissions.includes("members:applications:create");
+  const canViewApplications = user.permissions.includes("members:applications:view");
 
   async function loadMembersWorkflow() {
     const [memberRows, applicationRows] = await Promise.all([
       api("/api/members"),
-      api("/api/member-applications")
+      canViewApplications ? api("/api/member-applications") : []
     ]);
     setMembers(memberRows);
     setApplications(applicationRows);
@@ -248,82 +250,86 @@ function Members() {
 
   return (
     <VStack align="stretch" spacing={5}>
-      <Box as="form" onSubmit={submitApplication} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Heading size="md" mb={1}>
-          New Member Application
-        </Heading>
-        <Text color="gray.600" mb={5}>
-          Membership Officer encodes the application. Approval will become the next workflow slice.
-        </Text>
-        <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={4}>
-          <FormControl isRequired>
-            <FormLabel>Full name</FormLabel>
-            <Input value={form.fullName} onChange={(event) => updateForm("fullName", event.target.value)} />
-          </FormControl>
-          <FormControl isRequired>
-            <FormLabel>Cluster</FormLabel>
-            <Input value={form.clusterName} onChange={(event) => updateForm("clusterName", event.target.value)} />
-          </FormControl>
-          <FormControl isRequired>
-            <FormLabel>Contact number</FormLabel>
-            <Input
-              value={form.contactNumber}
-              onChange={(event) => updateForm("contactNumber", event.target.value)}
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>Initial share capital</FormLabel>
-            <NumberInput
-              min={0}
-              value={form.initialShareCapital}
-              onChange={(value) => updateForm("initialShareCapital", Number(value || 0))}
-            >
-              <NumberInputField />
-            </NumberInput>
-          </FormControl>
-        </Grid>
-        <HStack mt={5} spacing={4} align="center">
-          <Button type="submit" colorScheme="green">
-            Submit application
-          </Button>
-          {message ? <Text color="green.600">{message}</Text> : null}
-          {error ? <Text color="red.500">{error}</Text> : null}
-        </HStack>
-      </Box>
+      {canCreateApplication ? (
+        <Box as="form" onSubmit={submitApplication} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={1}>
+            New Member Application
+          </Heading>
+          <Text color="gray.600" mb={5}>
+            Membership Officer encodes the application. Approval will become the next workflow slice.
+          </Text>
+          <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={4}>
+            <FormControl isRequired>
+              <FormLabel>Full name</FormLabel>
+              <Input value={form.fullName} onChange={(event) => updateForm("fullName", event.target.value)} />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Cluster</FormLabel>
+              <Input value={form.clusterName} onChange={(event) => updateForm("clusterName", event.target.value)} />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Contact number</FormLabel>
+              <Input
+                value={form.contactNumber}
+                onChange={(event) => updateForm("contactNumber", event.target.value)}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel>Initial share capital</FormLabel>
+              <NumberInput
+                min={0}
+                value={form.initialShareCapital}
+                onChange={(value) => updateForm("initialShareCapital", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+          </Grid>
+          <HStack mt={5} spacing={4} align="center">
+            <Button type="submit" colorScheme="green">
+              Submit application
+            </Button>
+            {message ? <Text color="green.600">{message}</Text> : null}
+            {error ? <Text color="red.500">{error}</Text> : null}
+          </HStack>
+        </Box>
+      ) : null}
 
-      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Heading size="md" mb={4}>
-          Pending Applications
-        </Heading>
-        <TableContainer>
-          <Table size="sm">
-            <Thead>
-              <Tr>
-                <Th>Application No.</Th>
-                <Th>Name</Th>
-                <Th>Cluster</Th>
-                <Th>Contact</Th>
-                <Th isNumeric>Initial Share</Th>
-                <Th>Status</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {applications.map((application) => (
-                <Tr key={application.id}>
-                  <Td>{application.id}</Td>
-                  <Td>{application.fullName}</Td>
-                  <Td>{application.clusterName}</Td>
-                  <Td>{application.contactNumber}</Td>
-                  <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
-                  <Td>
-                    <Badge colorScheme="yellow">{application.status}</Badge>
-                  </Td>
+      {canViewApplications ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={4}>
+            Pending Applications
+          </Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Application No.</Th>
+                  <Th>Name</Th>
+                  <Th>Cluster</Th>
+                  <Th>Contact</Th>
+                  <Th isNumeric>Initial Share</Th>
+                  <Th>Status</Th>
                 </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </TableContainer>
-      </Box>
+              </Thead>
+              <Tbody>
+                {applications.map((application) => (
+                  <Tr key={application.id}>
+                    <Td>{application.id}</Td>
+                    <Td>{application.fullName}</Td>
+                    <Td>{application.clusterName}</Td>
+                    <Td>{application.contactNumber}</Td>
+                    <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
+                    <Td>
+                      <Badge colorScheme="yellow">{application.status}</Badge>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" mb={4}>
@@ -384,7 +390,7 @@ function Shell({ user, onLogout }) {
     }
 
     if (view === "members") {
-      return <Members />;
+      return <Members user={user} />;
     }
 
     return <Placeholder view={view} />;

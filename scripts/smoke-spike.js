@@ -91,6 +91,40 @@ async function run() {
       throw new Error("Created member application was not returned by the list endpoint.");
     }
 
+    const loanOfficerLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "loanofficer", password: "p@55@LL" })
+    });
+    const loanOfficerCookie = loanOfficerLogin.headers.get("set-cookie")?.split(";")[0];
+    const loanOfficerBody = await loanOfficerLogin.json();
+
+    if (!loanOfficerLogin.ok || !loanOfficerBody.user.allowedViews.includes("members")) {
+      throw new Error("Loan officer should still be allowed to view members.");
+    }
+
+    if (loanOfficerBody.user.permissions.includes("members:applications:create")) {
+      throw new Error("Loan officer should not have member application create permission.");
+    }
+
+    const forbiddenCreate = await fetch(`${baseUrl}/api/member-applications`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: loanOfficerCookie
+      },
+      body: JSON.stringify({
+        fullName: "Forbidden Applicant",
+        clusterName: "General Membership",
+        contactNumber: "0999-111-1111",
+        initialShareCapital: 5000
+      })
+    });
+
+    if (forbiddenCreate.status !== 403) {
+      throw new Error("Loan officer should be denied member application creation.");
+    }
+
     console.log("React/MySQL spike API smoke test passed.");
   } finally {
     server.kill();
