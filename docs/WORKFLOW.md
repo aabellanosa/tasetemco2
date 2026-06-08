@@ -196,6 +196,8 @@ The React/MySQL spike separates screen access from action access. A role may vie
 | Auditor / Compliance Officer | Yes | Yes | No | No | No |
 | Board / Read-Only Executive | No | No | No | No | No |
 
+For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration

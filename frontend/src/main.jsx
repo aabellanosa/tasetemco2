@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Box,
@@ -34,6 +34,7 @@ import {
 import { createRoot as createReactRoot } from "react-dom/client";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "";
+const membersPollingMs = 5000;
 
 const theme = extendTheme({
   fonts: {
@@ -80,6 +81,18 @@ function formatMoney(value) {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 0
+  }).format(value);
+}
+
+function formatTime(value) {
+  if (!value) {
+    return "Not refreshed yet";
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
   }).format(value);
 }
 
@@ -214,6 +227,8 @@ function Members({ user }) {
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canViewApplications = user.permissions.includes("members:applications:view");
   const canApproveApplication = user.permissions.includes("members:applications:approve");
@@ -222,20 +237,43 @@ function Members({ user }) {
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
 
-  async function loadMembersWorkflow() {
-    const [memberRows, applicationRows, paymentRows] = await Promise.all([
-      api("/api/members"),
-      canViewApplications ? api("/api/member-applications") : [],
-      canViewInitialPayments ? api("/api/initial-member-payments") : []
-    ]);
-    setMembers(memberRows);
-    setApplications(applicationRows);
-    setInitialPayments(paymentRows);
-  }
+  const loadMembersWorkflow = useCallback(
+    async ({ silent = false } = {}) => {
+      setIsRefreshing(true);
+
+      try {
+        const [memberRows, applicationRows, paymentRows] = await Promise.all([
+          api("/api/members"),
+          canViewApplications ? api("/api/member-applications") : [],
+          canViewInitialPayments ? api("/api/initial-member-payments") : []
+        ]);
+        setMembers(memberRows);
+        setApplications(applicationRows);
+        setInitialPayments(paymentRows);
+        setLastRefreshedAt(new Date());
+
+        if (!silent) {
+          setError("");
+        }
+      } catch (refreshError) {
+        if (!silent) {
+          setError(refreshError.message);
+        }
+      } finally {
+        setIsRefreshing(false);
+      }
+    },
+    [canViewApplications, canViewInitialPayments]
+  );
 
   useEffect(() => {
     loadMembersWorkflow();
-  }, []);
+    const timerId = window.setInterval(() => {
+      loadMembersWorkflow({ silent: true });
+    }, membersPollingMs);
+
+    return () => window.clearInterval(timerId);
+  }, [loadMembersWorkflow]);
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -317,6 +355,15 @@ function Members({ user }) {
 
   return (
     <VStack align="stretch" spacing={5}>
+      <Flex justify="space-between" align="center" gap={4} wrap="wrap">
+        <Text color="gray.500" fontSize="sm">
+          Last refreshed: {formatTime(lastRefreshedAt)}
+        </Text>
+        <Button size="sm" onClick={() => loadMembersWorkflow()} isLoading={isRefreshing}>
+          Refresh
+        </Button>
+      </Flex>
+
       {canCreateApplication ? (
         <Box as="form" onSubmit={submitApplication} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Heading size="md" mb={1}>
