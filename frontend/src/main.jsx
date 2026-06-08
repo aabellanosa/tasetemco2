@@ -207,6 +207,7 @@ function Members({ user }) {
   const [error, setError] = useState("");
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canViewApplications = user.permissions.includes("members:applications:view");
+  const canApproveApplication = user.permissions.includes("members:applications:approve");
 
   async function loadMembersWorkflow() {
     const [memberRows, applicationRows] = await Promise.all([
@@ -245,6 +246,21 @@ function Members({ user }) {
       await loadMembersWorkflow();
     } catch (submitError) {
       setError(submitError.message);
+    }
+  }
+
+  async function approveApplication(applicationId) {
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api(`/api/member-applications/${applicationId}/approve`, {
+        method: "POST"
+      });
+      setMessage(`${data.application.id} approved as ${data.member.id}.`);
+      await loadMembersWorkflow();
+    } catch (approveError) {
+      setError(approveError.message);
     }
   }
 
@@ -308,8 +324,9 @@ function Members({ user }) {
                   <Th>Name</Th>
                   <Th>Cluster</Th>
                   <Th>Contact</Th>
-                  <Th isNumeric>Initial Share</Th>
-                  <Th>Status</Th>
+                <Th isNumeric>Initial Share</Th>
+                <Th>Status</Th>
+                {canApproveApplication ? <Th>Action</Th> : null}
                 </Tr>
               </Thead>
               <Tbody>
@@ -320,10 +337,22 @@ function Members({ user }) {
                     <Td>{application.clusterName}</Td>
                     <Td>{application.contactNumber}</Td>
                     <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
+                  <Td>
+                    <Badge colorScheme="yellow">{application.status}</Badge>
+                  </Td>
+                  {canApproveApplication ? (
                     <Td>
-                      <Badge colorScheme="yellow">{application.status}</Badge>
+                      <Button
+                        size="sm"
+                        colorScheme="green"
+                        isDisabled={application.status !== "Pending Approval"}
+                        onClick={() => approveApplication(application.id)}
+                      >
+                        Approve
+                      </Button>
                     </Td>
-                  </Tr>
+                  ) : null}
+                </Tr>
                 ))}
               </Tbody>
             </Table>

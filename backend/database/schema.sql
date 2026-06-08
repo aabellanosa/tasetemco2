@@ -28,5 +28,8 @@ CREATE TABLE IF NOT EXISTS member_applications (
   initial_share_capital INT NOT NULL DEFAULT 0,
   status VARCHAR(40) NOT NULL DEFAULT 'Pending Approval',
   created_by VARCHAR(80) NOT NULL,
+  approved_by VARCHAR(80),
+  approved_member_no VARCHAR(40),
+  approved_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

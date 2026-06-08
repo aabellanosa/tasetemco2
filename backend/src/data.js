@@ -97,10 +97,10 @@ export const rolePermissions = {
     "members:applications:create",
     "members:applications:approve"
   ],
-  "General Manager": ["members:view", "members:applications:view", "members:applications:approve"],
+  "General Manager": ["members:view", "members:applications:view"],
   "Accountant / Bookkeeper": [],
   "Loan Officer": ["members:view"],
-  "Credit Committee / Approver": ["members:view", "members:applications:view", "members:applications:approve"],
+  "Credit Committee / Approver": ["members:view", "members:applications:view"],
   "Teller / Cashier": ["members:view"],
   "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
   "Auditor / Compliance Officer": ["members:view", "members:applications:view"],

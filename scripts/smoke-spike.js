@@ -91,6 +91,61 @@ async function run() {
       throw new Error("Created member application was not returned by the list endpoint.");
     }
 
+    const managerLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "manager", password: "p@55@LL" })
+    });
+    const managerBody = await managerLogin.json();
+    const managerCookie = managerLogin.headers.get("set-cookie")?.split(";")[0];
+
+    if (managerBody.user.permissions.includes("members:applications:approve")) {
+      throw new Error("Manager should not have member application approval permission in this spike.");
+    }
+
+    const forbiddenApproval = await fetch(
+      `${baseUrl}/api/member-applications/${createBody.application.id}/approve`,
+      {
+        method: "POST",
+        headers: { Cookie: managerCookie }
+      }
+    );
+
+    if (forbiddenApproval.status !== 403) {
+      throw new Error("Manager should be denied member application approval.");
+    }
+
+    const adminLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "admin", password: "p@55@LL" })
+    });
+    const adminBody = await adminLogin.json();
+    const adminCookie = adminLogin.headers.get("set-cookie")?.split(";")[0];
+
+    if (!adminBody.user.permissions.includes("members:applications:approve")) {
+      throw new Error("Admin should have member application approval permission.");
+    }
+
+    const approval = await fetch(`${baseUrl}/api/member-applications/${createBody.application.id}/approve`, {
+      method: "POST",
+      headers: { Cookie: adminCookie }
+    });
+    const approvalBody = await approval.json();
+
+    if (!approval.ok || approvalBody.application.status !== "Approved") {
+      throw new Error("Admin approval did not approve the member application.");
+    }
+
+    const activeMembers = await fetch(`${baseUrl}/api/members`, {
+      headers: { Cookie: adminCookie }
+    });
+    const memberRows = await activeMembers.json();
+
+    if (!memberRows.some((member) => member.id === approvalBody.member.id)) {
+      throw new Error("Approved application was not converted into an active member.");
+    }
+
     const loanOfficerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

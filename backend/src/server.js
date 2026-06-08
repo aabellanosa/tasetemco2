@@ -170,6 +170,120 @@ async function createMemberApplication(input, user) {
   return application;
 }
 
+function nextMemberNumber() {
+  const numericIds = members
+    .map((member) => Number(String(member.id).replace("M-", "")))
+    .filter((value) => Number.isInteger(value));
+  const next = Math.max(...numericIds, 0) + 1;
+  return `M-${String(next).padStart(6, "0")}`;
+}
+
+async function approveMemberApplication(applicationId, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const application = memberApplications.find((item) => item.id === applicationId);
+
+    if (!application) {
+      return { error: "Member application was not found.", statusCode: 404 };
+    }
+
+    if (application.status !== "Pending Approval") {
+      return { error: "Only pending applications can be approved.", statusCode: 409 };
+    }
+
+    const member = {
+      id: nextMemberNumber(),
+      name: application.fullName,
+      group: application.clusterName,
+      share: application.initialShareCapital,
+      savings: 0,
+      status: "Active"
+    };
+
+    application.status = "Approved";
+    application.approvedBy = user.username;
+    application.approvedMemberNo = member.id;
+    members.push(member);
+
+    return { application, member };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
+              contact_number AS contactNumber, initial_share_capital AS initialShareCapital,
+              status
+       FROM member_applications
+       WHERE application_no = ?
+       FOR UPDATE`,
+      [applicationId]
+    );
+
+    const application = rows[0];
+
+    if (!application) {
+      await connection.rollback();
+      return { error: "Member application was not found.", statusCode: 404 };
+    }
+
+    if (application.status !== "Pending Approval") {
+      await connection.rollback();
+      return { error: "Only pending applications can be approved.", statusCode: 409 };
+    }
+
+    const [lastMemberRows] = await connection.execute(
+      `SELECT member_no AS id
+       FROM members
+       ORDER BY CAST(REPLACE(member_no, 'M-', '') AS UNSIGNED) DESC
+       LIMIT 1`
+    );
+    const lastNumber = lastMemberRows[0]?.id ? Number(lastMemberRows[0].id.replace("M-", "")) : 0;
+    const memberNo = `M-${String(lastNumber + 1).padStart(6, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO members (member_no, full_name, cluster_name, status, share_capital, savings_balance)
+       VALUES (?, ?, ?, 'Active', ?, 0)`,
+      [memberNo, application.fullName, application.clusterName, application.initialShareCapital]
+    );
+
+    await connection.execute(
+      `UPDATE member_applications
+       SET status = 'Approved', approved_by = ?, approved_member_no = ?, approved_at = CURRENT_TIMESTAMP
+       WHERE application_no = ?`,
+      [user.username, memberNo, applicationId]
+    );
+
+    await connection.commit();
+
+    return {
+      application: {
+        ...application,
+        status: "Approved",
+        approvedBy: user.username,
+        approvedMemberNo: memberNo
+      },
+      member: {
+        id: memberNo,
+        name: application.fullName,
+        group: application.clusterName,
+        share: application.initialShareCapital,
+        savings: 0,
+        status: "Active"
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 function validateMemberApplication(body) {
   const fullName = String(body.fullName || "").trim();
   const clusterName = String(body.clusterName || "").trim();
@@ -307,6 +421,29 @@ app.post("/api/member-applications", async (request, response) => {
 
   const application = await createMemberApplication(result.value, user);
   response.status(201).json({ application });
+});
+
+app.post("/api/member-applications/:applicationId/approve", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:applications:approve")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await approveMemberApplication(request.params.applicationId, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
 });
 
 app.get("/api/roles", (request, response) => {
