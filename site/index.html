@@ -163,7 +163,8 @@
           Process under Membership means the role can encode member applications.
           Approve means the role can convert approved applications into active members.
           In the current spike, System Administrator and Membership Officer can create
-          member applications, while System Administrator is the only role that can approve them.
+          member applications, System Administrator is the only role that can approve them,
+          and Teller / Cashier records the initial member payment.
         </p>
       </section>
 
@@ -179,8 +180,9 @@
             <ol>
               <li>Membership Officer encodes application.</li>
               <li>Application is submitted for approval.</li>
-              <li>Initial share capital is collected.</li>
-              <li>Authorized officer activates membership.</li>
+              <li>System Administrator approves membership.</li>
+              <li>Teller collects the initial share capital or membership fee.</li>
+              <li>Transaction remains in teller batch until accounting posting.</li>
             </ol>
           </article>
 

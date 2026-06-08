@@ -15,6 +15,7 @@ import {
   Input,
   NumberInput,
   NumberInputField,
+  Select,
   Stat,
   StatHelpText,
   StatLabel,
@@ -197,26 +198,39 @@ function Dashboard() {
 function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [applications, setApplications] = useState([]);
+  const [initialPayments, setInitialPayments] = useState([]);
   const [form, setForm] = useState({
     fullName: "",
     clusterName: "General Membership",
     contactNumber: "",
     initialShareCapital: 5000
   });
+  const [paymentForm, setPaymentForm] = useState({
+    memberId: "",
+    shareCapitalAmount: 5000,
+    membershipFeeAmount: 100,
+    cashReceived: 5100,
+    referenceNo: ""
+  });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canViewApplications = user.permissions.includes("members:applications:view");
   const canApproveApplication = user.permissions.includes("members:applications:approve");
+  const canViewInitialPayments = user.permissions.includes("members:initial-payments:view");
+  const canCreateInitialPayment = user.permissions.includes("members:initial-payments:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
+  const activeMembers = members.filter((member) => member.status === "Active");
 
   async function loadMembersWorkflow() {
-    const [memberRows, applicationRows] = await Promise.all([
+    const [memberRows, applicationRows, paymentRows] = await Promise.all([
       api("/api/members"),
-      canViewApplications ? api("/api/member-applications") : []
+      canViewApplications ? api("/api/member-applications") : [],
+      canViewInitialPayments ? api("/api/initial-member-payments") : []
     ]);
     setMembers(memberRows);
     setApplications(applicationRows);
+    setInitialPayments(paymentRows);
   }
 
   useEffect(() => {
@@ -225,6 +239,18 @@ function Members({ user }) {
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updatePaymentForm(field, value) {
+    setPaymentForm((current) => {
+      const next = { ...current, [field]: value };
+
+      if (field === "shareCapitalAmount" || field === "membershipFeeAmount") {
+        next.cashReceived = Number(next.shareCapitalAmount || 0) + Number(next.membershipFeeAmount || 0);
+      }
+
+      return next;
+    });
   }
 
   async function submitApplication(event) {
@@ -265,6 +291,30 @@ function Members({ user }) {
     }
   }
 
+  async function submitInitialPayment(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api("/api/initial-member-payments", {
+        method: "POST",
+        body: JSON.stringify(paymentForm)
+      });
+      setMessage(`${data.payment.id} recorded for ${data.payment.memberName}.`);
+      setPaymentForm({
+        memberId: paymentForm.memberId,
+        shareCapitalAmount: 5000,
+        membershipFeeAmount: 100,
+        cashReceived: 5100,
+        referenceNo: ""
+      });
+      await loadMembersWorkflow();
+    } catch (paymentError) {
+      setError(paymentError.message);
+    }
+  }
+
   return (
     <VStack align="stretch" spacing={5}>
       {canCreateApplication ? (
@@ -273,7 +323,7 @@ function Members({ user }) {
             New Member Application
           </Heading>
           <Text color="gray.600" mb={5}>
-            Membership Officer encodes the application. Approval will become the next workflow slice.
+            Membership Officer encodes the application. Admin approval creates the member record for Teller payment.
           </Text>
           <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={4}>
             <FormControl isRequired>
@@ -368,6 +418,77 @@ function Members({ user }) {
         </Box>
       ) : null}
 
+      {canCreateInitialPayment ? (
+        <Box as="form" onSubmit={submitInitialPayment} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={1}>
+            Record Initial Member Payment
+          </Heading>
+          <Text color="gray.600" mb={5}>
+            Teller receives the opening share capital and membership fee. Accounting posting follows in a later slice.
+          </Text>
+          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4}>
+            <FormControl isRequired>
+              <FormLabel>Member</FormLabel>
+              <Select
+                placeholder="Select active member"
+                value={paymentForm.memberId}
+                onChange={(event) => updatePaymentForm("memberId", event.target.value)}
+              >
+                {activeMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.id} - {member.name}
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Share capital</FormLabel>
+              <NumberInput
+                min={0}
+                value={paymentForm.shareCapitalAmount}
+                onChange={(value) => updatePaymentForm("shareCapitalAmount", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Membership fee</FormLabel>
+              <NumberInput
+                min={0}
+                value={paymentForm.membershipFeeAmount}
+                onChange={(value) => updatePaymentForm("membershipFeeAmount", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Cash received</FormLabel>
+              <NumberInput
+                min={0}
+                value={paymentForm.cashReceived}
+                onChange={(value) => updatePaymentForm("cashReceived", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>OR / reference no.</FormLabel>
+              <Input
+                value={paymentForm.referenceNo}
+                onChange={(event) => updatePaymentForm("referenceNo", event.target.value)}
+              />
+            </FormControl>
+          </Grid>
+          <HStack mt={5} spacing={4} align="center">
+            <Button type="submit" colorScheme="green">
+              Record payment
+            </Button>
+            {message ? <Text color="green.600">{message}</Text> : null}
+            {error ? <Text color="red.500">{error}</Text> : null}
+          </HStack>
+        </Box>
+      ) : null}
+
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" mb={4}>
           <Heading size="md">Active Members</Heading>
@@ -401,6 +522,51 @@ function Members({ user }) {
           </Table>
         </TableContainer>
       </Box>
+
+      {canViewInitialPayments ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={4}>
+            Initial Payment History
+          </Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Payment No.</Th>
+                  <Th>Member</Th>
+                  <Th isNumeric>Share Capital</Th>
+                  <Th isNumeric>Membership Fee</Th>
+                  <Th>Reference</Th>
+                  <Th>Received By</Th>
+                  <Th>Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {initialPayments.map((payment) => (
+                  <Tr key={payment.id}>
+                    <Td>{payment.id}</Td>
+                    <Td>{payment.memberName}</Td>
+                    <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
+                    <Td isNumeric>{formatMoney(payment.membershipFeeAmount)}</Td>
+                    <Td>{payment.referenceNo}</Td>
+                    <Td>{payment.receivedBy}</Td>
+                    <Td>
+                      <Badge colorScheme="blue">{payment.status}</Badge>
+                    </Td>
+                  </Tr>
+                ))}
+                {initialPayments.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={7} color="gray.500">
+                      No initial payments recorded.
+                    </Td>
+                  </Tr>
+                ) : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
     </VStack>
   );
 }

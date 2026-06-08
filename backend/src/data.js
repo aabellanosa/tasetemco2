@@ -95,15 +95,16 @@ export const rolePermissions = {
     "members:view",
     "members:applications:view",
     "members:applications:create",
-    "members:applications:approve"
+    "members:applications:approve",
+    "members:initial-payments:view"
   ],
-  "General Manager": ["members:view", "members:applications:view"],
+  "General Manager": ["members:view", "members:applications:view", "members:initial-payments:view"],
   "Accountant / Bookkeeper": [],
   "Loan Officer": ["members:view"],
   "Credit Committee / Approver": ["members:view", "members:applications:view"],
-  "Teller / Cashier": ["members:view"],
+  "Teller / Cashier": ["members:view", "members:initial-payments:view", "members:initial-payments:create"],
   "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
-  "Auditor / Compliance Officer": ["members:view", "members:applications:view"],
+  "Auditor / Compliance Officer": ["members:view", "members:applications:view", "members:initial-payments:view"],
   "Board / Read-Only Executive": []
 };
 
@@ -143,6 +144,20 @@ export const memberApplications = [
     initialShareCapital: 5000,
     status: "Pending Approval",
     createdBy: "membership"
+  }
+];
+
+export const initialPayments = [
+  {
+    id: "IP-2026-0001",
+    memberId: "M-000482",
+    memberName: "Maria L. Santos",
+    shareCapitalAmount: 5000,
+    membershipFeeAmount: 100,
+    cashReceived: 5100,
+    referenceNo: "OR-10001",
+    receivedBy: "teller01",
+    status: "Teller Batch"
   }
 ];
 

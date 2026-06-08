@@ -33,3 +33,17 @@ CREATE TABLE IF NOT EXISTS member_applications (
   approved_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS initial_member_payments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  payment_no VARCHAR(40) NOT NULL UNIQUE,
+  member_no VARCHAR(40) NOT NULL,
+  member_name VARCHAR(180) NOT NULL,
+  share_capital_amount INT NOT NULL DEFAULT 0,
+  membership_fee_amount INT NOT NULL DEFAULT 0,
+  cash_received INT NOT NULL DEFAULT 0,
+  reference_no VARCHAR(80) NOT NULL,
+  received_by VARCHAR(80) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

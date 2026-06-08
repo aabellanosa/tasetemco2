@@ -6,6 +6,7 @@ import mysql from "mysql2/promise";
 import {
   dashboard,
   defaultPassword,
+  initialPayments,
   memberApplications,
   members,
   publicUser,
@@ -178,6 +179,11 @@ function nextMemberNumber() {
   return `M-${String(next).padStart(6, "0")}`;
 }
 
+function nextInitialPaymentNumber() {
+  const next = initialPayments.length + 1;
+  return `IP-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
 async function approveMemberApplication(applicationId, user) {
   const db = await getPool();
 
@@ -196,7 +202,7 @@ async function approveMemberApplication(applicationId, user) {
       id: nextMemberNumber(),
       name: application.fullName,
       group: application.clusterName,
-      share: application.initialShareCapital,
+      share: 0,
       savings: 0,
       status: "Active"
     };
@@ -248,7 +254,7 @@ async function approveMemberApplication(applicationId, user) {
     await connection.execute(
       `INSERT INTO members (member_no, full_name, cluster_name, status, share_capital, savings_balance)
        VALUES (?, ?, ?, 'Active', ?, 0)`,
-      [memberNo, application.fullName, application.clusterName, application.initialShareCapital]
+      [memberNo, application.fullName, application.clusterName, 0]
     );
 
     await connection.execute(
@@ -271,9 +277,135 @@ async function approveMemberApplication(applicationId, user) {
         id: memberNo,
         name: application.fullName,
         group: application.clusterName,
-        share: application.initialShareCapital,
+        share: 0,
         savings: 0,
         status: "Active"
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function listInitialPayments() {
+  const db = await getPool();
+
+  if (!db) {
+    return initialPayments;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT payment_no AS id, member_no AS memberId, member_name AS memberName,
+            share_capital_amount AS shareCapitalAmount, membership_fee_amount AS membershipFeeAmount,
+            cash_received AS cashReceived, reference_no AS referenceNo,
+            received_by AS receivedBy, status, created_at AS createdAt
+     FROM initial_member_payments
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows;
+}
+
+async function recordInitialPayment(input, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const member = members.find((item) => item.id === input.memberId && item.status === "Active");
+
+    if (!member) {
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    member.share += input.shareCapitalAmount;
+
+    const payment = {
+      id: nextInitialPaymentNumber(),
+      memberId: member.id,
+      memberName: member.name,
+      shareCapitalAmount: input.shareCapitalAmount,
+      membershipFeeAmount: input.membershipFeeAmount,
+      cashReceived: input.cashReceived,
+      referenceNo: input.referenceNo,
+      receivedBy: user.username,
+      status: "Teller Batch"
+    };
+
+    initialPayments.unshift(payment);
+    return { payment, member };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [memberRows] = await connection.execute(
+      `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
+              share_capital AS share, savings_balance AS savings, status
+       FROM members
+       WHERE member_no = ? AND status = 'Active'
+       FOR UPDATE`,
+      [input.memberId]
+    );
+    const member = memberRows[0];
+
+    if (!member) {
+      await connection.rollback();
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM initial_member_payments
+       WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+    );
+    const paymentNo = `IP-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO initial_member_payments (
+         payment_no, member_no, member_name, share_capital_amount,
+         membership_fee_amount, cash_received, reference_no, received_by, status
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+      [
+        paymentNo,
+        member.id,
+        member.name,
+        input.shareCapitalAmount,
+        input.membershipFeeAmount,
+        input.cashReceived,
+        input.referenceNo,
+        user.username
+      ]
+    );
+
+    await connection.execute(
+      `UPDATE members
+       SET share_capital = share_capital + ?
+       WHERE member_no = ?`,
+      [input.shareCapitalAmount, member.id]
+    );
+
+    await connection.commit();
+
+    return {
+      payment: {
+        id: paymentNo,
+        memberId: member.id,
+        memberName: member.name,
+        shareCapitalAmount: input.shareCapitalAmount,
+        membershipFeeAmount: input.membershipFeeAmount,
+        cashReceived: input.cashReceived,
+        referenceNo: input.referenceNo,
+        receivedBy: user.username,
+        status: "Teller Batch"
+      },
+      member: {
+        ...member,
+        share: member.share + input.shareCapitalAmount
       }
     };
   } catch (error) {
@@ -312,6 +444,48 @@ function validateMemberApplication(body) {
       clusterName,
       contactNumber,
       initialShareCapital
+    }
+  };
+}
+
+function validateInitialPayment(body) {
+  const memberId = String(body.memberId || "").trim();
+  const shareCapitalAmount = Number(body.shareCapitalAmount || 0);
+  const membershipFeeAmount = Number(body.membershipFeeAmount || 0);
+  const cashReceived = Number(body.cashReceived || 0);
+  const referenceNo = String(body.referenceNo || "").trim();
+
+  if (!memberId) {
+    return { error: "Member is required." };
+  }
+
+  if (!Number.isInteger(shareCapitalAmount) || shareCapitalAmount < 0) {
+    return { error: "Share capital amount must be a whole peso amount." };
+  }
+
+  if (!Number.isInteger(membershipFeeAmount) || membershipFeeAmount < 0) {
+    return { error: "Membership fee must be a whole peso amount." };
+  }
+
+  if (shareCapitalAmount + membershipFeeAmount <= 0) {
+    return { error: "Payment must include share capital or membership fee." };
+  }
+
+  if (!Number.isInteger(cashReceived) || cashReceived < shareCapitalAmount + membershipFeeAmount) {
+    return { error: "Cash received must cover the total payment." };
+  }
+
+  if (!referenceNo) {
+    return { error: "Official receipt or reference number is required." };
+  }
+
+  return {
+    value: {
+      memberId,
+      shareCapitalAmount,
+      membershipFeeAmount,
+      cashReceived,
+      referenceNo
     }
   };
 }
@@ -444,6 +618,52 @@ app.post("/api/member-applications/:applicationId/approve", async (request, resp
   }
 
   response.json(result);
+});
+
+app.get("/api/initial-member-payments", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:initial-payments:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listInitialPayments());
+});
+
+app.post("/api/initial-member-payments", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:initial-payments:create")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = validateInitialPayment(request.body);
+
+  if (result.error) {
+    response.status(400).json({ error: result.error });
+    return;
+  }
+
+  const paymentResult = await recordInitialPayment(result.value, user);
+
+  if (paymentResult.error) {
+    response.status(paymentResult.statusCode).json({ error: paymentResult.error });
+    return;
+  }
+
+  response.status(201).json(paymentResult);
 });
 
 app.get("/api/roles", (request, response) => {

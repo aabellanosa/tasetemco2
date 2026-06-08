@@ -146,6 +146,82 @@ async function run() {
       throw new Error("Approved application was not converted into an active member.");
     }
 
+    const approvedMember = memberRows.find((member) => member.id === approvalBody.member.id);
+
+    if (approvedMember.share !== 0) {
+      throw new Error("Approved member should not have paid share capital until Teller records payment.");
+    }
+
+    const tellerLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "teller01", password: "p@55@LL" })
+    });
+    const tellerBody = await tellerLogin.json();
+    const tellerCookie = tellerLogin.headers.get("set-cookie")?.split(";")[0];
+
+    if (!tellerLogin.ok || !tellerBody.user.permissions.includes("members:initial-payments:create")) {
+      throw new Error("Teller should be allowed to record initial member payments.");
+    }
+
+    const initialPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        shareCapitalAmount: 5000,
+        membershipFeeAmount: 100,
+        cashReceived: 5100,
+        referenceNo: "OR-SMOKE-001"
+      })
+    });
+    const initialPaymentBody = await initialPayment.json();
+
+    if (!initialPayment.ok || initialPaymentBody.payment.status !== "Teller Batch") {
+      throw new Error("Teller initial member payment was not recorded in teller batch.");
+    }
+
+    const activeMembersAfterPayment = await fetch(`${baseUrl}/api/members`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const memberRowsAfterPayment = await activeMembersAfterPayment.json();
+    const paidMember = memberRowsAfterPayment.find((member) => member.id === approvalBody.member.id);
+
+    if (!paidMember || paidMember.share !== 5000) {
+      throw new Error("Initial payment did not update the member share capital balance.");
+    }
+
+    const paymentHistory = await fetch(`${baseUrl}/api/initial-member-payments`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const paymentRows = await paymentHistory.json();
+
+    if (!paymentRows.some((payment) => payment.id === initialPaymentBody.payment.id)) {
+      throw new Error("Initial payment was not returned by the payment history endpoint.");
+    }
+
+    const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        shareCapitalAmount: 5000,
+        membershipFeeAmount: 100,
+        cashReceived: 5100,
+        referenceNo: "OR-SMOKE-ADMIN"
+      })
+    });
+
+    if (forbiddenPayment.status !== 403) {
+      throw new Error("Admin should not record teller initial member payments in this spike.");
+    }
+
     const loanOfficerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
