@@ -184,17 +184,17 @@ Restrictions:
 
 The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
-| Role | View Members | View Applications | Create Applications | Approve Applications |
-| --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes |
-| General Manager | Yes | Yes | No | No |
-| Accountant / Bookkeeper | No | No | No | No |
-| Loan Officer | Yes | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No |
-| Teller / Cashier | Yes | No | No | No |
-| Membership Officer | Yes | Yes | Yes | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No |
-| Board / Read-Only Executive | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment |
+| --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No |
+| General Manager | Yes | Yes | No | No | No |
+| Accountant / Bookkeeper | No | No | No | No | No |
+| Loan Officer | Yes | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes |
+| Membership Officer | Yes | Yes | Yes | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No |
+| Board / Read-Only Executive | No | No | No | No | No |
 
 ## 4. Core Workflow
 
@@ -205,7 +205,8 @@ The React/MySQL spike separates screen access from action access. A role may vie
 3. Initial share capital requirement is reviewed.
 4. Authorized officer approves membership.
 5. System creates the member record and member number.
-6. Member becomes available for account opening and transactions.
+6. Teller records the initial share capital or membership fee payment.
+7. Member becomes available for paid member account activity.
 
 Suggested status flow:
 
@@ -221,9 +222,9 @@ Suggested status flow:
 1. Teller receives share capital payment.
 2. System validates active membership.
 3. Transaction is saved in teller batch.
-4. System generates accounting entry.
-5. Cashier or accountant reviews and posts batch.
-6. Member share capital ledger is updated.
+4. Member share capital subsidiary balance is updated.
+5. Cashier or accountant reviews and posts batch in a later accounting slice.
+6. System generates accounting entry when the batch is posted.
 
 Sample accounting effect:
 
