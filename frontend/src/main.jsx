@@ -247,6 +247,8 @@ function Members({ user }) {
     amount: 500,
     referenceNo: ""
   });
+  const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
+  const [tellerTransactionType, setTellerTransactionType] = useState("initial-payment");
   const [approvedMemberName, setApprovedMemberName] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -264,6 +266,8 @@ function Members({ user }) {
   const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
+  const canUseTellerWorkspace = canCreateInitialPayment || canCreateSavingsDeposit || canCreateSavingsWithdrawal;
+  const selectedTellerMember = activeMembers.find((member) => member.id === selectedTellerMemberId);
 
   const loadMembersWorkflow = useCallback(
     async ({ silent = false } = {}) => {
@@ -309,6 +313,13 @@ function Members({ user }) {
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function selectTellerMember(memberId) {
+    setSelectedTellerMemberId(memberId);
+    updatePaymentForm("memberId", memberId);
+    updateSavingsDepositForm("memberId", memberId);
+    updateSavingsWithdrawalForm("memberId", memberId);
   }
 
   function updatePaymentForm(field, value) {
@@ -575,21 +586,21 @@ function Members({ user }) {
         </Box>
       ) : null}
 
-      {canCreateInitialPayment ? (
-        <Box as="form" onSubmit={submitInitialPayment} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      {canUseTellerWorkspace ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Heading size="md" mb={1}>
-            Record Initial Member Payment
+            Teller Transaction Workspace
           </Heading>
           <Text color="gray.600" mb={5}>
-            Teller receives the opening share capital, membership fee, and savings. Accounting posting follows in a later slice.
+            Select the member first, verify balances, then choose the transaction to record.
           </Text>
-          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4}>
+          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4} mb={5}>
             <FormControl isRequired>
               <FormLabel>Member</FormLabel>
               <Select
                 placeholder="Select active member"
-                value={paymentForm.memberId}
-                onChange={(event) => updatePaymentForm("memberId", event.target.value)}
+                value={selectedTellerMemberId}
+                onChange={(event) => selectTellerMember(event.target.value)}
               >
                 {activeMembers.map((member) => (
                   <option key={member.id} value={member.id}>
@@ -598,173 +609,160 @@ function Members({ user }) {
                 ))}
               </Select>
             </FormControl>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">
+                Share Capital
+              </Text>
+              <Text fontWeight="bold">{selectedTellerMember ? formatMoney(selectedTellerMember.share) : "-"}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">
+                Savings
+              </Text>
+              <Text fontWeight="bold">{selectedTellerMember ? formatMoney(selectedTellerMember.savings) : "-"}</Text>
+            </Box>
             <FormControl>
-              <FormLabel>Share capital</FormLabel>
-              <NumberInput
-                min={0}
-                value={paymentForm.shareCapitalAmount}
-                onChange={(value) => updatePaymentForm("shareCapitalAmount", Number(value || 0))}
-              >
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl>
-              <FormLabel>Membership fee</FormLabel>
-              <NumberInput
-                min={0}
-                value={paymentForm.membershipFeeAmount}
-                onChange={(value) => updatePaymentForm("membershipFeeAmount", Number(value || 0))}
-              >
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl>
-              <FormLabel>Savings</FormLabel>
-              <NumberInput
-                min={0}
-                value={paymentForm.savingsDepositAmount}
-                onChange={(value) => updatePaymentForm("savingsDepositAmount", Number(value || 0))}
-              >
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl>
-              <FormLabel>Cash received</FormLabel>
-              <NumberInput
-                min={0}
-                value={paymentForm.cashReceived}
-                onChange={(value) => updatePaymentForm("cashReceived", Number(value || 0))}
-              >
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl isRequired>
-              <FormLabel>OR / reference no.</FormLabel>
-              <Input
-                value={paymentForm.referenceNo}
-                onChange={(event) => updatePaymentForm("referenceNo", event.target.value)}
-              />
-            </FormControl>
-          </Grid>
-          <HStack mt={5} spacing={4} align="center">
-            <Button type="submit" colorScheme="green">
-              Record payment
-            </Button>
-            {message ? <Text color="green.600">{message}</Text> : null}
-            {error ? <Text color="red.500">{error}</Text> : null}
-          </HStack>
-        </Box>
-      ) : null}
-
-      {canCreateSavingsDeposit ? (
-        <Box as="form" onSubmit={submitSavingsDeposit} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-          <Heading size="md" mb={1}>
-            Record Savings Deposit
-          </Heading>
-          <Text color="gray.600" mb={5}>
-            Teller receives a regular member savings deposit. Bookkeeper posting creates the ledger entry.
-          </Text>
-          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4}>
-            <FormControl isRequired>
-              <FormLabel>Member</FormLabel>
-              <Select
-                placeholder="Select active member"
-                value={savingsDepositForm.memberId}
-                onChange={(event) => updateSavingsDepositForm("memberId", event.target.value)}
-              >
-                {activeMembers.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.id} - {member.name}
-                  </option>
-                ))}
+              <FormLabel>Transaction type</FormLabel>
+              <Select value={tellerTransactionType} onChange={(event) => setTellerTransactionType(event.target.value)}>
+                {canCreateInitialPayment ? <option value="initial-payment">Initial member payment</option> : null}
+                {canCreateSavingsDeposit ? <option value="savings-deposit">Savings deposit</option> : null}
+                {canCreateSavingsWithdrawal ? <option value="savings-withdrawal">Savings withdrawal</option> : null}
               </Select>
             </FormControl>
-            <FormControl isRequired>
-              <FormLabel>Savings deposit</FormLabel>
-              <NumberInput
-                min={1}
-                value={savingsDepositForm.amount}
-                onChange={(value) => updateSavingsDepositForm("amount", Number(value || 0))}
-              >
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl>
-              <FormLabel>Cash received</FormLabel>
-              <NumberInput
-                min={0}
-                value={savingsDepositForm.cashReceived}
-                onChange={(value) => updateSavingsDepositForm("cashReceived", Number(value || 0))}
-              >
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl isRequired>
-              <FormLabel>OR / reference no.</FormLabel>
-              <Input
-                value={savingsDepositForm.referenceNo}
-                onChange={(event) => updateSavingsDepositForm("referenceNo", event.target.value)}
-              />
-            </FormControl>
           </Grid>
-          <HStack mt={5} spacing={4} align="center">
-            <Button type="submit" colorScheme="green">
-              Record savings deposit
-            </Button>
-            {message ? <Text color="green.600">{message}</Text> : null}
-            {error ? <Text color="red.500">{error}</Text> : null}
-          </HStack>
-        </Box>
-      ) : null}
 
-      {canCreateSavingsWithdrawal ? (
-        <Box as="form" onSubmit={submitSavingsWithdrawal} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-          <Heading size="md" mb={1}>
-            Record Savings Withdrawal
-          </Heading>
-          <Text color="gray.600" mb={5}>
-            Teller releases member savings within the available balance. Bookkeeper posting creates the ledger entry.
-          </Text>
-          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(2, 1fr)" }} gap={4}>
-            <FormControl isRequired>
-              <FormLabel>Member</FormLabel>
-              <Select
-                placeholder="Select active member"
-                value={savingsWithdrawalForm.memberId}
-                onChange={(event) => updateSavingsWithdrawalForm("memberId", event.target.value)}
-              >
-                {activeMembers.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.id} - {member.name} ({formatMoney(member.savings)} savings)
-                  </option>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl isRequired>
-              <FormLabel>Withdrawal amount</FormLabel>
-              <NumberInput
-                min={1}
-                value={savingsWithdrawalForm.amount}
-                onChange={(value) => updateSavingsWithdrawalForm("amount", Number(value || 0))}
-              >
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl isRequired>
-              <FormLabel>Voucher / reference no.</FormLabel>
-              <Input
-                value={savingsWithdrawalForm.referenceNo}
-                onChange={(event) => updateSavingsWithdrawalForm("referenceNo", event.target.value)}
-              />
-            </FormControl>
-          </Grid>
-          <HStack mt={5} spacing={4} align="center">
-            <Button type="submit" colorScheme="green">
-              Record withdrawal
-            </Button>
-            {message ? <Text color="green.600">{message}</Text> : null}
-            {error ? <Text color="red.500">{error}</Text> : null}
-          </HStack>
+          {tellerTransactionType === "initial-payment" && canCreateInitialPayment ? (
+            <Box as="form" onSubmit={submitInitialPayment}>
+              <Grid templateColumns={{ base: "1fr", lg: "repeat(4, 1fr)" }} gap={4}>
+                <FormControl>
+                  <FormLabel>Share capital</FormLabel>
+                  <NumberInput
+                    min={0}
+                    value={paymentForm.shareCapitalAmount}
+                    onChange={(value) => updatePaymentForm("shareCapitalAmount", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Membership fee</FormLabel>
+                  <NumberInput
+                    min={0}
+                    value={paymentForm.membershipFeeAmount}
+                    onChange={(value) => updatePaymentForm("membershipFeeAmount", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Savings</FormLabel>
+                  <NumberInput
+                    min={0}
+                    value={paymentForm.savingsDepositAmount}
+                    onChange={(value) => updatePaymentForm("savingsDepositAmount", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Cash received</FormLabel>
+                  <NumberInput
+                    min={0}
+                    value={paymentForm.cashReceived}
+                    onChange={(value) => updatePaymentForm("cashReceived", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>OR / reference no.</FormLabel>
+                  <Input
+                    value={paymentForm.referenceNo}
+                    onChange={(event) => updatePaymentForm("referenceNo", event.target.value)}
+                  />
+                </FormControl>
+              </Grid>
+              <HStack mt={5} spacing={4} align="center">
+                <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
+                  Record payment
+                </Button>
+                {message ? <Text color="green.600">{message}</Text> : null}
+                {error ? <Text color="red.500">{error}</Text> : null}
+              </HStack>
+            </Box>
+          ) : null}
+
+          {tellerTransactionType === "savings-deposit" && canCreateSavingsDeposit ? (
+            <Box as="form" onSubmit={submitSavingsDeposit}>
+              <Grid templateColumns={{ base: "1fr", lg: "repeat(3, 1fr)" }} gap={4}>
+                <FormControl isRequired>
+                  <FormLabel>Savings deposit</FormLabel>
+                  <NumberInput
+                    min={1}
+                    value={savingsDepositForm.amount}
+                    onChange={(value) => updateSavingsDepositForm("amount", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Cash received</FormLabel>
+                  <NumberInput
+                    min={0}
+                    value={savingsDepositForm.cashReceived}
+                    onChange={(value) => updateSavingsDepositForm("cashReceived", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>OR / reference no.</FormLabel>
+                  <Input
+                    value={savingsDepositForm.referenceNo}
+                    onChange={(event) => updateSavingsDepositForm("referenceNo", event.target.value)}
+                  />
+                </FormControl>
+              </Grid>
+              <HStack mt={5} spacing={4} align="center">
+                <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
+                  Record savings deposit
+                </Button>
+                {message ? <Text color="green.600">{message}</Text> : null}
+                {error ? <Text color="red.500">{error}</Text> : null}
+              </HStack>
+            </Box>
+          ) : null}
+
+          {tellerTransactionType === "savings-withdrawal" && canCreateSavingsWithdrawal ? (
+            <Box as="form" onSubmit={submitSavingsWithdrawal}>
+              <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={4}>
+                <FormControl isRequired>
+                  <FormLabel>Withdrawal amount</FormLabel>
+                  <NumberInput
+                    min={1}
+                    value={savingsWithdrawalForm.amount}
+                    onChange={(value) => updateSavingsWithdrawalForm("amount", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Voucher / reference no.</FormLabel>
+                  <Input
+                    value={savingsWithdrawalForm.referenceNo}
+                    onChange={(event) => updateSavingsWithdrawalForm("referenceNo", event.target.value)}
+                  />
+                </FormControl>
+              </Grid>
+              <HStack mt={5} spacing={4} align="center">
+                <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
+                  Record withdrawal
+                </Button>
+                {message ? <Text color="green.600">{message}</Text> : null}
+                {error ? <Text color="red.500">{error}</Text> : null}
+              </HStack>
+            </Box>
+          ) : null}
         </Box>
       ) : null}
 
