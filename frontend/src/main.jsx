@@ -219,6 +219,7 @@ function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [applications, setApplications] = useState([]);
   const [initialPayments, setInitialPayments] = useState([]);
+  const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [statement, setStatement] = useState(null);
   const [form, setForm] = useState({
     fullName: "",
@@ -234,6 +235,12 @@ function Members({ user }) {
     cashReceived: 6100,
     referenceNo: ""
   });
+  const [savingsDepositForm, setSavingsDepositForm] = useState({
+    memberId: "",
+    amount: 1000,
+    cashReceived: 1000,
+    referenceNo: ""
+  });
   const [approvedMemberName, setApprovedMemberName] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -245,6 +252,8 @@ function Members({ user }) {
   const canApproveApplication = user.permissions.includes("members:applications:approve");
   const canViewInitialPayments = user.permissions.includes("members:initial-payments:view");
   const canCreateInitialPayment = user.permissions.includes("members:initial-payments:create");
+  const canViewSavingsDeposits = user.permissions.includes("members:savings-deposits:view");
+  const canCreateSavingsDeposit = user.permissions.includes("members:savings-deposits:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
 
@@ -253,14 +262,16 @@ function Members({ user }) {
       setIsRefreshing(true);
 
       try {
-        const [memberRows, applicationRows, paymentRows] = await Promise.all([
+        const [memberRows, applicationRows, paymentRows, savingsRows] = await Promise.all([
           api("/api/members"),
           canViewApplications ? api("/api/member-applications") : [],
-          canViewInitialPayments ? api("/api/initial-member-payments") : []
+          canViewInitialPayments ? api("/api/initial-member-payments") : [],
+          canViewSavingsDeposits ? api("/api/savings-deposits") : []
         ]);
         setMembers(memberRows);
         setApplications(applicationRows);
         setInitialPayments(paymentRows);
+        setSavingsDeposits(savingsRows);
         setLastRefreshedAt(new Date());
 
         if (!silent) {
@@ -274,7 +285,7 @@ function Members({ user }) {
         setIsRefreshing(false);
       }
     },
-    [canViewApplications, canViewInitialPayments]
+    [canViewApplications, canViewInitialPayments, canViewSavingsDeposits]
   );
 
   useEffect(() => {
@@ -299,6 +310,18 @@ function Members({ user }) {
           Number(next.shareCapitalAmount || 0) +
           Number(next.membershipFeeAmount || 0) +
           Number(next.savingsDepositAmount || 0);
+      }
+
+      return next;
+    });
+  }
+
+  function updateSavingsDepositForm(field, value) {
+    setSavingsDepositForm((current) => {
+      const next = { ...current, [field]: value };
+
+      if (field === "amount") {
+        next.cashReceived = Number(next.amount || 0);
       }
 
       return next;
@@ -367,6 +390,29 @@ function Members({ user }) {
       await loadMembersWorkflow();
     } catch (paymentError) {
       setError(paymentError.message);
+    }
+  }
+
+  async function submitSavingsDeposit(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api("/api/savings-deposits", {
+        method: "POST",
+        body: JSON.stringify(savingsDepositForm)
+      });
+      setMessage(`${data.deposit.id} recorded for ${data.deposit.memberName}.`);
+      setSavingsDepositForm({
+        memberId: savingsDepositForm.memberId,
+        amount: 1000,
+        cashReceived: 1000,
+        referenceNo: ""
+      });
+      await loadMembersWorkflow();
+    } catch (depositError) {
+      setError(depositError.message);
     }
   }
 
@@ -574,6 +620,67 @@ function Members({ user }) {
         </Box>
       ) : null}
 
+      {canCreateSavingsDeposit ? (
+        <Box as="form" onSubmit={submitSavingsDeposit} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={1}>
+            Record Savings Deposit
+          </Heading>
+          <Text color="gray.600" mb={5}>
+            Teller receives a regular member savings deposit. Bookkeeper posting creates the ledger entry.
+          </Text>
+          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4}>
+            <FormControl isRequired>
+              <FormLabel>Member</FormLabel>
+              <Select
+                placeholder="Select active member"
+                value={savingsDepositForm.memberId}
+                onChange={(event) => updateSavingsDepositForm("memberId", event.target.value)}
+              >
+                {activeMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.id} - {member.name}
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Savings deposit</FormLabel>
+              <NumberInput
+                min={1}
+                value={savingsDepositForm.amount}
+                onChange={(value) => updateSavingsDepositForm("amount", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Cash received</FormLabel>
+              <NumberInput
+                min={0}
+                value={savingsDepositForm.cashReceived}
+                onChange={(value) => updateSavingsDepositForm("cashReceived", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>OR / reference no.</FormLabel>
+              <Input
+                value={savingsDepositForm.referenceNo}
+                onChange={(event) => updateSavingsDepositForm("referenceNo", event.target.value)}
+              />
+            </FormControl>
+          </Grid>
+          <HStack mt={5} spacing={4} align="center">
+            <Button type="submit" colorScheme="green">
+              Record savings deposit
+            </Button>
+            {message ? <Text color="green.600">{message}</Text> : null}
+            {error ? <Text color="red.500">{error}</Text> : null}
+          </HStack>
+        </Box>
+      ) : null}
+
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" mb={4}>
           <Heading size="md">Active Members</Heading>
@@ -734,6 +841,51 @@ function Members({ user }) {
         </Box>
       ) : null}
 
+      {canViewSavingsDeposits ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={4}>
+            Savings Deposit History
+          </Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Deposit No.</Th>
+                  <Th>Member</Th>
+                  <Th isNumeric>Amount</Th>
+                  <Th>Reference</Th>
+                  <Th>Received By</Th>
+                  <Th>Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {savingsDeposits.map((deposit) => (
+                  <Tr key={deposit.id}>
+                    <Td>{deposit.id}</Td>
+                    <Td>{deposit.memberName}</Td>
+                    <Td isNumeric>{formatMoney(deposit.amount)}</Td>
+                    <Td>{deposit.referenceNo}</Td>
+                    <Td>{deposit.receivedBy}</Td>
+                    <Td>
+                      <Badge colorScheme={deposit.status === "Posted" ? "green" : "blue"}>
+                        {deposit.status}
+                      </Badge>
+                    </Td>
+                  </Tr>
+                ))}
+                {savingsDeposits.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={6} color="gray.500">
+                      No savings deposits recorded.
+                    </Td>
+                  </Tr>
+                ) : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+
       <Modal isOpen={approvalNotice.isOpen} onClose={approvalNotice.onClose} isCentered>
         <ModalOverlay />
         <ModalContent>
@@ -785,15 +937,19 @@ function Ledger({ user }) {
     loadLedger();
   }, []);
 
-  async function postPayment(paymentId) {
+  async function postPayment(payment) {
     setError("");
     setMessage("");
 
     try {
-      const data = await api(`/api/ledger/teller-batches/${paymentId}/post`, {
+      const path =
+        payment.batchType === "Savings Deposit"
+          ? `/api/ledger/savings-deposits/${payment.id}/post`
+          : `/api/ledger/teller-batches/${payment.id}/post`;
+      const data = await api(path, {
         method: "POST"
       });
-      setMessage(`${data.entry.id} posted for ${data.payment.memberName}.`);
+      setMessage(`${data.entry.id} posted for ${payment.memberName}.`);
       await loadLedger();
     } catch (postError) {
       setError(postError.message);
@@ -826,6 +982,7 @@ function Ledger({ user }) {
             <Thead>
               <Tr>
                 <Th>Payment No.</Th>
+                <Th>Type</Th>
                 <Th>Member</Th>
                 <Th isNumeric>Cash</Th>
                 <Th isNumeric>Share Capital</Th>
@@ -839,6 +996,7 @@ function Ledger({ user }) {
               {tellerBatch.map((payment) => (
                 <Tr key={payment.id}>
                   <Td>{payment.id}</Td>
+                  <Td>{payment.batchType}</Td>
                   <Td>{payment.memberName}</Td>
                   <Td isNumeric>{formatMoney(payment.cashReceived)}</Td>
                   <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
@@ -849,7 +1007,7 @@ function Ledger({ user }) {
                   </Td>
                   {canPostTellerBatch ? (
                     <Td>
-                      <Button size="sm" colorScheme="green" onClick={() => postPayment(payment.id)}>
+                      <Button size="sm" colorScheme="green" onClick={() => postPayment(payment)}>
                         Post
                       </Button>
                     </Td>
@@ -858,7 +1016,7 @@ function Ledger({ user }) {
               ))}
               {tellerBatch.length === 0 ? (
                 <Tr>
-                  <Td colSpan={canPostTellerBatch ? 8 : 7} color="gray.500">
+                  <Td colSpan={canPostTellerBatch ? 9 : 8} color="gray.500">
                     No unposted teller batch payments.
                   </Td>
                 </Tr>

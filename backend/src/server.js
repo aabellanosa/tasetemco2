@@ -12,6 +12,7 @@ import {
   members,
   publicUser,
   roles,
+  savingsDeposits,
   users
 } from "./data.js";
 
@@ -185,6 +186,11 @@ function nextInitialPaymentNumber() {
   return `IP-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
 }
 
+function nextSavingsDepositNumber() {
+  const next = savingsDeposits.length + 1;
+  return `SD-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
 function nextJournalEntryNumber() {
   const next = journalEntries.length + 1;
   return `JE-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
@@ -215,6 +221,23 @@ function buildInitialPaymentJournalLines(payment) {
       accountName: "Savings Deposits Payable",
       debit: 0,
       credit: payment.savingsDepositAmount
+    }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
+function buildSavingsDepositJournalLines(deposit) {
+  return [
+    {
+      accountCode: "1010",
+      accountName: "Cash on Hand",
+      debit: deposit.cashReceived,
+      credit: 0
+    },
+    {
+      accountCode: "2020",
+      accountName: "Savings Deposits Payable",
+      debit: 0,
+      credit: deposit.amount
     }
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
@@ -344,6 +367,25 @@ async function listInitialPayments() {
   return rows;
 }
 
+async function listSavingsDeposits() {
+  const db = await getPool();
+
+  if (!db) {
+    return savingsDeposits;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT deposit_no AS id, member_no AS memberId, member_name AS memberName,
+            amount, cash_received AS cashReceived, reference_no AS referenceNo,
+            received_by AS receivedBy, status, posted_by AS postedBy,
+            posted_entry_no AS postedEntryNo, created_at AS createdAt
+     FROM savings_deposits
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows;
+}
+
 async function listJournalEntries() {
   const db = await getPool();
 
@@ -398,7 +440,23 @@ async function getMemberStatement(memberId) {
         status: payment.status,
         journalEntryNo: payment.postedEntryNo || "",
         receivedBy: payment.receivedBy
-      }));
+      }))
+      .concat(
+        savingsDeposits
+          .filter((deposit) => deposit.memberId === member.id)
+          .map((deposit) => ({
+            id: deposit.id,
+            type: "Savings Deposit",
+            referenceNo: deposit.referenceNo,
+            shareCapitalAmount: 0,
+            membershipFeeAmount: 0,
+            savingsDepositAmount: deposit.amount,
+            cashReceived: deposit.cashReceived,
+            status: deposit.status,
+            journalEntryNo: deposit.postedEntryNo || "",
+            receivedBy: deposit.receivedBy
+          }))
+      );
 
     return { member, transactions };
   }
@@ -417,7 +475,7 @@ async function getMemberStatement(memberId) {
     return { error: "Member was not found.", statusCode: 404 };
   }
 
-  const [transactions] = await db.execute(
+  const [initialPaymentRows] = await db.execute(
     `SELECT payment_no AS id, 'Initial Payment' AS type, reference_no AS referenceNo,
             share_capital_amount AS shareCapitalAmount,
             membership_fee_amount AS membershipFeeAmount,
@@ -431,7 +489,19 @@ async function getMemberStatement(memberId) {
     [memberId]
   );
 
-  return { member, transactions };
+  const [savingsDepositRows] = await db.execute(
+    `SELECT deposit_no AS id, 'Savings Deposit' AS type, reference_no AS referenceNo,
+            0 AS shareCapitalAmount, 0 AS membershipFeeAmount,
+            amount AS savingsDepositAmount, cash_received AS cashReceived,
+            status, COALESCE(posted_entry_no, '') AS journalEntryNo,
+            received_by AS receivedBy, created_at AS createdAt
+     FROM savings_deposits
+     WHERE member_no = ?
+     ORDER BY created_at DESC, id DESC`,
+    [memberId]
+  );
+
+  return { member, transactions: [...initialPaymentRows, ...savingsDepositRows] };
 }
 
 async function recordInitialPayment(input, user) {
@@ -536,6 +606,101 @@ async function recordInitialPayment(input, user) {
         ...member,
         share: member.share + input.shareCapitalAmount,
         savings: member.savings + input.savingsDepositAmount
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function recordSavingsDeposit(input, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const member = members.find((item) => item.id === input.memberId && item.status === "Active");
+
+    if (!member) {
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    member.savings += input.amount;
+
+    const deposit = {
+      id: nextSavingsDepositNumber(),
+      memberId: member.id,
+      memberName: member.name,
+      amount: input.amount,
+      cashReceived: input.cashReceived,
+      referenceNo: input.referenceNo,
+      receivedBy: user.username,
+      status: "Teller Batch"
+    };
+
+    savingsDeposits.unshift(deposit);
+    return { deposit, member };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [memberRows] = await connection.execute(
+      `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
+              share_capital AS share, savings_balance AS savings, status
+       FROM members
+       WHERE member_no = ? AND status = 'Active'
+       FOR UPDATE`,
+      [input.memberId]
+    );
+    const member = memberRows[0];
+
+    if (!member) {
+      await connection.rollback();
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM savings_deposits
+       WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+    );
+    const depositNo = `SD-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO savings_deposits (
+         deposit_no, member_no, member_name, amount, cash_received, reference_no, received_by, status
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+      [depositNo, member.id, member.name, input.amount, input.cashReceived, input.referenceNo, user.username]
+    );
+
+    await connection.execute(
+      `UPDATE members
+       SET savings_balance = savings_balance + ?
+       WHERE member_no = ?`,
+      [input.amount, member.id]
+    );
+
+    await connection.commit();
+
+    return {
+      deposit: {
+        id: depositNo,
+        memberId: member.id,
+        memberName: member.name,
+        amount: input.amount,
+        cashReceived: input.cashReceived,
+        referenceNo: input.referenceNo,
+        receivedBy: user.username,
+        status: "Teller Batch"
+      },
+      member: {
+        ...member,
+        savings: member.savings + input.amount
       }
     };
   } catch (error) {
@@ -666,6 +831,125 @@ async function postInitialPayment(paymentId, user) {
   }
 }
 
+async function postSavingsDeposit(depositId, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const deposit = savingsDeposits.find((item) => item.id === depositId);
+
+    if (!deposit) {
+      return { error: "Savings deposit was not found.", statusCode: 404 };
+    }
+
+    if (deposit.status !== "Teller Batch") {
+      return { error: "Only teller batch savings deposits can be posted.", statusCode: 409 };
+    }
+
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "Savings Deposit",
+      sourceNo: deposit.id,
+      description: `Savings deposit - ${deposit.memberName}`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildSavingsDepositJournalLines(deposit)
+    };
+
+    deposit.status = "Posted";
+    deposit.postedBy = user.username;
+    deposit.postedEntryNo = entry.id;
+    journalEntries.unshift(entry);
+
+    return { deposit, entry };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [depositRows] = await connection.execute(
+      `SELECT deposit_no AS id, member_no AS memberId, member_name AS memberName,
+              amount, cash_received AS cashReceived, reference_no AS referenceNo,
+              received_by AS receivedBy, status
+       FROM savings_deposits
+       WHERE deposit_no = ?
+       FOR UPDATE`,
+      [depositId]
+    );
+    const deposit = depositRows[0];
+
+    if (!deposit) {
+      await connection.rollback();
+      return { error: "Savings deposit was not found.", statusCode: 404 };
+    }
+
+    if (deposit.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Only teller batch savings deposits can be posted.", statusCode: 409 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM journal_entries
+       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+    );
+    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO journal_entries (
+         entry_no, source_type, source_no, description, posted_by
+       )
+       VALUES (?, 'Savings Deposit', ?, ?, ?)`,
+      [entryNo, deposit.id, `Savings deposit - ${deposit.memberName}`, user.username]
+    );
+
+    const lines = buildSavingsDepositJournalLines(deposit);
+
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (
+           entry_no, account_code, account_name, debit, credit
+         )
+         VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+
+    await connection.execute(
+      `UPDATE savings_deposits
+       SET status = 'Posted', posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE deposit_no = ?`,
+      [user.username, entryNo, deposit.id]
+    );
+
+    await connection.commit();
+
+    return {
+      deposit: {
+        ...deposit,
+        status: "Posted",
+        postedBy: user.username,
+        postedEntryNo: entryNo
+      },
+      entry: {
+        id: entryNo,
+        sourceType: "Savings Deposit",
+        sourceNo: deposit.id,
+        description: `Savings deposit - ${deposit.memberName}`,
+        postedBy: user.username,
+        postedAt: new Date().toISOString(),
+        lines
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 function validateMemberApplication(body) {
   const fullName = String(body.fullName || "").trim();
   const clusterName = String(body.clusterName || "").trim();
@@ -743,6 +1027,38 @@ function validateInitialPayment(body) {
       shareCapitalAmount,
       membershipFeeAmount,
       savingsDepositAmount,
+      cashReceived,
+      referenceNo
+    }
+  };
+}
+
+function validateSavingsDeposit(body) {
+  const memberId = String(body.memberId || "").trim();
+  const amount = Number(body.amount || 0);
+  const cashReceived = Number(body.cashReceived || 0);
+  const referenceNo = String(body.referenceNo || "").trim();
+
+  if (!memberId) {
+    return { error: "Member is required." };
+  }
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return { error: "Savings deposit amount must be a positive whole peso amount." };
+  }
+
+  if (!Number.isInteger(cashReceived) || cashReceived < amount) {
+    return { error: "Cash received must cover the savings deposit." };
+  }
+
+  if (!referenceNo) {
+    return { error: "Official receipt or reference number is required." };
+  }
+
+  return {
+    value: {
+      memberId,
+      amount,
       cashReceived,
       referenceNo
     }
@@ -948,6 +1264,52 @@ app.post("/api/initial-member-payments", async (request, response) => {
   response.status(201).json(paymentResult);
 });
 
+app.get("/api/savings-deposits", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:savings-deposits:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listSavingsDeposits());
+});
+
+app.post("/api/savings-deposits", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:savings-deposits:create")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = validateSavingsDeposit(request.body);
+
+  if (result.error) {
+    response.status(400).json({ error: result.error });
+    return;
+  }
+
+  const depositResult = await recordSavingsDeposit(result.value, user);
+
+  if (depositResult.error) {
+    response.status(depositResult.statusCode).json({ error: depositResult.error });
+    return;
+  }
+
+  response.status(201).json(depositResult);
+});
+
 app.get("/api/ledger", async (request, response) => {
   const user = parseSession(request);
 
@@ -962,7 +1324,20 @@ app.get("/api/ledger", async (request, response) => {
   }
 
   response.json({
-    tellerBatch: (await listInitialPayments()).filter((payment) => payment.status === "Teller Batch"),
+    tellerBatch: [
+      ...(await listInitialPayments())
+        .filter((payment) => payment.status === "Teller Batch")
+        .map((payment) => ({ ...payment, batchType: "Initial Payment" })),
+      ...(await listSavingsDeposits())
+        .filter((deposit) => deposit.status === "Teller Batch")
+        .map((deposit) => ({
+          ...deposit,
+          batchType: "Savings Deposit",
+          shareCapitalAmount: 0,
+          membershipFeeAmount: 0,
+          savingsDepositAmount: deposit.amount
+        }))
+    ],
     journalEntries: await listJournalEntries()
   });
 });
@@ -981,6 +1356,29 @@ app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response)
   }
 
   const result = await postInitialPayment(request.params.paymentId, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/ledger/savings-deposits/:depositId/post", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "ledger:teller-batches:post")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await postSavingsDeposit(request.params.depositId, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

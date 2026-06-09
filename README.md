@@ -81,17 +81,17 @@ The password is stored in SQLite as a salted hash, not plain text.
 
 The React/MySQL spike uses action-level permissions, not just screen access. For membership workflows:
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | View Ledger | Post Teller Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | Yes | No |
-| General Manager | Yes | Yes | No | No | No | Yes | No |
-| Accountant / Bookkeeper | No | No | No | No | No | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | Yes | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Savings Deposit | View Ledger | Post Teller Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No | No | Yes | No |
+| General Manager | Yes | Yes | No | No | No | No | Yes | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes | Yes | No | No |
+| Membership Officer | Yes | Yes | Yes | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | Yes | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No |
 
 The Members workflow auto-refreshes every 5 seconds for demo testing across browser profiles. Users can also click Refresh to pull the latest member applications, active members, and initial payment history.
 
@@ -100,6 +100,8 @@ Membership applications capture `Required Initial Share Capital` as the expected
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
+
+Teller/Cashier can record regular savings deposits after onboarding. Bookkeeper posts those deposits to the ledger as debit Cash on Hand and credit Savings Deposits Payable.
 
 ## Workflow UI
 
@@ -153,11 +155,14 @@ Example server directory:
 - `GET /api/dashboard`
 - `GET /api/members`
 - `GET /api/members/:memberId/statement`
+- `GET /api/savings-deposits`
+- `POST /api/savings-deposits`
 - `GET /api/products`
 - `GET /api/loans`
 - `GET /api/transactions`
 - `GET /api/ledger`
 - `POST /api/ledger/teller-batches/:paymentId/post`
+- `POST /api/ledger/savings-deposits/:depositId/post`
 - `GET /api/reports`
 - `GET /api/users`
 - `GET /api/roles`

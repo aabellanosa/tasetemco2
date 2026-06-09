@@ -279,6 +279,86 @@ async function run() {
       throw new Error("Member statement did not link the posted transaction to its journal entry.");
     }
 
+    const savingsDeposit = await fetch(`${baseUrl}/api/savings-deposits`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 1500,
+        cashReceived: 1500,
+        referenceNo: "OR-SMOKE-SD-001"
+      })
+    });
+    const savingsDepositBody = await savingsDeposit.json();
+
+    if (!savingsDeposit.ok || savingsDepositBody.deposit.status !== "Teller Batch") {
+      throw new Error("Teller savings deposit was not recorded in teller batch.");
+    }
+
+    const membersAfterSavingsDeposit = await fetch(`${baseUrl}/api/members`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const membersAfterSavingsDepositBody = await membersAfterSavingsDeposit.json();
+    const memberAfterSavingsDeposit = membersAfterSavingsDepositBody.find(
+      (member) => member.id === approvalBody.member.id
+    );
+
+    if (!memberAfterSavingsDeposit || memberAfterSavingsDeposit.savings !== 2500) {
+      throw new Error("Savings deposit did not update the member savings balance.");
+    }
+
+    const ledgerBeforeSavingsPosting = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerBeforeSavingsPostingBody = await ledgerBeforeSavingsPosting.json();
+
+    if (
+      !ledgerBeforeSavingsPostingBody.tellerBatch.some(
+        (payment) => payment.id === savingsDepositBody.deposit.id && payment.batchType === "Savings Deposit"
+      )
+    ) {
+      throw new Error("Bookkeeper ledger view should show the unposted savings deposit.");
+    }
+
+    const postedSavingsDeposit = await fetch(
+      `${baseUrl}/api/ledger/savings-deposits/${savingsDepositBody.deposit.id}/post`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const postedSavingsDepositBody = await postedSavingsDeposit.json();
+
+    if (!postedSavingsDeposit.ok || postedSavingsDepositBody.deposit.status !== "Posted") {
+      throw new Error("Bookkeeper did not post the savings deposit.");
+    }
+
+    const savingsDebitTotal = postedSavingsDepositBody.entry.lines.reduce((sum, line) => sum + line.debit, 0);
+    const savingsCreditTotal = postedSavingsDepositBody.entry.lines.reduce((sum, line) => sum + line.credit, 0);
+
+    if (savingsDebitTotal !== 1500 || savingsCreditTotal !== 1500) {
+      throw new Error("Posted savings deposit journal entry should be balanced.");
+    }
+
+    const memberStatementAfterSavings = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const memberStatementAfterSavingsBody = await memberStatementAfterSavings.json();
+    const statementDeposit = memberStatementAfterSavingsBody.transactions.find(
+      (transaction) => transaction.id === savingsDepositBody.deposit.id
+    );
+
+    if (!statementDeposit || statementDeposit.status !== "Posted") {
+      throw new Error("Member statement did not show the posted savings deposit.");
+    }
+
+    if (statementDeposit.journalEntryNo !== postedSavingsDepositBody.entry.id) {
+      throw new Error("Member statement did not link the savings deposit to its journal entry.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

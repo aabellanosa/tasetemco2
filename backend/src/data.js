@@ -97,18 +97,32 @@ export const rolePermissions = {
     "members:applications:create",
     "members:applications:approve",
     "members:initial-payments:view",
+    "members:savings-deposits:view",
     "ledger:view"
   ],
-  "General Manager": ["members:view", "members:applications:view", "members:initial-payments:view", "ledger:view"],
+  "General Manager": [
+    "members:view",
+    "members:applications:view",
+    "members:initial-payments:view",
+    "members:savings-deposits:view",
+    "ledger:view"
+  ],
   "Accountant / Bookkeeper": ["ledger:view", "ledger:teller-batches:post"],
   "Loan Officer": ["members:view"],
   "Credit Committee / Approver": ["members:view", "members:applications:view"],
-  "Teller / Cashier": ["members:view", "members:initial-payments:view", "members:initial-payments:create"],
+  "Teller / Cashier": [
+    "members:view",
+    "members:initial-payments:view",
+    "members:initial-payments:create",
+    "members:savings-deposits:view",
+    "members:savings-deposits:create"
+  ],
   "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
   "Auditor / Compliance Officer": [
     "members:view",
     "members:applications:view",
     "members:initial-payments:view",
+    "members:savings-deposits:view",
     "ledger:view"
   ],
   "Board / Read-Only Executive": []
@@ -167,6 +181,8 @@ export const initialPayments = [
     status: "Teller Batch"
   }
 ];
+
+export const savingsDeposits = [];
 
 export const journalEntries = [];
 
