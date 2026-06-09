@@ -14,6 +14,7 @@ import {
   roles,
   savingsDeposits,
   savingsWithdrawals,
+  shareCapitalContributions,
   users
 } from "./data.js";
 
@@ -192,6 +193,11 @@ function nextSavingsDepositNumber() {
   return `SD-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
 }
 
+function nextShareCapitalContributionNumber() {
+  const next = shareCapitalContributions.length + 1;
+  return `SC-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
 function nextSavingsWithdrawalNumber() {
   const next = savingsWithdrawals.length + 1;
   return `SW-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
@@ -203,7 +209,7 @@ function normalizeReferenceNo(referenceNo) {
 
 function hasCashInReference(referenceNo) {
   const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
-  return [...initialPayments, ...savingsDeposits].some(
+  return [...initialPayments, ...savingsDeposits, ...shareCapitalContributions].some(
     (transaction) => normalizeReferenceNo(transaction.referenceNo) === normalizedReferenceNo
   );
 }
@@ -224,8 +230,12 @@ async function hasCashInReferenceInDatabase(connection, referenceNo) {
      SELECT reference_no AS referenceNo
      FROM savings_deposits
      WHERE UPPER(reference_no) = UPPER(?)
+     UNION ALL
+     SELECT reference_no AS referenceNo
+     FROM share_capital_contributions
+     WHERE UPPER(reference_no) = UPPER(?)
      LIMIT 1`,
-    [referenceNo, referenceNo]
+    [referenceNo, referenceNo, referenceNo]
   );
 
   return rows.length > 0;
@@ -290,6 +300,23 @@ function buildSavingsDepositJournalLines(deposit) {
       accountName: "Savings Deposits Payable",
       debit: 0,
       credit: deposit.amount
+    }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
+function buildShareCapitalContributionJournalLines(contribution) {
+  return [
+    {
+      accountCode: "1010",
+      accountName: "Cash on Hand",
+      debit: contribution.cashReceived,
+      credit: 0
+    },
+    {
+      accountCode: "3010",
+      accountName: "Share Capital",
+      debit: 0,
+      credit: contribution.amount
     }
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
@@ -455,6 +482,25 @@ async function listSavingsDeposits() {
   return rows;
 }
 
+async function listShareCapitalContributions() {
+  const db = await getPool();
+
+  if (!db) {
+    return shareCapitalContributions;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT contribution_no AS id, member_no AS memberId, member_name AS memberName,
+            amount, cash_received AS cashReceived, reference_no AS referenceNo,
+            received_by AS receivedBy, status, posted_by AS postedBy,
+            posted_entry_no AS postedEntryNo, created_at AS createdAt
+     FROM share_capital_contributions
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows;
+}
+
 async function listSavingsWithdrawals() {
   const db = await getPool();
 
@@ -529,6 +575,22 @@ async function getMemberStatement(memberId) {
         journalEntryNo: payment.postedEntryNo || "",
         receivedBy: payment.receivedBy
       }))
+      .concat(
+        shareCapitalContributions
+          .filter((contribution) => contribution.memberId === member.id)
+          .map((contribution) => ({
+            id: contribution.id,
+            type: "Share Capital Contribution",
+            referenceNo: contribution.referenceNo,
+            shareCapitalAmount: contribution.amount,
+            membershipFeeAmount: 0,
+            savingsDepositAmount: 0,
+            cashReceived: contribution.cashReceived,
+            status: contribution.status,
+            journalEntryNo: contribution.postedEntryNo || "",
+            receivedBy: contribution.receivedBy
+          }))
+      )
       .concat(
         savingsDeposits
           .filter((deposit) => deposit.memberId === member.id)
@@ -605,6 +667,18 @@ async function getMemberStatement(memberId) {
     [memberId]
   );
 
+  const [shareCapitalContributionRows] = await db.execute(
+    `SELECT contribution_no AS id, 'Share Capital Contribution' AS type, reference_no AS referenceNo,
+            amount AS shareCapitalAmount, 0 AS membershipFeeAmount,
+            0 AS savingsDepositAmount, cash_received AS cashReceived,
+            status, COALESCE(posted_entry_no, '') AS journalEntryNo,
+            received_by AS receivedBy, created_at AS createdAt
+     FROM share_capital_contributions
+     WHERE member_no = ?
+     ORDER BY created_at DESC, id DESC`,
+    [memberId]
+  );
+
   const [savingsWithdrawalRows] = await db.execute(
     `SELECT withdrawal_no AS id, 'Savings Withdrawal' AS type, reference_no AS referenceNo,
             0 AS shareCapitalAmount, 0 AS membershipFeeAmount,
@@ -617,7 +691,15 @@ async function getMemberStatement(memberId) {
     [memberId]
   );
 
-  return { member, transactions: [...initialPaymentRows, ...savingsDepositRows, ...savingsWithdrawalRows] };
+  return {
+    member,
+    transactions: [
+      ...initialPaymentRows,
+      ...shareCapitalContributionRows,
+      ...savingsDepositRows,
+      ...savingsWithdrawalRows
+    ]
+  };
 }
 
 async function recordInitialPayment(input, user) {
@@ -852,6 +934,110 @@ async function recordSavingsDeposit(input, user) {
       member: {
         ...member,
         savings: member.savings + input.amount
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function recordShareCapitalContribution(input, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const member = members.find((item) => item.id === input.memberId && item.status === "Active");
+
+    if (!member) {
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    if (hasCashInReference(input.referenceNo)) {
+      return { error: "OR/reference number already exists.", statusCode: 409 };
+    }
+
+    member.share += input.amount;
+
+    const contribution = {
+      id: nextShareCapitalContributionNumber(),
+      memberId: member.id,
+      memberName: member.name,
+      amount: input.amount,
+      cashReceived: input.cashReceived,
+      referenceNo: input.referenceNo,
+      receivedBy: user.username,
+      status: "Teller Batch"
+    };
+
+    shareCapitalContributions.unshift(contribution);
+    return { contribution, member };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [memberRows] = await connection.execute(
+      `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
+              share_capital AS share, savings_balance AS savings, status
+       FROM members
+       WHERE member_no = ? AND status = 'Active'
+       FOR UPDATE`,
+      [input.memberId]
+    );
+    const member = memberRows[0];
+
+    if (!member) {
+      await connection.rollback();
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    if (await hasCashInReferenceInDatabase(connection, input.referenceNo)) {
+      await connection.rollback();
+      return { error: "OR/reference number already exists.", statusCode: 409 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM share_capital_contributions
+       WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+    );
+    const contributionNo = `SC-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO share_capital_contributions (
+         contribution_no, member_no, member_name, amount, cash_received, reference_no, received_by, status
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+      [contributionNo, member.id, member.name, input.amount, input.cashReceived, input.referenceNo, user.username]
+    );
+
+    await connection.execute(
+      `UPDATE members
+       SET share_capital = share_capital + ?
+       WHERE member_no = ?`,
+      [input.amount, member.id]
+    );
+
+    await connection.commit();
+
+    return {
+      contribution: {
+        id: contributionNo,
+        memberId: member.id,
+        memberName: member.name,
+        amount: input.amount,
+        cashReceived: input.cashReceived,
+        referenceNo: input.referenceNo,
+        receivedBy: user.username,
+        status: "Teller Batch"
+      },
+      member: {
+        ...member,
+        share: member.share + input.amount
       }
     };
   } catch (error) {
@@ -1212,6 +1398,125 @@ async function postSavingsDeposit(depositId, user) {
   }
 }
 
+async function postShareCapitalContribution(contributionId, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const contribution = shareCapitalContributions.find((item) => item.id === contributionId);
+
+    if (!contribution) {
+      return { error: "Share capital contribution was not found.", statusCode: 404 };
+    }
+
+    if (contribution.status !== "Teller Batch") {
+      return { error: "Only teller batch share capital contributions can be posted.", statusCode: 409 };
+    }
+
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "Share Capital Contribution",
+      sourceNo: contribution.id,
+      description: `Share capital contribution - ${contribution.memberName}`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildShareCapitalContributionJournalLines(contribution)
+    };
+
+    contribution.status = "Posted";
+    contribution.postedBy = user.username;
+    contribution.postedEntryNo = entry.id;
+    journalEntries.unshift(entry);
+
+    return { contribution, entry };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [contributionRows] = await connection.execute(
+      `SELECT contribution_no AS id, member_no AS memberId, member_name AS memberName,
+              amount, cash_received AS cashReceived, reference_no AS referenceNo,
+              received_by AS receivedBy, status
+       FROM share_capital_contributions
+       WHERE contribution_no = ?
+       FOR UPDATE`,
+      [contributionId]
+    );
+    const contribution = contributionRows[0];
+
+    if (!contribution) {
+      await connection.rollback();
+      return { error: "Share capital contribution was not found.", statusCode: 404 };
+    }
+
+    if (contribution.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Only teller batch share capital contributions can be posted.", statusCode: 409 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM journal_entries
+       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+    );
+    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO journal_entries (
+         entry_no, source_type, source_no, description, posted_by
+       )
+       VALUES (?, 'Share Capital Contribution', ?, ?, ?)`,
+      [entryNo, contribution.id, `Share capital contribution - ${contribution.memberName}`, user.username]
+    );
+
+    const lines = buildShareCapitalContributionJournalLines(contribution);
+
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (
+           entry_no, account_code, account_name, debit, credit
+         )
+         VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+
+    await connection.execute(
+      `UPDATE share_capital_contributions
+       SET status = 'Posted', posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE contribution_no = ?`,
+      [user.username, entryNo, contribution.id]
+    );
+
+    await connection.commit();
+
+    return {
+      contribution: {
+        ...contribution,
+        status: "Posted",
+        postedBy: user.username,
+        postedEntryNo: entryNo
+      },
+      entry: {
+        id: entryNo,
+        sourceType: "Share Capital Contribution",
+        sourceNo: contribution.id,
+        description: `Share capital contribution - ${contribution.memberName}`,
+        postedBy: user.username,
+        postedAt: new Date().toISOString(),
+        lines
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function postSavingsWithdrawal(withdrawalId, user) {
   const db = await getPool();
 
@@ -1429,6 +1734,38 @@ function validateSavingsDeposit(body) {
 
   if (!Number.isInteger(cashReceived) || cashReceived < amount) {
     return { error: "Cash received must cover the savings deposit." };
+  }
+
+  if (!referenceNo) {
+    return { error: "Official receipt or reference number is required." };
+  }
+
+  return {
+    value: {
+      memberId,
+      amount,
+      cashReceived,
+      referenceNo
+    }
+  };
+}
+
+function validateShareCapitalContribution(body) {
+  const memberId = String(body.memberId || "").trim();
+  const amount = Number(body.amount || 0);
+  const cashReceived = Number(body.cashReceived || 0);
+  const referenceNo = String(body.referenceNo || "").trim();
+
+  if (!memberId) {
+    return { error: "Member is required." };
+  }
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return { error: "Share capital contribution must be a positive whole peso amount." };
+  }
+
+  if (!Number.isInteger(cashReceived) || cashReceived < amount) {
+    return { error: "Cash received must cover the share capital contribution." };
   }
 
   if (!referenceNo) {
@@ -1716,6 +2053,52 @@ app.post("/api/savings-deposits", async (request, response) => {
   response.status(201).json(depositResult);
 });
 
+app.get("/api/share-capital-contributions", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:share-capital-contributions:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listShareCapitalContributions());
+});
+
+app.post("/api/share-capital-contributions", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:share-capital-contributions:create")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = validateShareCapitalContribution(request.body);
+
+  if (result.error) {
+    response.status(400).json({ error: result.error });
+    return;
+  }
+
+  const contributionResult = await recordShareCapitalContribution(result.value, user);
+
+  if (contributionResult.error) {
+    response.status(contributionResult.statusCode).json({ error: contributionResult.error });
+    return;
+  }
+
+  response.status(201).json(contributionResult);
+});
+
 app.get("/api/savings-withdrawals", async (request, response) => {
   const user = parseSession(request);
 
@@ -1789,6 +2172,16 @@ app.get("/api/ledger", async (request, response) => {
           membershipFeeAmount: 0,
           savingsDepositAmount: deposit.amount
         })),
+      ...(await listShareCapitalContributions())
+        .filter((contribution) => contribution.status === "Teller Batch")
+        .map((contribution) => ({
+          ...contribution,
+          batchType: "Share Capital Contribution",
+          cashOut: 0,
+          shareCapitalAmount: contribution.amount,
+          membershipFeeAmount: 0,
+          savingsDepositAmount: 0
+        })),
       ...(await listSavingsWithdrawals())
         .filter((withdrawal) => withdrawal.status === "Teller Batch")
         .map((withdrawal) => ({
@@ -1842,6 +2235,29 @@ app.post("/api/ledger/savings-deposits/:depositId/post", async (request, respons
   }
 
   const result = await postSavingsDeposit(request.params.depositId, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/ledger/share-capital-contributions/:contributionId/post", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "ledger:teller-batches:post")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await postShareCapitalContribution(request.params.contributionId, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

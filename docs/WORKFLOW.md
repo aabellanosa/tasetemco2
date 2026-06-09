@@ -184,29 +184,31 @@ Restrictions:
 
 The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Post Teller Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | No | No | Yes | No |
-| General Manager | Yes | Yes | No | No | No | No | No | Yes | No |
-| Accountant / Bookkeeper | No | No | No | No | No | No | No | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | Yes | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Post Teller Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No |
+| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No |
+| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No |
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
-Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity should use Savings Deposit or Savings Withdrawal, and later share capital additions should use a separate share capital contribution workflow.
+Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
-Cash-in OR/reference numbers are unique across initial member payments and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
+Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
 
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
-Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
+Member statements show each member's share capital balance, savings balance, initial payment activity, share capital contributions, savings transactions, posting status, and linked journal entry number once posted.
+
+Teller/Cashier can record regular share capital contributions after onboarding. Bookkeeper posts those contributions to the ledger as debit Cash on Hand and credit Share Capital.
 
 Teller/Cashier can record regular savings deposits after onboarding. Bookkeeper posts those deposits to the ledger as debit Cash on Hand and credit Savings Deposits Payable.
 
@@ -214,7 +216,7 @@ Teller/Cashier can record savings withdrawals within available savings. Bookkeep
 
 The Teller/Cashier UI uses a member-first transaction workspace: select the member, review balances, choose the transaction type, then complete only the selected form.
 
-Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, savings deposits, and savings withdrawals.
+Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
 ## 4. Core Workflow
 
@@ -242,10 +244,11 @@ Suggested status flow:
 
 1. Teller receives share capital payment.
 2. System validates active membership.
-3. Transaction is saved in teller batch.
-4. Member share capital subsidiary balance is updated.
-5. Accountant / Bookkeeper reviews and posts the teller batch.
-6. System generates accounting entry when the batch is posted.
+3. System validates that the OR/reference number has not been used for another cash-in transaction.
+4. Transaction is saved in Teller Batch status and receipt is generated.
+5. Member share capital subsidiary balance is updated.
+6. Accountant / Bookkeeper reviews and posts the teller batch.
+7. System generates accounting entry when the batch is posted.
 
 Sample accounting effect:
 
@@ -275,7 +278,7 @@ Sample accounting effect:
 1. Authorized staff opens the active member list.
 2. User selects a member statement.
 3. System shows current share capital and savings balances.
-4. System lists member-level initial payment, savings deposit, and savings withdrawal transactions.
+4. System lists member-level initial payment, share capital contribution, savings deposit, and savings withdrawal transactions.
 5. Transaction status shows whether each item is still in Teller Batch or already Posted.
 6. Posted transactions show the linked journal entry number for accounting traceability.
 

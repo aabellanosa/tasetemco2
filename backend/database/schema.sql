@@ -68,6 +68,22 @@ CREATE TABLE IF NOT EXISTS savings_deposits (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS share_capital_contributions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  contribution_no VARCHAR(40) NOT NULL UNIQUE,
+  member_no VARCHAR(40) NOT NULL,
+  member_name VARCHAR(180) NOT NULL,
+  amount INT NOT NULL DEFAULT 0,
+  cash_received INT NOT NULL DEFAULT 0,
+  reference_no VARCHAR(80) NOT NULL UNIQUE,
+  received_by VARCHAR(80) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
+  posted_by VARCHAR(80),
+  posted_entry_no VARCHAR(40),
+  posted_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS savings_withdrawals (
   id INT AUTO_INCREMENT PRIMARY KEY,
   withdrawal_no VARCHAR(40) NOT NULL UNIQUE,

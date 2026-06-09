@@ -97,6 +97,7 @@ export const rolePermissions = {
     "members:applications:create",
     "members:applications:approve",
     "members:initial-payments:view",
+    "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
     "ledger:view"
@@ -105,6 +106,7 @@ export const rolePermissions = {
     "members:view",
     "members:applications:view",
     "members:initial-payments:view",
+    "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
     "ledger:view"
@@ -116,6 +118,8 @@ export const rolePermissions = {
     "members:view",
     "members:initial-payments:view",
     "members:initial-payments:create",
+    "members:share-capital-contributions:view",
+    "members:share-capital-contributions:create",
     "members:savings-deposits:view",
     "members:savings-deposits:create",
     "members:savings-withdrawals:view",
@@ -126,6 +130,7 @@ export const rolePermissions = {
     "members:view",
     "members:applications:view",
     "members:initial-payments:view",
+    "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
     "ledger:view"
@@ -186,6 +191,8 @@ export const initialPayments = [
     status: "Teller Batch"
   }
 ];
+
+export const shareCapitalContributions = [];
 
 export const savingsDeposits = [];
 

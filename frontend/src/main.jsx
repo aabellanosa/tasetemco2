@@ -114,6 +114,8 @@ function buildTellerBatchSummary(rows) {
         cashOut: summary.cashOut + cashOut,
         transactionCount: summary.transactionCount + 1,
         initialPaymentCount: summary.initialPaymentCount + (row.batchType === "Initial Payment" ? 1 : 0),
+        shareCapitalContributionCount:
+          summary.shareCapitalContributionCount + (row.batchType === "Share Capital Contribution" ? 1 : 0),
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
         savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0)
       };
@@ -123,6 +125,7 @@ function buildTellerBatchSummary(rows) {
       cashOut: 0,
       transactionCount: 0,
       initialPaymentCount: 0,
+      shareCapitalContributionCount: 0,
       savingsDepositCount: 0,
       savingsWithdrawalCount: 0
     }
@@ -245,6 +248,7 @@ function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [applications, setApplications] = useState([]);
   const [initialPayments, setInitialPayments] = useState([]);
+  const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [statement, setStatement] = useState(null);
@@ -268,6 +272,12 @@ function Members({ user }) {
     cashReceived: 1000,
     referenceNo: ""
   });
+  const [shareCapitalContributionForm, setShareCapitalContributionForm] = useState({
+    memberId: "",
+    amount: 1000,
+    cashReceived: 1000,
+    referenceNo: ""
+  });
   const [savingsWithdrawalForm, setSavingsWithdrawalForm] = useState({
     memberId: "",
     amount: 500,
@@ -286,13 +296,19 @@ function Members({ user }) {
   const canApproveApplication = user.permissions.includes("members:applications:approve");
   const canViewInitialPayments = user.permissions.includes("members:initial-payments:view");
   const canCreateInitialPayment = user.permissions.includes("members:initial-payments:create");
+  const canViewShareCapitalContributions = user.permissions.includes("members:share-capital-contributions:view");
+  const canCreateShareCapitalContribution = user.permissions.includes("members:share-capital-contributions:create");
   const canViewSavingsDeposits = user.permissions.includes("members:savings-deposits:view");
   const canCreateSavingsDeposit = user.permissions.includes("members:savings-deposits:create");
   const canViewSavingsWithdrawals = user.permissions.includes("members:savings-withdrawals:view");
   const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
-  const canUseTellerWorkspace = canCreateInitialPayment || canCreateSavingsDeposit || canCreateSavingsWithdrawal;
+  const canUseTellerWorkspace =
+    canCreateInitialPayment ||
+    canCreateShareCapitalContribution ||
+    canCreateSavingsDeposit ||
+    canCreateSavingsWithdrawal;
   const selectedTellerMember = activeMembers.find((member) => member.id === selectedTellerMemberId);
   const tellerBatchRows = [
     ...initialPayments
@@ -307,6 +323,16 @@ function Members({ user }) {
         shareCapitalAmount: 0,
         membershipFeeAmount: 0,
         savingsDepositAmount: deposit.amount
+      })),
+    ...shareCapitalContributions
+      .filter((contribution) => contribution.status === "Teller Batch")
+      .map((contribution) => ({
+        ...contribution,
+        batchType: "Share Capital Contribution",
+        cashOut: 0,
+        shareCapitalAmount: contribution.amount,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: 0
       })),
     ...savingsWithdrawals
       .filter((withdrawal) => withdrawal.status === "Teller Batch")
@@ -327,16 +353,19 @@ function Members({ user }) {
       setIsRefreshing(true);
 
       try {
-        const [memberRows, applicationRows, paymentRows, savingsRows, withdrawalRows] = await Promise.all([
+        const [memberRows, applicationRows, paymentRows, contributionRows, savingsRows, withdrawalRows] =
+          await Promise.all([
           api("/api/members"),
           canViewApplications ? api("/api/member-applications") : [],
           canViewInitialPayments ? api("/api/initial-member-payments") : [],
+          canViewShareCapitalContributions ? api("/api/share-capital-contributions") : [],
           canViewSavingsDeposits ? api("/api/savings-deposits") : [],
           canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : []
         ]);
         setMembers(memberRows);
         setApplications(applicationRows);
         setInitialPayments(paymentRows);
+        setShareCapitalContributions(contributionRows);
         setSavingsDeposits(savingsRows);
         setSavingsWithdrawals(withdrawalRows);
         setLastRefreshedAt(new Date());
@@ -352,7 +381,13 @@ function Members({ user }) {
         setIsRefreshing(false);
       }
     },
-    [canViewApplications, canViewInitialPayments, canViewSavingsDeposits, canViewSavingsWithdrawals]
+    [
+      canViewApplications,
+      canViewInitialPayments,
+      canViewShareCapitalContributions,
+      canViewSavingsDeposits,
+      canViewSavingsWithdrawals
+    ]
   );
 
   useEffect(() => {
@@ -371,6 +406,7 @@ function Members({ user }) {
   function selectTellerMember(memberId) {
     setSelectedTellerMemberId(memberId);
     updatePaymentForm("memberId", memberId);
+    updateShareCapitalContributionForm("memberId", memberId);
     updateSavingsDepositForm("memberId", memberId);
     updateSavingsWithdrawalForm("memberId", memberId);
   }
@@ -392,6 +428,18 @@ function Members({ user }) {
 
   function updateSavingsDepositForm(field, value) {
     setSavingsDepositForm((current) => {
+      const next = { ...current, [field]: value };
+
+      if (field === "amount") {
+        next.cashReceived = Number(next.amount || 0);
+      }
+
+      return next;
+    });
+  }
+
+  function updateShareCapitalContributionForm(field, value) {
+    setShareCapitalContributionForm((current) => {
       const next = { ...current, [field]: value };
 
       if (field === "amount") {
@@ -491,6 +539,29 @@ function Members({ user }) {
       await loadMembersWorkflow();
     } catch (depositError) {
       setError(depositError.message);
+    }
+  }
+
+  async function submitShareCapitalContribution(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api("/api/share-capital-contributions", {
+        method: "POST",
+        body: JSON.stringify(shareCapitalContributionForm)
+      });
+      setMessage(`${data.contribution.id} recorded for ${data.contribution.memberName}.`);
+      setShareCapitalContributionForm({
+        memberId: shareCapitalContributionForm.memberId,
+        amount: 1000,
+        cashReceived: 1000,
+        referenceNo: ""
+      });
+      await loadMembersWorkflow();
+    } catch (contributionError) {
+      setError(contributionError.message);
     }
   }
 
@@ -678,6 +749,9 @@ function Members({ user }) {
               <FormLabel>Transaction type</FormLabel>
               <Select value={tellerTransactionType} onChange={(event) => setTellerTransactionType(event.target.value)}>
                 {canCreateInitialPayment ? <option value="initial-payment">Initial member payment</option> : null}
+                {canCreateShareCapitalContribution ? (
+                  <option value="share-capital-contribution">Share capital contribution</option>
+                ) : null}
                 {canCreateSavingsDeposit ? <option value="savings-deposit">Savings deposit</option> : null}
                 {canCreateSavingsWithdrawal ? <option value="savings-withdrawal">Savings withdrawal</option> : null}
               </Select>
@@ -738,6 +812,47 @@ function Members({ user }) {
               <HStack mt={5} spacing={4} align="center">
                 <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
                   Record payment
+                </Button>
+                {message ? <Text color="green.600">{message}</Text> : null}
+                {error ? <Text color="red.500">{error}</Text> : null}
+              </HStack>
+            </Box>
+          ) : null}
+
+          {tellerTransactionType === "share-capital-contribution" && canCreateShareCapitalContribution ? (
+            <Box as="form" onSubmit={submitShareCapitalContribution}>
+              <Grid templateColumns={{ base: "1fr", lg: "repeat(3, 1fr)" }} gap={4}>
+                <FormControl isRequired>
+                  <FormLabel>Share capital contribution</FormLabel>
+                  <NumberInput
+                    min={1}
+                    value={shareCapitalContributionForm.amount}
+                    onChange={(value) => updateShareCapitalContributionForm("amount", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Cash received</FormLabel>
+                  <NumberInput
+                    min={0}
+                    value={shareCapitalContributionForm.cashReceived}
+                    onChange={(value) => updateShareCapitalContributionForm("cashReceived", Number(value || 0))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>OR / reference no.</FormLabel>
+                  <Input
+                    value={shareCapitalContributionForm.referenceNo}
+                    onChange={(event) => updateShareCapitalContributionForm("referenceNo", event.target.value)}
+                  />
+                </FormControl>
+              </Grid>
+              <HStack mt={5} spacing={4} align="center">
+                <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
+                  Record share capital
                 </Button>
                 {message ? <Text color="green.600">{message}</Text> : null}
                 {error ? <Text color="red.500">{error}</Text> : null}
@@ -854,6 +969,9 @@ function Members({ user }) {
                 </Text>
                 <VStack align="stretch" spacing={0} mt={1}>
                   <Text fontWeight="bold">Initial payments: {tellerBatchSummary.initialPaymentCount}</Text>
+                  <Text fontWeight="bold">
+                    Share capital: {tellerBatchSummary.shareCapitalContributionCount}
+                  </Text>
                   <Text fontWeight="bold">Deposits: {tellerBatchSummary.savingsDepositCount}</Text>
                   <Text fontWeight="bold">Withdrawals: {tellerBatchSummary.savingsWithdrawalCount}</Text>
                 </VStack>
@@ -1054,6 +1172,51 @@ function Members({ user }) {
         </Box>
       ) : null}
 
+      {canViewShareCapitalContributions ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={4}>
+            Share Capital Contribution History
+          </Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Contribution No.</Th>
+                  <Th>Member</Th>
+                  <Th isNumeric>Amount</Th>
+                  <Th>Reference</Th>
+                  <Th>Received By</Th>
+                  <Th>Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {shareCapitalContributions.map((contribution) => (
+                  <Tr key={contribution.id}>
+                    <Td>{contribution.id}</Td>
+                    <Td>{contribution.memberName}</Td>
+                    <Td isNumeric>{formatMoney(contribution.amount)}</Td>
+                    <Td>{contribution.referenceNo}</Td>
+                    <Td>{contribution.receivedBy}</Td>
+                    <Td>
+                      <Badge colorScheme={contribution.status === "Posted" ? "green" : "blue"}>
+                        {contribution.status}
+                      </Badge>
+                    </Td>
+                  </Tr>
+                ))}
+                {shareCapitalContributions.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={6} color="gray.500">
+                      No share capital contributions recorded.
+                    </Td>
+                  </Tr>
+                ) : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+
       {canViewSavingsDeposits ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Heading size="md" mb={4}>
@@ -1204,9 +1367,11 @@ function Ledger({ user }) {
       const path =
         payment.batchType === "Savings Deposit"
           ? `/api/ledger/savings-deposits/${payment.id}/post`
+          : payment.batchType === "Share Capital Contribution"
+            ? `/api/ledger/share-capital-contributions/${payment.id}/post`
           : payment.batchType === "Savings Withdrawal"
             ? `/api/ledger/savings-withdrawals/${payment.id}/post`
-          : `/api/ledger/teller-batches/${payment.id}/post`;
+            : `/api/ledger/teller-batches/${payment.id}/post`;
       const data = await api(path, {
         method: "POST"
       });
