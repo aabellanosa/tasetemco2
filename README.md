@@ -99,6 +99,8 @@ Membership applications capture `Required Initial Share Capital` as the expected
 
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
+Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
@@ -150,12 +152,12 @@ Example server directory:
 
 - `GET /api/dashboard`
 - `GET /api/members`
+- `GET /api/members/:memberId/statement`
 - `GET /api/products`
 - `GET /api/loans`
 - `GET /api/transactions`
 - `GET /api/ledger`
 - `POST /api/ledger/teller-batches/:paymentId/post`
-- `GET /api/ledger`
 - `GET /api/reports`
 - `GET /api/users`
 - `GET /api/roles`

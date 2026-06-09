@@ -202,6 +202,8 @@ Membership applications capture `Required Initial Share Capital` as the expected
 
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
+Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
@@ -252,6 +254,23 @@ Sample accounting effect:
 - Credit: Share Capital
 - Credit: Membership Fee Income
 - Credit: Savings Deposits Payable
+
+### 4.2.2 Member Statement View
+
+1. Authorized staff opens the active member list.
+2. User selects a member statement.
+3. System shows current share capital and savings balances.
+4. System lists member-level initial payment transactions.
+5. Transaction status shows whether each item is still in Teller Batch or already Posted.
+6. Posted transactions show the linked journal entry number for accounting traceability.
+
+Primary users:
+
+- Teller / Cashier, to confirm balances before front-line transactions
+- Membership Officer, to confirm onboarding completion
+- General Manager, for oversight
+- Accountant / Bookkeeper, for subsidiary-to-ledger reconciliation
+- Auditor / Compliance Officer, for traceability review
 
 ### 4.3 Savings Deposit
 
