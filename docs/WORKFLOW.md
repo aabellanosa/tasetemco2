@@ -198,16 +198,18 @@ The React/MySQL spike separates screen access from action access. A role may vie
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
+Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
 
 1. Membership Officer encodes the member application.
 2. Required profile details are recorded.
-3. Initial share capital requirement is reviewed.
+3. Required Initial Share Capital is reviewed.
 4. Authorized officer approves membership.
 5. System creates the member record and member number.
-6. Teller records the initial share capital or membership fee payment.
+6. Teller records the initial share capital, membership fee, and savings payment.
 7. Member becomes available for paid member account activity.
 
 Suggested status flow:
