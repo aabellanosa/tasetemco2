@@ -200,6 +200,8 @@ For demo testing across browser profiles, the Members workflow auto-refreshes ev
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
+Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity should use Savings Deposit or Savings Withdrawal, and later share capital additions should use a separate share capital contribution workflow.
+
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
@@ -210,7 +212,7 @@ Teller/Cashier can record savings withdrawals within available savings. Bookkeep
 
 The Teller/Cashier UI uses a member-first transaction workspace: select the member, review balances, choose the transaction type, then complete only the selected form.
 
-Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and transaction type mix.
+Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, savings deposits, and savings withdrawals.
 
 ## 4. Core Workflow
 
@@ -222,7 +224,8 @@ Teller and Bookkeeper screens show unposted teller batch cash position: cash in,
 4. Authorized officer approves membership.
 5. System creates the member record and member number.
 6. Teller records the initial share capital, membership fee, and savings payment.
-7. Member becomes available for paid member account activity.
+7. System blocks duplicate initial member payments for the same member.
+8. Member becomes available for paid member account activity.
 
 Suggested status flow:
 
@@ -250,11 +253,12 @@ Sample accounting effect:
 ### 4.2.1 Initial Member Payment Posting
 
 1. Teller records initial share capital, membership fee, and savings.
-2. Transaction status is Teller Batch.
-3. Accountant / Bookkeeper reviews the batch in General Ledger.
-4. Bookkeeper posts the transaction.
-5. Transaction status becomes Posted.
-6. Journal entry becomes available for ledger-driven reports.
+2. System validates that the member has no previous initial member payment.
+3. Transaction status is Teller Batch.
+4. Accountant / Bookkeeper reviews the batch in General Ledger.
+5. Bookkeeper posts the transaction.
+6. Transaction status becomes Posted.
+7. Journal entry becomes available for ledger-driven reports.
 
 Sample accounting effect:
 

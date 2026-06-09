@@ -584,6 +584,10 @@ async function recordInitialPayment(input, user) {
       return { error: "Active member was not found.", statusCode: 404 };
     }
 
+    if (initialPayments.some((payment) => payment.memberId === member.id)) {
+      return { error: "Initial member payment already exists for this member.", statusCode: 409 };
+    }
+
     member.share += input.shareCapitalAmount;
     member.savings += input.savingsDepositAmount;
 
@@ -622,6 +626,19 @@ async function recordInitialPayment(input, user) {
     if (!member) {
       await connection.rollback();
       return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    const [existingPaymentRows] = await connection.execute(
+      `SELECT payment_no AS id
+       FROM initial_member_payments
+       WHERE member_no = ?
+       LIMIT 1`,
+      [member.id]
+    );
+
+    if (existingPaymentRows.length > 0) {
+      await connection.rollback();
+      return { error: "Initial member payment already exists for this member.", statusCode: 409 };
     }
 
     const [countRows] = await connection.execute(

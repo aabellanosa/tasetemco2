@@ -850,12 +850,13 @@ function Members({ user }) {
               </Box>
               <Box borderWidth="1px" borderRadius="md" p={4}>
                 <Text color="gray.500" fontSize="sm">
-                  Mix
+                  Transaction Mix
                 </Text>
-                <Text fontWeight="bold">
-                  {tellerBatchSummary.initialPaymentCount} / {tellerBatchSummary.savingsDepositCount} /{" "}
-                  {tellerBatchSummary.savingsWithdrawalCount}
-                </Text>
+                <VStack align="stretch" spacing={0} mt={1}>
+                  <Text fontWeight="bold">Initial payments: {tellerBatchSummary.initialPaymentCount}</Text>
+                  <Text fontWeight="bold">Deposits: {tellerBatchSummary.savingsDepositCount}</Text>
+                  <Text fontWeight="bold">Withdrawals: {tellerBatchSummary.savingsWithdrawalCount}</Text>
+                </VStack>
               </Box>
             </Grid>
             <TableContainer>

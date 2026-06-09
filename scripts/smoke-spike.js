@@ -185,6 +185,26 @@ async function run() {
       throw new Error("Teller initial member payment was not recorded in teller batch.");
     }
 
+    const duplicateInitialPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        shareCapitalAmount: 5000,
+        membershipFeeAmount: 100,
+        savingsDepositAmount: 1000,
+        cashReceived: 6100,
+        referenceNo: "OR-SMOKE-DUPLICATE"
+      })
+    });
+
+    if (duplicateInitialPayment.status !== 409) {
+      throw new Error("Duplicate initial member payment should be rejected.");
+    }
+
     const activeMembersAfterPayment = await fetch(`${baseUrl}/api/members`, {
       headers: { Cookie: tellerCookie }
     });
