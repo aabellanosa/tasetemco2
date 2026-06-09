@@ -164,7 +164,8 @@
           Approve means the role can convert approved applications into active members.
           In the current spike, System Administrator and Membership Officer can create
           member applications, System Administrator is the only role that can approve them,
-          and Teller / Cashier records the initial member payment.
+          Teller / Cashier records the initial member payment, and Accountant / Bookkeeper
+          posts teller batch payments to the general ledger.
           The Members workflow auto-refreshes every 5 seconds during demo testing, with a
           manual Refresh button available when users want the latest state immediately.
         </p>
@@ -212,9 +213,9 @@
           <article>
             <h3>Ledger Posting</h3>
             <ol>
-              <li>Operational transaction creates draft accounting effect.</li>
-              <li>Bookkeeper reviews supporting transaction.</li>
-              <li>Balanced entry is posted to the general ledger.</li>
+              <li>Teller payment remains in Teller Batch status.</li>
+              <li>Bookkeeper reviews the supporting transaction.</li>
+              <li>Balanced entry is posted to Cash, Share Capital, Fee Income, and Savings Payable.</li>
               <li>Reports are generated from posted ledger entries.</li>
             </ol>
           </article>

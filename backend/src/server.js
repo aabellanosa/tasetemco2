@@ -7,6 +7,7 @@ import {
   dashboard,
   defaultPassword,
   initialPayments,
+  journalEntries,
   memberApplications,
   members,
   publicUser,
@@ -184,6 +185,40 @@ function nextInitialPaymentNumber() {
   return `IP-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
 }
 
+function nextJournalEntryNumber() {
+  const next = journalEntries.length + 1;
+  return `JE-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
+function buildInitialPaymentJournalLines(payment) {
+  return [
+    {
+      accountCode: "1010",
+      accountName: "Cash on Hand",
+      debit: payment.cashReceived,
+      credit: 0
+    },
+    {
+      accountCode: "3010",
+      accountName: "Share Capital",
+      debit: 0,
+      credit: payment.shareCapitalAmount
+    },
+    {
+      accountCode: "4020",
+      accountName: "Membership Fee Income",
+      debit: 0,
+      credit: payment.membershipFeeAmount
+    },
+    {
+      accountCode: "2020",
+      accountName: "Savings Deposits Payable",
+      debit: 0,
+      credit: payment.savingsDepositAmount
+    }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
 async function approveMemberApplication(applicationId, user) {
   const db = await getPool();
 
@@ -309,6 +344,37 @@ async function listInitialPayments() {
   return rows;
 }
 
+async function listJournalEntries() {
+  const db = await getPool();
+
+  if (!db) {
+    return journalEntries;
+  }
+
+  const [entries] = await db.execute(
+    `SELECT entry_no AS id, source_type AS sourceType, source_no AS sourceNo,
+            description, posted_by AS postedBy, posted_at AS postedAt
+     FROM journal_entries
+     ORDER BY posted_at DESC, id DESC`
+  );
+
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const [lines] = await db.execute(
+    `SELECT entry_no AS entryId, account_code AS accountCode, account_name AS accountName,
+            debit, credit
+     FROM journal_entry_lines
+     ORDER BY id`
+  );
+
+  return entries.map((entry) => ({
+    ...entry,
+    lines: lines.filter((line) => line.entryId === entry.id)
+  }));
+}
+
 async function recordInitialPayment(input, user) {
   const db = await getPool();
 
@@ -411,6 +477,126 @@ async function recordInitialPayment(input, user) {
         ...member,
         share: member.share + input.shareCapitalAmount,
         savings: member.savings + input.savingsDepositAmount
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function postInitialPayment(paymentId, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const payment = initialPayments.find((item) => item.id === paymentId);
+
+    if (!payment) {
+      return { error: "Initial payment was not found.", statusCode: 404 };
+    }
+
+    if (payment.status !== "Teller Batch") {
+      return { error: "Only teller batch payments can be posted.", statusCode: 409 };
+    }
+
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "Initial Member Payment",
+      sourceNo: payment.id,
+      description: `Initial member payment - ${payment.memberName}`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildInitialPaymentJournalLines(payment)
+    };
+
+    payment.status = "Posted";
+    payment.postedBy = user.username;
+    payment.postedEntryNo = entry.id;
+    journalEntries.unshift(entry);
+
+    return { payment, entry };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [paymentRows] = await connection.execute(
+      `SELECT payment_no AS id, member_no AS memberId, member_name AS memberName,
+              share_capital_amount AS shareCapitalAmount, membership_fee_amount AS membershipFeeAmount,
+              savings_deposit_amount AS savingsDepositAmount, cash_received AS cashReceived,
+              reference_no AS referenceNo, received_by AS receivedBy, status
+       FROM initial_member_payments
+       WHERE payment_no = ?
+       FOR UPDATE`,
+      [paymentId]
+    );
+    const payment = paymentRows[0];
+
+    if (!payment) {
+      await connection.rollback();
+      return { error: "Initial payment was not found.", statusCode: 404 };
+    }
+
+    if (payment.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Only teller batch payments can be posted.", statusCode: 409 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM journal_entries
+       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+    );
+    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO journal_entries (
+         entry_no, source_type, source_no, description, posted_by
+       )
+       VALUES (?, 'Initial Member Payment', ?, ?, ?)`,
+      [entryNo, payment.id, `Initial member payment - ${payment.memberName}`, user.username]
+    );
+
+    const lines = buildInitialPaymentJournalLines(payment);
+
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (
+           entry_no, account_code, account_name, debit, credit
+         )
+         VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+
+    await connection.execute(
+      `UPDATE initial_member_payments
+       SET status = 'Posted', posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE payment_no = ?`,
+      [user.username, entryNo, payment.id]
+    );
+
+    await connection.commit();
+
+    return {
+      payment: {
+        ...payment,
+        status: "Posted",
+        postedBy: user.username,
+        postedEntryNo: entryNo
+      },
+      entry: {
+        id: entryNo,
+        sourceType: "Initial Member Payment",
+        sourceNo: payment.id,
+        description: `Initial member payment - ${payment.memberName}`,
+        postedBy: user.username,
+        postedAt: new Date().toISOString(),
+        lines
       }
     };
   } catch (error) {
@@ -678,6 +864,48 @@ app.post("/api/initial-member-payments", async (request, response) => {
   }
 
   response.status(201).json(paymentResult);
+});
+
+app.get("/api/ledger", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "ledger:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json({
+    tellerBatch: (await listInitialPayments()).filter((payment) => payment.status === "Teller Batch"),
+    journalEntries: await listJournalEntries()
+  });
+});
+
+app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "ledger:teller-batches:post")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await postInitialPayment(request.params.paymentId, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
 });
 
 app.get("/api/roles", (request, response) => {

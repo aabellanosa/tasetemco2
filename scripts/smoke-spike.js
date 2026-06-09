@@ -204,6 +204,60 @@ async function run() {
       throw new Error("Initial payment was not returned by the payment history endpoint.");
     }
 
+    const bookkeeperLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "bookkeeper", password: "p@55@LL" })
+    });
+    const bookkeeperBody = await bookkeeperLogin.json();
+    const bookkeeperCookie = bookkeeperLogin.headers.get("set-cookie")?.split(";")[0];
+
+    if (!bookkeeperLogin.ok || !bookkeeperBody.user.permissions.includes("ledger:teller-batches:post")) {
+      throw new Error("Bookkeeper should be allowed to post teller batches.");
+    }
+
+    const ledgerBeforePosting = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerBeforePostingBody = await ledgerBeforePosting.json();
+
+    if (!ledgerBeforePostingBody.tellerBatch.some((payment) => payment.id === initialPaymentBody.payment.id)) {
+      throw new Error("Bookkeeper ledger view should show the unposted teller payment.");
+    }
+
+    const postedPayment = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${initialPaymentBody.payment.id}/post`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const postedPaymentBody = await postedPayment.json();
+
+    if (!postedPayment.ok || postedPaymentBody.payment.status !== "Posted") {
+      throw new Error("Bookkeeper did not post the teller payment.");
+    }
+
+    const debitTotal = postedPaymentBody.entry.lines.reduce((sum, line) => sum + line.debit, 0);
+    const creditTotal = postedPaymentBody.entry.lines.reduce((sum, line) => sum + line.credit, 0);
+
+    if (debitTotal !== 6100 || creditTotal !== 6100) {
+      throw new Error("Posted journal entry should be balanced for the teller payment.");
+    }
+
+    const ledgerAfterPosting = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerAfterPostingBody = await ledgerAfterPosting.json();
+
+    if (ledgerAfterPostingBody.tellerBatch.some((payment) => payment.id === initialPaymentBody.payment.id)) {
+      throw new Error("Posted teller payment should no longer appear in the unposted batch.");
+    }
+
+    if (!ledgerAfterPostingBody.journalEntries.some((entry) => entry.id === postedPaymentBody.entry.id)) {
+      throw new Error("Posted journal entry was not returned by the ledger endpoint.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

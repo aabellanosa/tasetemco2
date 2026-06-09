@@ -46,5 +46,28 @@ CREATE TABLE IF NOT EXISTS initial_member_payments (
   reference_no VARCHAR(80) NOT NULL,
   received_by VARCHAR(80) NOT NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
+  posted_by VARCHAR(80),
+  posted_entry_no VARCHAR(40),
+  posted_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  entry_no VARCHAR(40) NOT NULL UNIQUE,
+  source_type VARCHAR(80) NOT NULL,
+  source_no VARCHAR(40) NOT NULL,
+  description VARCHAR(220) NOT NULL,
+  posted_by VARCHAR(80) NOT NULL,
+  posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS journal_entry_lines (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  entry_no VARCHAR(40) NOT NULL,
+  account_code VARCHAR(40) NOT NULL,
+  account_name VARCHAR(160) NOT NULL,
+  debit INT NOT NULL DEFAULT 0,
+  credit INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

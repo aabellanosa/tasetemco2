@@ -667,6 +667,163 @@ function Members({ user }) {
   );
 }
 
+function Ledger({ user }) {
+  const [tellerBatch, setTellerBatch] = useState([]);
+  const [journalEntries, setJournalEntries] = useState([]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
+
+  async function loadLedger() {
+    setIsRefreshing(true);
+    setError("");
+
+    try {
+      const data = await api("/api/ledger");
+      setTellerBatch(data.tellerBatch);
+      setJournalEntries(data.journalEntries);
+    } catch (ledgerError) {
+      setError(ledgerError.message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    loadLedger();
+  }, []);
+
+  async function postPayment(paymentId) {
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api(`/api/ledger/teller-batches/${paymentId}/post`, {
+        method: "POST"
+      });
+      setMessage(`${data.entry.id} posted for ${data.payment.memberName}.`);
+      await loadLedger();
+    } catch (postError) {
+      setError(postError.message);
+    }
+  }
+
+  return (
+    <VStack align="stretch" spacing={5}>
+      <Flex justify="space-between" align="center" gap={4} wrap="wrap">
+        <Box>
+          <Heading size="md">Teller Batch Review</Heading>
+          <Text color="gray.600" mt={1}>
+            Bookkeeper reviews teller cash receipts before they become general ledger entries.
+          </Text>
+        </Box>
+        <Button size="sm" onClick={loadLedger} isLoading={isRefreshing}>
+          Refresh
+        </Button>
+      </Flex>
+
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="md" mb={4}>
+          Unposted Teller Batch
+        </Heading>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Payment No.</Th>
+                <Th>Member</Th>
+                <Th isNumeric>Cash</Th>
+                <Th isNumeric>Share Capital</Th>
+                <Th isNumeric>Fee</Th>
+                <Th isNumeric>Savings</Th>
+                <Th>Status</Th>
+                {canPostTellerBatch ? <Th>Action</Th> : null}
+              </Tr>
+            </Thead>
+            <Tbody>
+              {tellerBatch.map((payment) => (
+                <Tr key={payment.id}>
+                  <Td>{payment.id}</Td>
+                  <Td>{payment.memberName}</Td>
+                  <Td isNumeric>{formatMoney(payment.cashReceived)}</Td>
+                  <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
+                  <Td isNumeric>{formatMoney(payment.membershipFeeAmount)}</Td>
+                  <Td isNumeric>{formatMoney(payment.savingsDepositAmount)}</Td>
+                  <Td>
+                    <Badge colorScheme="blue">{payment.status}</Badge>
+                  </Td>
+                  {canPostTellerBatch ? (
+                    <Td>
+                      <Button size="sm" colorScheme="green" onClick={() => postPayment(payment.id)}>
+                        Post
+                      </Button>
+                    </Td>
+                  ) : null}
+                </Tr>
+              ))}
+              {tellerBatch.length === 0 ? (
+                <Tr>
+                  <Td colSpan={canPostTellerBatch ? 8 : 7} color="gray.500">
+                    No unposted teller batch payments.
+                  </Td>
+                </Tr>
+              ) : null}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="md" mb={4}>
+          Posted Journal Entries
+        </Heading>
+        <VStack align="stretch" spacing={4}>
+          {journalEntries.map((entry) => (
+            <Box key={entry.id} borderWidth="1px" borderRadius="md" p={4}>
+              <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+                <Box>
+                  <Text fontWeight="bold">{entry.id}</Text>
+                  <Text color="gray.600">{entry.description}</Text>
+                </Box>
+                <Text color="gray.500" fontSize="sm">
+                  Posted by {entry.postedBy}
+                </Text>
+              </Flex>
+              <TableContainer>
+                <Table size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Account</Th>
+                      <Th isNumeric>Debit</Th>
+                      <Th isNumeric>Credit</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {entry.lines.map((line) => (
+                      <Tr key={`${entry.id}-${line.accountCode}`}>
+                        <Td>
+                          {line.accountCode} - {line.accountName}
+                        </Td>
+                        <Td isNumeric>{line.debit ? formatMoney(line.debit) : ""}</Td>
+                        <Td isNumeric>{line.credit ? formatMoney(line.credit) : ""}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            </Box>
+          ))}
+          {journalEntries.length === 0 ? <Text color="gray.500">No posted journal entries yet.</Text> : null}
+        </VStack>
+      </Box>
+    </VStack>
+  );
+}
+
 function Placeholder({ view }) {
   return (
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={6}>
@@ -690,6 +847,10 @@ function Shell({ user, onLogout }) {
 
     if (view === "members") {
       return <Members user={user} />;
+    }
+
+    if (view === "ledger") {
+      return <Ledger user={user} />;
     }
 
     return <Placeholder view={view} />;

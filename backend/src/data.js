@@ -96,15 +96,21 @@ export const rolePermissions = {
     "members:applications:view",
     "members:applications:create",
     "members:applications:approve",
-    "members:initial-payments:view"
+    "members:initial-payments:view",
+    "ledger:view"
   ],
-  "General Manager": ["members:view", "members:applications:view", "members:initial-payments:view"],
-  "Accountant / Bookkeeper": [],
+  "General Manager": ["members:view", "members:applications:view", "members:initial-payments:view", "ledger:view"],
+  "Accountant / Bookkeeper": ["ledger:view", "ledger:teller-batches:post"],
   "Loan Officer": ["members:view"],
   "Credit Committee / Approver": ["members:view", "members:applications:view"],
   "Teller / Cashier": ["members:view", "members:initial-payments:view", "members:initial-payments:create"],
   "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
-  "Auditor / Compliance Officer": ["members:view", "members:applications:view", "members:initial-payments:view"],
+  "Auditor / Compliance Officer": [
+    "members:view",
+    "members:applications:view",
+    "members:initial-payments:view",
+    "ledger:view"
+  ],
   "Board / Read-Only Executive": []
 };
 
@@ -161,6 +167,8 @@ export const initialPayments = [
     status: "Teller Batch"
   }
 ];
+
+export const journalEntries = [];
 
 export const dashboard = {
   metrics: [
