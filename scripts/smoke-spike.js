@@ -174,7 +174,8 @@ async function run() {
         memberId: approvalBody.member.id,
         shareCapitalAmount: 5000,
         membershipFeeAmount: 100,
-        cashReceived: 5100,
+        savingsDepositAmount: 1000,
+        cashReceived: 6100,
         referenceNo: "OR-SMOKE-001"
       })
     });
@@ -190,8 +191,8 @@ async function run() {
     const memberRowsAfterPayment = await activeMembersAfterPayment.json();
     const paidMember = memberRowsAfterPayment.find((member) => member.id === approvalBody.member.id);
 
-    if (!paidMember || paidMember.share !== 5000) {
-      throw new Error("Initial payment did not update the member share capital balance.");
+    if (!paidMember || paidMember.share !== 5000 || paidMember.savings !== 1000) {
+      throw new Error("Initial payment did not update the member share capital and savings balances.");
     }
 
     const paymentHistory = await fetch(`${baseUrl}/api/initial-member-payments`, {
@@ -213,7 +214,8 @@ async function run() {
         memberId: approvalBody.member.id,
         shareCapitalAmount: 5000,
         membershipFeeAmount: 100,
-        cashReceived: 5100,
+        savingsDepositAmount: 1000,
+        cashReceived: 6100,
         referenceNo: "OR-SMOKE-ADMIN"
       })
     });

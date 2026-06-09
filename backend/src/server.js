@@ -300,7 +300,7 @@ async function listInitialPayments() {
   const [rows] = await db.execute(
     `SELECT payment_no AS id, member_no AS memberId, member_name AS memberName,
             share_capital_amount AS shareCapitalAmount, membership_fee_amount AS membershipFeeAmount,
-            cash_received AS cashReceived, reference_no AS referenceNo,
+            savings_deposit_amount AS savingsDepositAmount, cash_received AS cashReceived, reference_no AS referenceNo,
             received_by AS receivedBy, status, created_at AS createdAt
      FROM initial_member_payments
      ORDER BY created_at DESC, id DESC`
@@ -320,6 +320,7 @@ async function recordInitialPayment(input, user) {
     }
 
     member.share += input.shareCapitalAmount;
+    member.savings += input.savingsDepositAmount;
 
     const payment = {
       id: nextInitialPaymentNumber(),
@@ -327,6 +328,7 @@ async function recordInitialPayment(input, user) {
       memberName: member.name,
       shareCapitalAmount: input.shareCapitalAmount,
       membershipFeeAmount: input.membershipFeeAmount,
+      savingsDepositAmount: input.savingsDepositAmount,
       cashReceived: input.cashReceived,
       referenceNo: input.referenceNo,
       receivedBy: user.username,
@@ -367,15 +369,16 @@ async function recordInitialPayment(input, user) {
     await connection.execute(
       `INSERT INTO initial_member_payments (
          payment_no, member_no, member_name, share_capital_amount,
-         membership_fee_amount, cash_received, reference_no, received_by, status
+         membership_fee_amount, savings_deposit_amount, cash_received, reference_no, received_by, status
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
       [
         paymentNo,
         member.id,
         member.name,
         input.shareCapitalAmount,
         input.membershipFeeAmount,
+        input.savingsDepositAmount,
         input.cashReceived,
         input.referenceNo,
         user.username
@@ -384,9 +387,9 @@ async function recordInitialPayment(input, user) {
 
     await connection.execute(
       `UPDATE members
-       SET share_capital = share_capital + ?
+       SET share_capital = share_capital + ?, savings_balance = savings_balance + ?
        WHERE member_no = ?`,
-      [input.shareCapitalAmount, member.id]
+      [input.shareCapitalAmount, input.savingsDepositAmount, member.id]
     );
 
     await connection.commit();
@@ -398,6 +401,7 @@ async function recordInitialPayment(input, user) {
         memberName: member.name,
         shareCapitalAmount: input.shareCapitalAmount,
         membershipFeeAmount: input.membershipFeeAmount,
+        savingsDepositAmount: input.savingsDepositAmount,
         cashReceived: input.cashReceived,
         referenceNo: input.referenceNo,
         receivedBy: user.username,
@@ -405,7 +409,8 @@ async function recordInitialPayment(input, user) {
       },
       member: {
         ...member,
-        share: member.share + input.shareCapitalAmount
+        share: member.share + input.shareCapitalAmount,
+        savings: member.savings + input.savingsDepositAmount
       }
     };
   } catch (error) {
@@ -452,6 +457,7 @@ function validateInitialPayment(body) {
   const memberId = String(body.memberId || "").trim();
   const shareCapitalAmount = Number(body.shareCapitalAmount || 0);
   const membershipFeeAmount = Number(body.membershipFeeAmount || 0);
+  const savingsDepositAmount = Number(body.savingsDepositAmount || 0);
   const cashReceived = Number(body.cashReceived || 0);
   const referenceNo = String(body.referenceNo || "").trim();
 
@@ -467,11 +473,18 @@ function validateInitialPayment(body) {
     return { error: "Membership fee must be a whole peso amount." };
   }
 
-  if (shareCapitalAmount + membershipFeeAmount <= 0) {
-    return { error: "Payment must include share capital or membership fee." };
+  if (!Number.isInteger(savingsDepositAmount) || savingsDepositAmount < 0) {
+    return { error: "Savings deposit must be a whole peso amount." };
   }
 
-  if (!Number.isInteger(cashReceived) || cashReceived < shareCapitalAmount + membershipFeeAmount) {
+  if (shareCapitalAmount + membershipFeeAmount + savingsDepositAmount <= 0) {
+    return { error: "Payment must include share capital, membership fee, or savings." };
+  }
+
+  if (
+    !Number.isInteger(cashReceived) ||
+    cashReceived < shareCapitalAmount + membershipFeeAmount + savingsDepositAmount
+  ) {
     return { error: "Cash received must cover the total payment." };
   }
 
@@ -484,6 +497,7 @@ function validateInitialPayment(body) {
       memberId,
       shareCapitalAmount,
       membershipFeeAmount,
+      savingsDepositAmount,
       cashReceived,
       referenceNo
     }

@@ -154,7 +154,8 @@ export const initialPayments = [
     memberName: "Maria L. Santos",
     shareCapitalAmount: 5000,
     membershipFeeAmount: 100,
-    cashReceived: 5100,
+    savingsDepositAmount: 1000,
+    cashReceived: 6100,
     referenceNo: "OR-10001",
     receivedBy: "teller01",
     status: "Teller Batch"

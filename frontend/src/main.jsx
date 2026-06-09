@@ -13,6 +13,12 @@ import {
   GridItem,
   Heading,
   Input,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
   NumberInput,
   NumberInputField,
   Select,
@@ -29,7 +35,8 @@ import {
   Thead,
   Tr,
   VStack,
-  extendTheme
+  extendTheme,
+  useDisclosure
 } from "@chakra-ui/react";
 import { createRoot as createReactRoot } from "react-dom/client";
 
@@ -222,13 +229,16 @@ function Members({ user }) {
     memberId: "",
     shareCapitalAmount: 5000,
     membershipFeeAmount: 100,
-    cashReceived: 5100,
+    savingsDepositAmount: 1000,
+    cashReceived: 6100,
     referenceNo: ""
   });
+  const [approvedMemberName, setApprovedMemberName] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
+  const approvalNotice = useDisclosure();
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canViewApplications = user.permissions.includes("members:applications:view");
   const canApproveApplication = user.permissions.includes("members:applications:approve");
@@ -283,8 +293,11 @@ function Members({ user }) {
     setPaymentForm((current) => {
       const next = { ...current, [field]: value };
 
-      if (field === "shareCapitalAmount" || field === "membershipFeeAmount") {
-        next.cashReceived = Number(next.shareCapitalAmount || 0) + Number(next.membershipFeeAmount || 0);
+      if (field === "shareCapitalAmount" || field === "membershipFeeAmount" || field === "savingsDepositAmount") {
+        next.cashReceived =
+          Number(next.shareCapitalAmount || 0) +
+          Number(next.membershipFeeAmount || 0) +
+          Number(next.savingsDepositAmount || 0);
       }
 
       return next;
@@ -323,6 +336,8 @@ function Members({ user }) {
         method: "POST"
       });
       setMessage(`${data.application.id} approved as ${data.member.id}.`);
+      setApprovedMemberName(data.member.name);
+      approvalNotice.onOpen();
       await loadMembersWorkflow();
     } catch (approveError) {
       setError(approveError.message);
@@ -344,7 +359,8 @@ function Members({ user }) {
         memberId: paymentForm.memberId,
         shareCapitalAmount: 5000,
         membershipFeeAmount: 100,
-        cashReceived: 5100,
+        savingsDepositAmount: 1000,
+        cashReceived: 6100,
         referenceNo: ""
       });
       await loadMembersWorkflow();
@@ -389,7 +405,7 @@ function Members({ user }) {
               />
             </FormControl>
             <FormControl>
-              <FormLabel>Initial share capital</FormLabel>
+              <FormLabel>Required Initial Share Capital</FormLabel>
               <NumberInput
                 min={0}
                 value={form.initialShareCapital}
@@ -422,7 +438,7 @@ function Members({ user }) {
                   <Th>Name</Th>
                   <Th>Cluster</Th>
                   <Th>Contact</Th>
-                <Th isNumeric>Initial Share</Th>
+                <Th isNumeric>Required Initial Share Capital</Th>
                 <Th>Status</Th>
                 {canApproveApplication ? <Th>Action</Th> : null}
                 </Tr>
@@ -471,7 +487,7 @@ function Members({ user }) {
             Record Initial Member Payment
           </Heading>
           <Text color="gray.600" mb={5}>
-            Teller receives the opening share capital and membership fee. Accounting posting follows in a later slice.
+            Teller receives the opening share capital, membership fee, and savings. Accounting posting follows in a later slice.
           </Text>
           <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4}>
             <FormControl isRequired>
@@ -504,6 +520,16 @@ function Members({ user }) {
                 min={0}
                 value={paymentForm.membershipFeeAmount}
                 onChange={(value) => updatePaymentForm("membershipFeeAmount", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Savings</FormLabel>
+              <NumberInput
+                min={0}
+                value={paymentForm.savingsDepositAmount}
+                onChange={(value) => updatePaymentForm("savingsDepositAmount", Number(value || 0))}
               >
                 <NumberInputField />
               </NumberInput>
@@ -583,6 +609,7 @@ function Members({ user }) {
                   <Th>Member</Th>
                   <Th isNumeric>Share Capital</Th>
                   <Th isNumeric>Membership Fee</Th>
+                  <Th isNumeric>Savings</Th>
                   <Th>Reference</Th>
                   <Th>Received By</Th>
                   <Th>Status</Th>
@@ -595,6 +622,7 @@ function Members({ user }) {
                     <Td>{payment.memberName}</Td>
                     <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
                     <Td isNumeric>{formatMoney(payment.membershipFeeAmount)}</Td>
+                    <Td isNumeric>{formatMoney(payment.savingsDepositAmount)}</Td>
                     <Td>{payment.referenceNo}</Td>
                     <Td>{payment.receivedBy}</Td>
                     <Td>
@@ -604,7 +632,7 @@ function Members({ user }) {
                 ))}
                 {initialPayments.length === 0 ? (
                   <Tr>
-                    <Td colSpan={7} color="gray.500">
+                    <Td colSpan={8} color="gray.500">
                       No initial payments recorded.
                     </Td>
                   </Tr>
@@ -614,6 +642,27 @@ function Members({ user }) {
           </TableContainer>
         </Box>
       ) : null}
+
+      <Modal isOpen={approvalNotice.isOpen} onClose={approvalNotice.onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Membership Approved</ModalHeader>
+          <ModalBody>
+            <Text fontWeight="bold" mb={3}>
+              {approvedMemberName} is now an active member.
+            </Text>
+            <Text>
+              Please advise the member to proceed to the Teller/Cashier for initial share capital,
+              membership fee, and savings payment.
+            </Text>
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="green" onClick={approvalNotice.onClose}>
+              Got it
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </VStack>
   );
 }

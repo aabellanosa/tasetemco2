@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS initial_member_payments (
   member_name VARCHAR(180) NOT NULL,
   share_capital_amount INT NOT NULL DEFAULT 0,
   membership_fee_amount INT NOT NULL DEFAULT 0,
+  savings_deposit_amount INT NOT NULL DEFAULT 0,
   cash_received INT NOT NULL DEFAULT 0,
   reference_no VARCHAR(80) NOT NULL,
   received_by VARCHAR(80) NOT NULL,
