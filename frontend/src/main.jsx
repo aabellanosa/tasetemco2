@@ -103,6 +103,32 @@ function formatTime(value) {
   }).format(value);
 }
 
+function buildTellerBatchSummary(rows) {
+  return rows.reduce(
+    (summary, row) => {
+      const cashIn = Number(row.cashReceived || 0);
+      const cashOut = Number(row.cashOut || 0);
+
+      return {
+        cashIn: summary.cashIn + cashIn,
+        cashOut: summary.cashOut + cashOut,
+        transactionCount: summary.transactionCount + 1,
+        initialPaymentCount: summary.initialPaymentCount + (row.batchType === "Initial Payment" ? 1 : 0),
+        savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
+        savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0)
+      };
+    },
+    {
+      cashIn: 0,
+      cashOut: 0,
+      transactionCount: 0,
+      initialPaymentCount: 0,
+      savingsDepositCount: 0,
+      savingsWithdrawalCount: 0
+    }
+  );
+}
+
 function Login({ onLogin }) {
   const [username, setUsername] = useState("membership");
   const [password, setPassword] = useState("p@55@LL");
@@ -268,6 +294,33 @@ function Members({ user }) {
   const activeMembers = members.filter((member) => member.status === "Active");
   const canUseTellerWorkspace = canCreateInitialPayment || canCreateSavingsDeposit || canCreateSavingsWithdrawal;
   const selectedTellerMember = activeMembers.find((member) => member.id === selectedTellerMemberId);
+  const tellerBatchRows = [
+    ...initialPayments
+      .filter((payment) => payment.status === "Teller Batch")
+      .map((payment) => ({ ...payment, batchType: "Initial Payment", cashOut: 0 })),
+    ...savingsDeposits
+      .filter((deposit) => deposit.status === "Teller Batch")
+      .map((deposit) => ({
+        ...deposit,
+        batchType: "Savings Deposit",
+        cashOut: 0,
+        shareCapitalAmount: 0,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: deposit.amount
+      })),
+    ...savingsWithdrawals
+      .filter((withdrawal) => withdrawal.status === "Teller Batch")
+      .map((withdrawal) => ({
+        ...withdrawal,
+        batchType: "Savings Withdrawal",
+        cashReceived: 0,
+        cashOut: withdrawal.amount,
+        shareCapitalAmount: 0,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: -withdrawal.amount
+      }))
+  ];
+  const tellerBatchSummary = buildTellerBatchSummary(tellerBatchRows);
 
   const loadMembersWorkflow = useCallback(
     async ({ silent = false } = {}) => {
@@ -763,6 +816,80 @@ function Members({ user }) {
               </HStack>
             </Box>
           ) : null}
+
+          <Box mt={6} borderTopWidth="1px" pt={5}>
+            <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+              <Box>
+                <Heading size="sm">Teller Batch Cash Position</Heading>
+                <Text color="gray.600" mt={1}>
+                  Unposted transactions waiting for Bookkeeper posting.
+                </Text>
+              </Box>
+              <Badge colorScheme={tellerBatchSummary.transactionCount ? "blue" : "gray"} alignSelf="flex-start">
+                {tellerBatchSummary.transactionCount} unposted
+              </Badge>
+            </Flex>
+            <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={4}>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">
+                  Cash In
+                </Text>
+                <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn)}</Text>
+              </Box>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">
+                  Cash Out
+                </Text>
+                <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashOut)}</Text>
+              </Box>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">
+                  Net Cash
+                </Text>
+                <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}</Text>
+              </Box>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">
+                  Mix
+                </Text>
+                <Text fontWeight="bold">
+                  {tellerBatchSummary.initialPaymentCount} / {tellerBatchSummary.savingsDepositCount} /{" "}
+                  {tellerBatchSummary.savingsWithdrawalCount}
+                </Text>
+              </Box>
+            </Grid>
+            <TableContainer>
+              <Table size="sm">
+                <Thead>
+                  <Tr>
+                    <Th>No.</Th>
+                    <Th>Type</Th>
+                    <Th>Member</Th>
+                    <Th isNumeric>Cash In</Th>
+                    <Th isNumeric>Cash Out</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {tellerBatchRows.slice(0, 5).map((row) => (
+                    <Tr key={`${row.batchType}-${row.id}`}>
+                      <Td>{row.id}</Td>
+                      <Td>{row.batchType}</Td>
+                      <Td>{row.memberName}</Td>
+                      <Td isNumeric>{row.cashReceived ? formatMoney(row.cashReceived) : ""}</Td>
+                      <Td isNumeric>{row.cashOut ? formatMoney(row.cashOut) : ""}</Td>
+                    </Tr>
+                  ))}
+                  {tellerBatchRows.length === 0 ? (
+                    <Tr>
+                      <Td colSpan={5} color="gray.500">
+                        No unposted teller transactions.
+                      </Td>
+                    </Tr>
+                  ) : null}
+                </Tbody>
+              </Table>
+            </TableContainer>
+          </Box>
         </Box>
       ) : null}
 
@@ -1047,6 +1174,7 @@ function Ledger({ user }) {
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
+  const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
 
   async function loadLedger() {
     setIsRefreshing(true);
@@ -1109,6 +1237,32 @@ function Ledger({ user }) {
         <Heading size="md" mb={4}>
           Unposted Teller Batch
         </Heading>
+        <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={4}>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Cash In
+            </Text>
+            <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn)}</Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Cash Out
+            </Text>
+            <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashOut)}</Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Net Cash
+            </Text>
+            <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}</Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Transactions
+            </Text>
+            <Text fontWeight="bold">{tellerBatchSummary.transactionCount}</Text>
+          </Box>
+        </Grid>
         <TableContainer>
           <Table size="sm">
             <Thead>
@@ -1116,7 +1270,8 @@ function Ledger({ user }) {
                 <Th>Payment No.</Th>
                 <Th>Type</Th>
                 <Th>Member</Th>
-                <Th isNumeric>Cash</Th>
+                <Th isNumeric>Cash In</Th>
+                <Th isNumeric>Cash Out</Th>
                 <Th isNumeric>Share Capital</Th>
                 <Th isNumeric>Fee</Th>
                 <Th isNumeric>Savings</Th>
@@ -1130,7 +1285,8 @@ function Ledger({ user }) {
                   <Td>{payment.id}</Td>
                   <Td>{payment.batchType}</Td>
                   <Td>{payment.memberName}</Td>
-                  <Td isNumeric>{formatMoney(payment.cashReceived)}</Td>
+                  <Td isNumeric>{payment.cashReceived ? formatMoney(payment.cashReceived) : ""}</Td>
+                  <Td isNumeric>{payment.cashOut ? formatMoney(payment.cashOut) : ""}</Td>
                   <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
                   <Td isNumeric>{formatMoney(payment.membershipFeeAmount)}</Td>
                   <Td isNumeric>{formatMoney(payment.savingsDepositAmount)}</Td>
@@ -1148,7 +1304,7 @@ function Ledger({ user }) {
               ))}
               {tellerBatch.length === 0 ? (
                 <Tr>
-                  <Td colSpan={canPostTellerBatch ? 9 : 8} color="gray.500">
+                  <Td colSpan={canPostTellerBatch ? 10 : 9} color="gray.500">
                     No unposted teller batch payments.
                   </Td>
                 </Tr>

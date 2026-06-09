@@ -1704,7 +1704,8 @@ app.get("/api/ledger", async (request, response) => {
         .map((withdrawal) => ({
           ...withdrawal,
           batchType: "Savings Withdrawal",
-          cashReceived: withdrawal.amount,
+          cashReceived: 0,
+          cashOut: withdrawal.amount,
           shareCapitalAmount: 0,
           membershipFeeAmount: 0,
           savingsDepositAmount: -withdrawal.amount
