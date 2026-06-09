@@ -81,21 +81,23 @@ The password is stored in SQLite as a salted hash, not plain text.
 
 The React/MySQL spike uses action-level permissions, not just screen access. For membership workflows:
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment |
-| --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No |
-| General Manager | Yes | Yes | No | No | No |
-| Accountant / Bookkeeper | No | No | No | No | No |
-| Loan Officer | Yes | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes |
-| Membership Officer | Yes | Yes | Yes | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No |
-| Board / Read-Only Executive | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | View Ledger | Post Teller Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No | Yes | No |
+| General Manager | Yes | Yes | No | No | No | Yes | No |
+| Accountant / Bookkeeper | No | No | No | No | No | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes | No | No |
+| Membership Officer | Yes | Yes | Yes | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | Yes | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No |
 
 The Members workflow auto-refreshes every 5 seconds for demo testing across browser profiles. Users can also click Refresh to pull the latest member applications, active members, and initial payment history.
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
+
+Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 ## Workflow UI
 
@@ -151,6 +153,8 @@ Example server directory:
 - `GET /api/products`
 - `GET /api/loans`
 - `GET /api/transactions`
+- `GET /api/ledger`
+- `POST /api/ledger/teller-batches/:paymentId/post`
 - `GET /api/ledger`
 - `GET /api/reports`
 - `GET /api/users`
