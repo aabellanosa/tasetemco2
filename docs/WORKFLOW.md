@@ -210,6 +210,8 @@ Teller/Cashier can record savings withdrawals within available savings. Bookkeep
 
 The Teller/Cashier UI uses a member-first transaction workspace: select the member, review balances, choose the transaction type, then complete only the selected form.
 
+Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and transaction type mix.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
