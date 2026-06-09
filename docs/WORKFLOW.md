@@ -202,6 +202,8 @@ Membership applications capture `Required Initial Share Capital` as the expected
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity should use Savings Deposit or Savings Withdrawal, and later share capital additions should use a separate share capital contribution workflow.
 
+Cash-in OR/reference numbers are unique across initial member payments and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
+
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
@@ -254,11 +256,12 @@ Sample accounting effect:
 
 1. Teller records initial share capital, membership fee, and savings.
 2. System validates that the member has no previous initial member payment.
-3. Transaction status is Teller Batch.
-4. Accountant / Bookkeeper reviews the batch in General Ledger.
-5. Bookkeeper posts the transaction.
-6. Transaction status becomes Posted.
-7. Journal entry becomes available for ledger-driven reports.
+3. System validates that the OR/reference number has not been used for another cash-in transaction.
+4. Transaction status is Teller Batch.
+5. Accountant / Bookkeeper reviews the batch in General Ledger.
+6. Bookkeeper posts the transaction.
+7. Transaction status becomes Posted.
+8. Journal entry becomes available for ledger-driven reports.
 
 Sample accounting effect:
 
@@ -289,10 +292,11 @@ Primary users:
 1. Teller selects member savings account.
 2. Teller encodes deposit amount and reference.
 3. System validates account status.
-4. Transaction is saved in Teller Batch status and receipt is generated.
-5. Member savings balance is updated.
-6. Accountant / Bookkeeper reviews and posts the teller batch.
-7. Journal entry becomes available for ledger-driven reports.
+4. System validates that the OR/reference number has not been used for another cash-in transaction.
+5. Transaction is saved in Teller Batch status and receipt is generated.
+6. Member savings balance is updated.
+7. Accountant / Bookkeeper reviews and posts the teller batch.
+8. Journal entry becomes available for ledger-driven reports.
 
 Sample accounting effect:
 
@@ -305,10 +309,11 @@ Sample accounting effect:
 2. System checks available balance and restrictions.
 3. Teller encodes withdrawal amount.
 4. System prevents withdrawals above available savings.
-5. Transaction is saved in Teller Batch status.
-6. Member savings balance is reduced.
-7. Accountant / Bookkeeper reviews and posts the teller batch.
-8. Journal entry becomes available for ledger-driven reports.
+5. System validates that the withdrawal voucher/reference number has not been used for another withdrawal.
+6. Transaction is saved in Teller Batch status.
+7. Member savings balance is reduced.
+8. Accountant / Bookkeeper reviews and posts the teller batch.
+9. Journal entry becomes available for ledger-driven reports.
 
 Sample accounting effect:
 

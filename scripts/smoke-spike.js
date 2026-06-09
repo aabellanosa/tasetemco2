@@ -299,6 +299,24 @@ async function run() {
       throw new Error("Member statement did not link the posted transaction to its journal entry.");
     }
 
+    const duplicateCashInReference = await fetch(`${baseUrl}/api/savings-deposits`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 500,
+        cashReceived: 500,
+        referenceNo: "OR-SMOKE-001"
+      })
+    });
+
+    if (duplicateCashInReference.status !== 409) {
+      throw new Error("Duplicate cash-in OR/reference number should be rejected.");
+    }
+
     const savingsDeposit = await fetch(`${baseUrl}/api/savings-deposits`, {
       method: "POST",
       headers: {
@@ -412,6 +430,23 @@ async function run() {
 
     if (!savingsWithdrawal.ok || savingsWithdrawalBody.withdrawal.status !== "Teller Batch") {
       throw new Error("Teller savings withdrawal was not recorded in teller batch.");
+    }
+
+    const duplicateWithdrawalReference = await fetch(`${baseUrl}/api/savings-withdrawals`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 100,
+        referenceNo: "WV-SMOKE-001"
+      })
+    });
+
+    if (duplicateWithdrawalReference.status !== 409) {
+      throw new Error("Duplicate withdrawal voucher/reference number should be rejected.");
     }
 
     const membersAfterSavingsWithdrawal = await fetch(`${baseUrl}/api/members`, {

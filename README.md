@@ -99,6 +99,8 @@ Membership applications capture `Required Initial Share Capital` as the expected
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity should use Savings Deposit or Savings Withdrawal, and later share capital additions should use a separate share capital contribution workflow.
 
+Cash-in OR/reference numbers are unique across initial member payments and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
+
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.

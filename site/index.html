@@ -168,6 +168,8 @@
           posts teller batch payments to the general ledger.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
+          Cash-in OR/reference numbers cannot be reused across initial payments and savings
+          deposits, and withdrawal voucher/reference numbers cannot be reused across withdrawals.
           The Members workflow auto-refreshes every 5 seconds during demo testing, with a
           manual Refresh button available when users want the latest state immediately.
         </p>
@@ -189,6 +191,7 @@
               <li>System Administrator approves membership.</li>
               <li>Teller collects initial share capital, membership fee, and savings.</li>
               <li>System blocks duplicate initial member payments for the same member.</li>
+              <li>System blocks reused cash-in OR/reference numbers.</li>
               <li>Transaction remains in teller batch until accounting posting.</li>
             </ol>
           </article>
@@ -200,6 +203,7 @@
               <li>Member statement shows share capital, savings, and posting status.</li>
               <li>Teller chooses one transaction type in the workspace.</li>
               <li>Selected transaction is encoded and validated.</li>
+              <li>System blocks reused OR or voucher reference numbers.</li>
               <li>Receipt is issued.</li>
               <li>Cash in, cash out, net cash, and transaction counts are summarized.</li>
               <li>Transaction stays in teller batch until posting.</li>

@@ -197,6 +197,52 @@ function nextSavingsWithdrawalNumber() {
   return `SW-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
 }
 
+function normalizeReferenceNo(referenceNo) {
+  return String(referenceNo || "").trim().toUpperCase();
+}
+
+function hasCashInReference(referenceNo) {
+  const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
+  return [...initialPayments, ...savingsDeposits].some(
+    (transaction) => normalizeReferenceNo(transaction.referenceNo) === normalizedReferenceNo
+  );
+}
+
+function hasWithdrawalReference(referenceNo) {
+  const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
+  return savingsWithdrawals.some(
+    (transaction) => normalizeReferenceNo(transaction.referenceNo) === normalizedReferenceNo
+  );
+}
+
+async function hasCashInReferenceInDatabase(connection, referenceNo) {
+  const [rows] = await connection.execute(
+    `SELECT reference_no AS referenceNo
+     FROM initial_member_payments
+     WHERE UPPER(reference_no) = UPPER(?)
+     UNION ALL
+     SELECT reference_no AS referenceNo
+     FROM savings_deposits
+     WHERE UPPER(reference_no) = UPPER(?)
+     LIMIT 1`,
+    [referenceNo, referenceNo]
+  );
+
+  return rows.length > 0;
+}
+
+async function hasWithdrawalReferenceInDatabase(connection, referenceNo) {
+  const [rows] = await connection.execute(
+    `SELECT reference_no AS referenceNo
+     FROM savings_withdrawals
+     WHERE UPPER(reference_no) = UPPER(?)
+     LIMIT 1`,
+    [referenceNo]
+  );
+
+  return rows.length > 0;
+}
+
 function nextJournalEntryNumber() {
   const next = journalEntries.length + 1;
   return `JE-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
@@ -588,6 +634,10 @@ async function recordInitialPayment(input, user) {
       return { error: "Initial member payment already exists for this member.", statusCode: 409 };
     }
 
+    if (hasCashInReference(input.referenceNo)) {
+      return { error: "OR/reference number already exists.", statusCode: 409 };
+    }
+
     member.share += input.shareCapitalAmount;
     member.savings += input.savingsDepositAmount;
 
@@ -639,6 +689,11 @@ async function recordInitialPayment(input, user) {
     if (existingPaymentRows.length > 0) {
       await connection.rollback();
       return { error: "Initial member payment already exists for this member.", statusCode: 409 };
+    }
+
+    if (await hasCashInReferenceInDatabase(connection, input.referenceNo)) {
+      await connection.rollback();
+      return { error: "OR/reference number already exists.", statusCode: 409 };
     }
 
     const [countRows] = await connection.execute(
@@ -713,6 +768,10 @@ async function recordSavingsDeposit(input, user) {
       return { error: "Active member was not found.", statusCode: 404 };
     }
 
+    if (hasCashInReference(input.referenceNo)) {
+      return { error: "OR/reference number already exists.", statusCode: 409 };
+    }
+
     member.savings += input.amount;
 
     const deposit = {
@@ -748,6 +807,11 @@ async function recordSavingsDeposit(input, user) {
     if (!member) {
       await connection.rollback();
       return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    if (await hasCashInReferenceInDatabase(connection, input.referenceNo)) {
+      await connection.rollback();
+      return { error: "OR/reference number already exists.", statusCode: 409 };
     }
 
     const [countRows] = await connection.execute(
@@ -812,6 +876,10 @@ async function recordSavingsWithdrawal(input, user) {
       return { error: "Withdrawal amount exceeds available savings.", statusCode: 400 };
     }
 
+    if (hasWithdrawalReference(input.referenceNo)) {
+      return { error: "Withdrawal voucher/reference number already exists.", statusCode: 409 };
+    }
+
     member.savings -= input.amount;
 
     const withdrawal = {
@@ -851,6 +919,11 @@ async function recordSavingsWithdrawal(input, user) {
     if (input.amount > member.savings) {
       await connection.rollback();
       return { error: "Withdrawal amount exceeds available savings.", statusCode: 400 };
+    }
+
+    if (await hasWithdrawalReferenceInDatabase(connection, input.referenceNo)) {
+      await connection.rollback();
+      return { error: "Withdrawal voucher/reference number already exists.", statusCode: 409 };
     }
 
     const [countRows] = await connection.execute(
