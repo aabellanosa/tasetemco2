@@ -208,6 +208,8 @@ Teller/Cashier can record regular savings deposits after onboarding. Bookkeeper 
 
 Teller/Cashier can record savings withdrawals within available savings. Bookkeeper posts those withdrawals to the ledger as debit Savings Deposits Payable and credit Cash on Hand.
 
+The Teller/Cashier UI uses a member-first transaction workspace: select the member, review balances, choose the transaction type, then complete only the selected form.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
