@@ -258,6 +258,27 @@ async function run() {
       throw new Error("Posted journal entry was not returned by the ledger endpoint.");
     }
 
+    const memberStatement = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const memberStatementBody = await memberStatement.json();
+
+    if (!memberStatement.ok || memberStatementBody.member.share !== 5000 || memberStatementBody.member.savings !== 1000) {
+      throw new Error("Member statement did not return the expected member balances.");
+    }
+
+    const statementPayment = memberStatementBody.transactions.find(
+      (transaction) => transaction.id === initialPaymentBody.payment.id
+    );
+
+    if (!statementPayment || statementPayment.status !== "Posted") {
+      throw new Error("Member statement did not show the posted initial payment.");
+    }
+
+    if (statementPayment.journalEntryNo !== postedPaymentBody.entry.id) {
+      throw new Error("Member statement did not link the posted transaction to its journal entry.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

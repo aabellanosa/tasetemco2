@@ -375,6 +375,65 @@ async function listJournalEntries() {
   }));
 }
 
+async function getMemberStatement(memberId) {
+  const db = await getPool();
+
+  if (!db) {
+    const member = members.find((item) => item.id === memberId);
+
+    if (!member) {
+      return { error: "Member was not found.", statusCode: 404 };
+    }
+
+    const transactions = initialPayments
+      .filter((payment) => payment.memberId === member.id)
+      .map((payment) => ({
+        id: payment.id,
+        type: "Initial Payment",
+        referenceNo: payment.referenceNo,
+        shareCapitalAmount: payment.shareCapitalAmount,
+        membershipFeeAmount: payment.membershipFeeAmount,
+        savingsDepositAmount: payment.savingsDepositAmount,
+        cashReceived: payment.cashReceived,
+        status: payment.status,
+        journalEntryNo: payment.postedEntryNo || "",
+        receivedBy: payment.receivedBy
+      }));
+
+    return { member, transactions };
+  }
+
+  const [memberRows] = await db.execute(
+    `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
+            share_capital AS share, savings_balance AS savings, status
+     FROM members
+     WHERE member_no = ?
+     LIMIT 1`,
+    [memberId]
+  );
+  const member = memberRows[0];
+
+  if (!member) {
+    return { error: "Member was not found.", statusCode: 404 };
+  }
+
+  const [transactions] = await db.execute(
+    `SELECT payment_no AS id, 'Initial Payment' AS type, reference_no AS referenceNo,
+            share_capital_amount AS shareCapitalAmount,
+            membership_fee_amount AS membershipFeeAmount,
+            savings_deposit_amount AS savingsDepositAmount,
+            cash_received AS cashReceived, status,
+            COALESCE(posted_entry_no, '') AS journalEntryNo,
+            received_by AS receivedBy, created_at AS createdAt
+     FROM initial_member_payments
+     WHERE member_no = ?
+     ORDER BY created_at DESC, id DESC`,
+    [memberId]
+  );
+
+  return { member, transactions };
+}
+
 async function recordInitialPayment(input, user) {
   const db = await getPool();
 
@@ -755,6 +814,29 @@ app.get("/api/members", async (request, response) => {
   }
 
   response.json(await listMembers());
+});
+
+app.get("/api/members/:memberId/statement", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await getMemberStatement(request.params.memberId);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
 });
 
 app.get("/api/member-applications", async (request, response) => {

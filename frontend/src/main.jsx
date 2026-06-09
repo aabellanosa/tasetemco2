@@ -219,6 +219,7 @@ function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [applications, setApplications] = useState([]);
   const [initialPayments, setInitialPayments] = useState([]);
+  const [statement, setStatement] = useState(null);
   const [form, setForm] = useState({
     fullName: "",
     clusterName: "General Membership",
@@ -366,6 +367,17 @@ function Members({ user }) {
       await loadMembersWorkflow();
     } catch (paymentError) {
       setError(paymentError.message);
+    }
+  }
+
+  async function loadMemberStatement(memberId) {
+    setError("");
+
+    try {
+      const data = await api(`/api/members/${memberId}/statement`);
+      setStatement(data);
+    } catch (statementError) {
+      setError(statementError.message);
     }
   }
 
@@ -576,6 +588,7 @@ function Members({ user }) {
                 <Th isNumeric>Share Capital</Th>
                 <Th isNumeric>Savings</Th>
                 <Th>Status</Th>
+                <Th>Statement</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -589,12 +602,90 @@ function Members({ user }) {
                   <Td>
                     <Badge colorScheme="green">{member.status}</Badge>
                   </Td>
+                  <Td>
+                    <Button size="sm" onClick={() => loadMemberStatement(member.id)}>
+                      View
+                    </Button>
+                  </Td>
                 </Tr>
               ))}
             </Tbody>
           </Table>
         </TableContainer>
       </Box>
+
+      {statement ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+            <Box>
+              <Heading size="md">Member Statement</Heading>
+              <Text color="gray.600" mt={1}>
+                {statement.member.id} - {statement.member.name}
+              </Text>
+            </Box>
+            <Button size="sm" onClick={() => setStatement(null)}>
+              Close
+            </Button>
+          </Flex>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={4} mb={5}>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">
+                Cluster
+              </Text>
+              <Text fontWeight="bold">{statement.member.group}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">
+                Share Capital
+              </Text>
+              <Text fontWeight="bold">{formatMoney(statement.member.share)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">
+                Savings
+              </Text>
+              <Text fontWeight="bold">{formatMoney(statement.member.savings)}</Text>
+            </Box>
+          </Grid>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Transaction</Th>
+                  <Th>Reference</Th>
+                  <Th isNumeric>Share Capital</Th>
+                  <Th isNumeric>Savings</Th>
+                  <Th>Status</Th>
+                  <Th>Journal Entry</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {statement.transactions.map((transaction) => (
+                  <Tr key={transaction.id}>
+                    <Td>{transaction.type}</Td>
+                    <Td>{transaction.referenceNo}</Td>
+                    <Td isNumeric>{formatMoney(transaction.shareCapitalAmount)}</Td>
+                    <Td isNumeric>{formatMoney(transaction.savingsDepositAmount)}</Td>
+                    <Td>
+                      <Badge colorScheme={transaction.status === "Posted" ? "green" : "blue"}>
+                        {transaction.status}
+                      </Badge>
+                    </Td>
+                    <Td>{transaction.journalEntryNo || "Not posted"}</Td>
+                  </Tr>
+                ))}
+                {statement.transactions.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={6} color="gray.500">
+                      No member transactions recorded.
+                    </Td>
+                  </Tr>
+                ) : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
 
       {canViewInitialPayments ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
