@@ -359,6 +359,102 @@ async function run() {
       throw new Error("Member statement did not link the savings deposit to its journal entry.");
     }
 
+    const excessiveWithdrawal = await fetch(`${baseUrl}/api/savings-withdrawals`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 999999,
+        referenceNo: "WV-SMOKE-TOO-MUCH"
+      })
+    });
+
+    if (excessiveWithdrawal.status !== 400) {
+      throw new Error("Savings withdrawal above available balance should be rejected.");
+    }
+
+    const savingsWithdrawal = await fetch(`${baseUrl}/api/savings-withdrawals`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 700,
+        referenceNo: "WV-SMOKE-001"
+      })
+    });
+    const savingsWithdrawalBody = await savingsWithdrawal.json();
+
+    if (!savingsWithdrawal.ok || savingsWithdrawalBody.withdrawal.status !== "Teller Batch") {
+      throw new Error("Teller savings withdrawal was not recorded in teller batch.");
+    }
+
+    const membersAfterSavingsWithdrawal = await fetch(`${baseUrl}/api/members`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const membersAfterSavingsWithdrawalBody = await membersAfterSavingsWithdrawal.json();
+    const memberAfterSavingsWithdrawal = membersAfterSavingsWithdrawalBody.find(
+      (member) => member.id === approvalBody.member.id
+    );
+
+    if (!memberAfterSavingsWithdrawal || memberAfterSavingsWithdrawal.savings !== 1800) {
+      throw new Error("Savings withdrawal did not reduce the member savings balance.");
+    }
+
+    const ledgerBeforeWithdrawalPosting = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerBeforeWithdrawalPostingBody = await ledgerBeforeWithdrawalPosting.json();
+
+    if (
+      !ledgerBeforeWithdrawalPostingBody.tellerBatch.some(
+        (payment) => payment.id === savingsWithdrawalBody.withdrawal.id && payment.batchType === "Savings Withdrawal"
+      )
+    ) {
+      throw new Error("Bookkeeper ledger view should show the unposted savings withdrawal.");
+    }
+
+    const postedSavingsWithdrawal = await fetch(
+      `${baseUrl}/api/ledger/savings-withdrawals/${savingsWithdrawalBody.withdrawal.id}/post`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const postedSavingsWithdrawalBody = await postedSavingsWithdrawal.json();
+
+    if (!postedSavingsWithdrawal.ok || postedSavingsWithdrawalBody.withdrawal.status !== "Posted") {
+      throw new Error("Bookkeeper did not post the savings withdrawal.");
+    }
+
+    const withdrawalDebitTotal = postedSavingsWithdrawalBody.entry.lines.reduce((sum, line) => sum + line.debit, 0);
+    const withdrawalCreditTotal = postedSavingsWithdrawalBody.entry.lines.reduce((sum, line) => sum + line.credit, 0);
+
+    if (withdrawalDebitTotal !== 700 || withdrawalCreditTotal !== 700) {
+      throw new Error("Posted savings withdrawal journal entry should be balanced.");
+    }
+
+    const memberStatementAfterWithdrawal = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const memberStatementAfterWithdrawalBody = await memberStatementAfterWithdrawal.json();
+    const statementWithdrawal = memberStatementAfterWithdrawalBody.transactions.find(
+      (transaction) => transaction.id === savingsWithdrawalBody.withdrawal.id
+    );
+
+    if (!statementWithdrawal || statementWithdrawal.status !== "Posted") {
+      throw new Error("Member statement did not show the posted savings withdrawal.");
+    }
+
+    if (statementWithdrawal.journalEntryNo !== postedSavingsWithdrawalBody.entry.id) {
+      throw new Error("Member statement did not link the savings withdrawal to its journal entry.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

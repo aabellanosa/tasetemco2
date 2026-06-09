@@ -98,6 +98,7 @@ export const rolePermissions = {
     "members:applications:approve",
     "members:initial-payments:view",
     "members:savings-deposits:view",
+    "members:savings-withdrawals:view",
     "ledger:view"
   ],
   "General Manager": [
@@ -105,6 +106,7 @@ export const rolePermissions = {
     "members:applications:view",
     "members:initial-payments:view",
     "members:savings-deposits:view",
+    "members:savings-withdrawals:view",
     "ledger:view"
   ],
   "Accountant / Bookkeeper": ["ledger:view", "ledger:teller-batches:post"],
@@ -115,7 +117,9 @@ export const rolePermissions = {
     "members:initial-payments:view",
     "members:initial-payments:create",
     "members:savings-deposits:view",
-    "members:savings-deposits:create"
+    "members:savings-deposits:create",
+    "members:savings-withdrawals:view",
+    "members:savings-withdrawals:create"
   ],
   "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
   "Auditor / Compliance Officer": [
@@ -123,6 +127,7 @@ export const rolePermissions = {
     "members:applications:view",
     "members:initial-payments:view",
     "members:savings-deposits:view",
+    "members:savings-withdrawals:view",
     "ledger:view"
   ],
   "Board / Read-Only Executive": []
@@ -183,6 +188,8 @@ export const initialPayments = [
 ];
 
 export const savingsDeposits = [];
+
+export const savingsWithdrawals = [];
 
 export const journalEntries = [];
 

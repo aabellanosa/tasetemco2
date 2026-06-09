@@ -13,6 +13,7 @@ import {
   publicUser,
   roles,
   savingsDeposits,
+  savingsWithdrawals,
   users
 } from "./data.js";
 
@@ -191,6 +192,11 @@ function nextSavingsDepositNumber() {
   return `SD-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
 }
 
+function nextSavingsWithdrawalNumber() {
+  const next = savingsWithdrawals.length + 1;
+  return `SW-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
 function nextJournalEntryNumber() {
   const next = journalEntries.length + 1;
   return `JE-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
@@ -238,6 +244,23 @@ function buildSavingsDepositJournalLines(deposit) {
       accountName: "Savings Deposits Payable",
       debit: 0,
       credit: deposit.amount
+    }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
+function buildSavingsWithdrawalJournalLines(withdrawal) {
+  return [
+    {
+      accountCode: "2020",
+      accountName: "Savings Deposits Payable",
+      debit: withdrawal.amount,
+      credit: 0
+    },
+    {
+      accountCode: "1010",
+      accountName: "Cash on Hand",
+      debit: 0,
+      credit: withdrawal.amount
     }
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
@@ -386,6 +409,25 @@ async function listSavingsDeposits() {
   return rows;
 }
 
+async function listSavingsWithdrawals() {
+  const db = await getPool();
+
+  if (!db) {
+    return savingsWithdrawals;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT withdrawal_no AS id, member_no AS memberId, member_name AS memberName,
+            amount, reference_no AS referenceNo, released_by AS releasedBy,
+            status, posted_by AS postedBy, posted_entry_no AS postedEntryNo,
+            created_at AS createdAt
+     FROM savings_withdrawals
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows;
+}
+
 async function listJournalEntries() {
   const db = await getPool();
 
@@ -456,6 +498,22 @@ async function getMemberStatement(memberId) {
             journalEntryNo: deposit.postedEntryNo || "",
             receivedBy: deposit.receivedBy
           }))
+      )
+      .concat(
+        savingsWithdrawals
+          .filter((withdrawal) => withdrawal.memberId === member.id)
+          .map((withdrawal) => ({
+            id: withdrawal.id,
+            type: "Savings Withdrawal",
+            referenceNo: withdrawal.referenceNo,
+            shareCapitalAmount: 0,
+            membershipFeeAmount: 0,
+            savingsDepositAmount: -withdrawal.amount,
+            cashReceived: 0,
+            status: withdrawal.status,
+            journalEntryNo: withdrawal.postedEntryNo || "",
+            receivedBy: withdrawal.releasedBy
+          }))
       );
 
     return { member, transactions };
@@ -501,7 +559,19 @@ async function getMemberStatement(memberId) {
     [memberId]
   );
 
-  return { member, transactions: [...initialPaymentRows, ...savingsDepositRows] };
+  const [savingsWithdrawalRows] = await db.execute(
+    `SELECT withdrawal_no AS id, 'Savings Withdrawal' AS type, reference_no AS referenceNo,
+            0 AS shareCapitalAmount, 0 AS membershipFeeAmount,
+            -amount AS savingsDepositAmount, 0 AS cashReceived,
+            status, COALESCE(posted_entry_no, '') AS journalEntryNo,
+            released_by AS receivedBy, created_at AS createdAt
+     FROM savings_withdrawals
+     WHERE member_no = ?
+     ORDER BY created_at DESC, id DESC`,
+    [memberId]
+  );
+
+  return { member, transactions: [...initialPaymentRows, ...savingsDepositRows, ...savingsWithdrawalRows] };
 }
 
 async function recordInitialPayment(input, user) {
@@ -701,6 +771,108 @@ async function recordSavingsDeposit(input, user) {
       member: {
         ...member,
         savings: member.savings + input.amount
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function recordSavingsWithdrawal(input, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const member = members.find((item) => item.id === input.memberId && item.status === "Active");
+
+    if (!member) {
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    if (input.amount > member.savings) {
+      return { error: "Withdrawal amount exceeds available savings.", statusCode: 400 };
+    }
+
+    member.savings -= input.amount;
+
+    const withdrawal = {
+      id: nextSavingsWithdrawalNumber(),
+      memberId: member.id,
+      memberName: member.name,
+      amount: input.amount,
+      referenceNo: input.referenceNo,
+      releasedBy: user.username,
+      status: "Teller Batch"
+    };
+
+    savingsWithdrawals.unshift(withdrawal);
+    return { withdrawal, member };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [memberRows] = await connection.execute(
+      `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
+              share_capital AS share, savings_balance AS savings, status
+       FROM members
+       WHERE member_no = ? AND status = 'Active'
+       FOR UPDATE`,
+      [input.memberId]
+    );
+    const member = memberRows[0];
+
+    if (!member) {
+      await connection.rollback();
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+
+    if (input.amount > member.savings) {
+      await connection.rollback();
+      return { error: "Withdrawal amount exceeds available savings.", statusCode: 400 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM savings_withdrawals
+       WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+    );
+    const withdrawalNo = `SW-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO savings_withdrawals (
+         withdrawal_no, member_no, member_name, amount, reference_no, released_by, status
+       )
+       VALUES (?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+      [withdrawalNo, member.id, member.name, input.amount, input.referenceNo, user.username]
+    );
+
+    await connection.execute(
+      `UPDATE members
+       SET savings_balance = savings_balance - ?
+       WHERE member_no = ?`,
+      [input.amount, member.id]
+    );
+
+    await connection.commit();
+
+    return {
+      withdrawal: {
+        id: withdrawalNo,
+        memberId: member.id,
+        memberName: member.name,
+        amount: input.amount,
+        referenceNo: input.referenceNo,
+        releasedBy: user.username,
+        status: "Teller Batch"
+      },
+      member: {
+        ...member,
+        savings: member.savings - input.amount
       }
     };
   } catch (error) {
@@ -950,6 +1122,124 @@ async function postSavingsDeposit(depositId, user) {
   }
 }
 
+async function postSavingsWithdrawal(withdrawalId, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const withdrawal = savingsWithdrawals.find((item) => item.id === withdrawalId);
+
+    if (!withdrawal) {
+      return { error: "Savings withdrawal was not found.", statusCode: 404 };
+    }
+
+    if (withdrawal.status !== "Teller Batch") {
+      return { error: "Only teller batch savings withdrawals can be posted.", statusCode: 409 };
+    }
+
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "Savings Withdrawal",
+      sourceNo: withdrawal.id,
+      description: `Savings withdrawal - ${withdrawal.memberName}`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildSavingsWithdrawalJournalLines(withdrawal)
+    };
+
+    withdrawal.status = "Posted";
+    withdrawal.postedBy = user.username;
+    withdrawal.postedEntryNo = entry.id;
+    journalEntries.unshift(entry);
+
+    return { withdrawal, entry };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [withdrawalRows] = await connection.execute(
+      `SELECT withdrawal_no AS id, member_no AS memberId, member_name AS memberName,
+              amount, reference_no AS referenceNo, released_by AS releasedBy, status
+       FROM savings_withdrawals
+       WHERE withdrawal_no = ?
+       FOR UPDATE`,
+      [withdrawalId]
+    );
+    const withdrawal = withdrawalRows[0];
+
+    if (!withdrawal) {
+      await connection.rollback();
+      return { error: "Savings withdrawal was not found.", statusCode: 404 };
+    }
+
+    if (withdrawal.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Only teller batch savings withdrawals can be posted.", statusCode: 409 };
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM journal_entries
+       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+    );
+    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+    await connection.execute(
+      `INSERT INTO journal_entries (
+         entry_no, source_type, source_no, description, posted_by
+       )
+       VALUES (?, 'Savings Withdrawal', ?, ?, ?)`,
+      [entryNo, withdrawal.id, `Savings withdrawal - ${withdrawal.memberName}`, user.username]
+    );
+
+    const lines = buildSavingsWithdrawalJournalLines(withdrawal);
+
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (
+           entry_no, account_code, account_name, debit, credit
+         )
+         VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+
+    await connection.execute(
+      `UPDATE savings_withdrawals
+       SET status = 'Posted', posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE withdrawal_no = ?`,
+      [user.username, entryNo, withdrawal.id]
+    );
+
+    await connection.commit();
+
+    return {
+      withdrawal: {
+        ...withdrawal,
+        status: "Posted",
+        postedBy: user.username,
+        postedEntryNo: entryNo
+      },
+      entry: {
+        id: entryNo,
+        sourceType: "Savings Withdrawal",
+        sourceNo: withdrawal.id,
+        description: `Savings withdrawal - ${withdrawal.memberName}`,
+        postedBy: user.username,
+        postedAt: new Date().toISOString(),
+        lines
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 function validateMemberApplication(body) {
   const fullName = String(body.fullName || "").trim();
   const clusterName = String(body.clusterName || "").trim();
@@ -1060,6 +1350,32 @@ function validateSavingsDeposit(body) {
       memberId,
       amount,
       cashReceived,
+      referenceNo
+    }
+  };
+}
+
+function validateSavingsWithdrawal(body) {
+  const memberId = String(body.memberId || "").trim();
+  const amount = Number(body.amount || 0);
+  const referenceNo = String(body.referenceNo || "").trim();
+
+  if (!memberId) {
+    return { error: "Member is required." };
+  }
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return { error: "Savings withdrawal amount must be a positive whole peso amount." };
+  }
+
+  if (!referenceNo) {
+    return { error: "Withdrawal voucher or reference number is required." };
+  }
+
+  return {
+    value: {
+      memberId,
+      amount,
       referenceNo
     }
   };
@@ -1310,6 +1626,52 @@ app.post("/api/savings-deposits", async (request, response) => {
   response.status(201).json(depositResult);
 });
 
+app.get("/api/savings-withdrawals", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:savings-withdrawals:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listSavingsWithdrawals());
+});
+
+app.post("/api/savings-withdrawals", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:savings-withdrawals:create")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = validateSavingsWithdrawal(request.body);
+
+  if (result.error) {
+    response.status(400).json({ error: result.error });
+    return;
+  }
+
+  const withdrawalResult = await recordSavingsWithdrawal(result.value, user);
+
+  if (withdrawalResult.error) {
+    response.status(withdrawalResult.statusCode).json({ error: withdrawalResult.error });
+    return;
+  }
+
+  response.status(201).json(withdrawalResult);
+});
+
 app.get("/api/ledger", async (request, response) => {
   const user = parseSession(request);
 
@@ -1336,6 +1698,16 @@ app.get("/api/ledger", async (request, response) => {
           shareCapitalAmount: 0,
           membershipFeeAmount: 0,
           savingsDepositAmount: deposit.amount
+        })),
+      ...(await listSavingsWithdrawals())
+        .filter((withdrawal) => withdrawal.status === "Teller Batch")
+        .map((withdrawal) => ({
+          ...withdrawal,
+          batchType: "Savings Withdrawal",
+          cashReceived: withdrawal.amount,
+          shareCapitalAmount: 0,
+          membershipFeeAmount: 0,
+          savingsDepositAmount: -withdrawal.amount
         }))
     ],
     journalEntries: await listJournalEntries()
@@ -1379,6 +1751,29 @@ app.post("/api/ledger/savings-deposits/:depositId/post", async (request, respons
   }
 
   const result = await postSavingsDeposit(request.params.depositId, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/ledger/savings-withdrawals/:withdrawalId/post", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "ledger:teller-batches:post")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await postSavingsWithdrawal(request.params.withdrawalId, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

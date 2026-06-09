@@ -220,6 +220,7 @@ function Members({ user }) {
   const [applications, setApplications] = useState([]);
   const [initialPayments, setInitialPayments] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
+  const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [statement, setStatement] = useState(null);
   const [form, setForm] = useState({
     fullName: "",
@@ -241,6 +242,11 @@ function Members({ user }) {
     cashReceived: 1000,
     referenceNo: ""
   });
+  const [savingsWithdrawalForm, setSavingsWithdrawalForm] = useState({
+    memberId: "",
+    amount: 500,
+    referenceNo: ""
+  });
   const [approvedMemberName, setApprovedMemberName] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -254,6 +260,8 @@ function Members({ user }) {
   const canCreateInitialPayment = user.permissions.includes("members:initial-payments:create");
   const canViewSavingsDeposits = user.permissions.includes("members:savings-deposits:view");
   const canCreateSavingsDeposit = user.permissions.includes("members:savings-deposits:create");
+  const canViewSavingsWithdrawals = user.permissions.includes("members:savings-withdrawals:view");
+  const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
 
@@ -262,16 +270,18 @@ function Members({ user }) {
       setIsRefreshing(true);
 
       try {
-        const [memberRows, applicationRows, paymentRows, savingsRows] = await Promise.all([
+        const [memberRows, applicationRows, paymentRows, savingsRows, withdrawalRows] = await Promise.all([
           api("/api/members"),
           canViewApplications ? api("/api/member-applications") : [],
           canViewInitialPayments ? api("/api/initial-member-payments") : [],
-          canViewSavingsDeposits ? api("/api/savings-deposits") : []
+          canViewSavingsDeposits ? api("/api/savings-deposits") : [],
+          canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : []
         ]);
         setMembers(memberRows);
         setApplications(applicationRows);
         setInitialPayments(paymentRows);
         setSavingsDeposits(savingsRows);
+        setSavingsWithdrawals(withdrawalRows);
         setLastRefreshedAt(new Date());
 
         if (!silent) {
@@ -285,7 +295,7 @@ function Members({ user }) {
         setIsRefreshing(false);
       }
     },
-    [canViewApplications, canViewInitialPayments, canViewSavingsDeposits]
+    [canViewApplications, canViewInitialPayments, canViewSavingsDeposits, canViewSavingsWithdrawals]
   );
 
   useEffect(() => {
@@ -326,6 +336,10 @@ function Members({ user }) {
 
       return next;
     });
+  }
+
+  function updateSavingsWithdrawalForm(field, value) {
+    setSavingsWithdrawalForm((current) => ({ ...current, [field]: value }));
   }
 
   async function submitApplication(event) {
@@ -413,6 +427,28 @@ function Members({ user }) {
       await loadMembersWorkflow();
     } catch (depositError) {
       setError(depositError.message);
+    }
+  }
+
+  async function submitSavingsWithdrawal(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api("/api/savings-withdrawals", {
+        method: "POST",
+        body: JSON.stringify(savingsWithdrawalForm)
+      });
+      setMessage(`${data.withdrawal.id} recorded for ${data.withdrawal.memberName}.`);
+      setSavingsWithdrawalForm({
+        memberId: savingsWithdrawalForm.memberId,
+        amount: 500,
+        referenceNo: ""
+      });
+      await loadMembersWorkflow();
+    } catch (withdrawalError) {
+      setError(withdrawalError.message);
     }
   }
 
@@ -681,6 +717,57 @@ function Members({ user }) {
         </Box>
       ) : null}
 
+      {canCreateSavingsWithdrawal ? (
+        <Box as="form" onSubmit={submitSavingsWithdrawal} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={1}>
+            Record Savings Withdrawal
+          </Heading>
+          <Text color="gray.600" mb={5}>
+            Teller releases member savings within the available balance. Bookkeeper posting creates the ledger entry.
+          </Text>
+          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(2, 1fr)" }} gap={4}>
+            <FormControl isRequired>
+              <FormLabel>Member</FormLabel>
+              <Select
+                placeholder="Select active member"
+                value={savingsWithdrawalForm.memberId}
+                onChange={(event) => updateSavingsWithdrawalForm("memberId", event.target.value)}
+              >
+                {activeMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.id} - {member.name} ({formatMoney(member.savings)} savings)
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Withdrawal amount</FormLabel>
+              <NumberInput
+                min={1}
+                value={savingsWithdrawalForm.amount}
+                onChange={(value) => updateSavingsWithdrawalForm("amount", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Voucher / reference no.</FormLabel>
+              <Input
+                value={savingsWithdrawalForm.referenceNo}
+                onChange={(event) => updateSavingsWithdrawalForm("referenceNo", event.target.value)}
+              />
+            </FormControl>
+          </Grid>
+          <HStack mt={5} spacing={4} align="center">
+            <Button type="submit" colorScheme="green">
+              Record withdrawal
+            </Button>
+            {message ? <Text color="green.600">{message}</Text> : null}
+            {error ? <Text color="red.500">{error}</Text> : null}
+          </HStack>
+        </Box>
+      ) : null}
+
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" mb={4}>
           <Heading size="md">Active Members</Heading>
@@ -886,6 +973,51 @@ function Members({ user }) {
         </Box>
       ) : null}
 
+      {canViewSavingsWithdrawals ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={4}>
+            Savings Withdrawal History
+          </Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Withdrawal No.</Th>
+                  <Th>Member</Th>
+                  <Th isNumeric>Amount</Th>
+                  <Th>Reference</Th>
+                  <Th>Released By</Th>
+                  <Th>Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {savingsWithdrawals.map((withdrawal) => (
+                  <Tr key={withdrawal.id}>
+                    <Td>{withdrawal.id}</Td>
+                    <Td>{withdrawal.memberName}</Td>
+                    <Td isNumeric>{formatMoney(withdrawal.amount)}</Td>
+                    <Td>{withdrawal.referenceNo}</Td>
+                    <Td>{withdrawal.releasedBy}</Td>
+                    <Td>
+                      <Badge colorScheme={withdrawal.status === "Posted" ? "green" : "blue"}>
+                        {withdrawal.status}
+                      </Badge>
+                    </Td>
+                  </Tr>
+                ))}
+                {savingsWithdrawals.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={6} color="gray.500">
+                      No savings withdrawals recorded.
+                    </Td>
+                  </Tr>
+                ) : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+
       <Modal isOpen={approvalNotice.isOpen} onClose={approvalNotice.onClose} isCentered>
         <ModalOverlay />
         <ModalContent>
@@ -945,6 +1077,8 @@ function Ledger({ user }) {
       const path =
         payment.batchType === "Savings Deposit"
           ? `/api/ledger/savings-deposits/${payment.id}/post`
+          : payment.batchType === "Savings Withdrawal"
+            ? `/api/ledger/savings-withdrawals/${payment.id}/post`
           : `/api/ledger/teller-batches/${payment.id}/post`;
       const data = await api(path, {
         method: "POST"
