@@ -184,17 +184,17 @@ Restrictions:
 
 The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Savings Deposit | View Ledger | Post Teller Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | No | Yes | No |
-| General Manager | Yes | Yes | No | No | No | No | Yes | No |
-| Accountant / Bookkeeper | No | No | No | No | No | No | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | Yes | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | Yes | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Post Teller Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No | No | No | Yes | No |
+| General Manager | Yes | Yes | No | No | No | No | No | Yes | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | No | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | No | No |
+| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | Yes | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No |
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
@@ -205,6 +205,8 @@ Bookkeeper posts Teller Batch payments to the general ledger. The current slice 
 Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
 
 Teller/Cashier can record regular savings deposits after onboarding. Bookkeeper posts those deposits to the ledger as debit Cash on Hand and credit Savings Deposits Payable.
+
+Teller/Cashier can record savings withdrawals within available savings. Bookkeeper posts those withdrawals to the ledger as debit Savings Deposits Payable and credit Cash on Hand.
 
 ## 4. Core Workflow
 
@@ -262,7 +264,7 @@ Sample accounting effect:
 1. Authorized staff opens the active member list.
 2. User selects a member statement.
 3. System shows current share capital and savings balances.
-4. System lists member-level initial payment and savings deposit transactions.
+4. System lists member-level initial payment, savings deposit, and savings withdrawal transactions.
 5. Transaction status shows whether each item is still in Teller Batch or already Posted.
 6. Posted transactions show the linked journal entry number for accounting traceability.
 
@@ -294,9 +296,11 @@ Sample accounting effect:
 1. Teller selects member account.
 2. System checks available balance and restrictions.
 3. Teller encodes withdrawal amount.
-4. Approval is required if amount exceeds threshold.
-5. Transaction is posted after approval.
+4. System prevents withdrawals above available savings.
+5. Transaction is saved in Teller Batch status.
 6. Member savings balance is reduced.
+7. Accountant / Bookkeeper reviews and posts the teller batch.
+8. Journal entry becomes available for ledger-driven reports.
 
 Sample accounting effect:
 
