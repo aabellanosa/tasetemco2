@@ -97,6 +97,8 @@ The Members workflow auto-refreshes every 5 seconds for demo testing across brow
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
+Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity should use Savings Deposit or Savings Withdrawal, and later share capital additions should use a separate share capital contribution workflow.
+
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 Member statements show each member's share capital balance, savings balance, initial payment activity, posting status, and linked journal entry number once posted.
@@ -107,7 +109,7 @@ Teller/Cashier can record savings withdrawals within available savings. Bookkeep
 
 The Teller/Cashier UI now uses a member-first transaction workspace: select the member, review balances, choose the transaction type, then complete only the selected form.
 
-Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and transaction type mix.
+Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, savings deposits, and savings withdrawals.
 
 ## Workflow UI
 
