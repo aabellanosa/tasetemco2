@@ -1992,6 +1992,67 @@ async function postSavingsWithdrawal(withdrawalId, user) {
   }
 }
 
+async function postTellerBatchRow(row, user) {
+  if (row.batchType === "Savings Deposit") {
+    return postSavingsDeposit(row.id, user);
+  }
+
+  if (row.batchType === "Share Capital Contribution") {
+    return postShareCapitalContribution(row.id, user);
+  }
+
+  if (row.batchType === "Savings Withdrawal") {
+    return postSavingsWithdrawal(row.id, user);
+  }
+
+  return postInitialPayment(row.id, user);
+}
+
+async function postReviewedTellerBatch(batchId, user) {
+  const batchResult = await ensureTellerBatchReviewedForPosting(batchId);
+
+  if (batchResult.error) {
+    return batchResult;
+  }
+
+  const rows = await listTellerBatchRows(batchId);
+
+  if (rows.length === 0) {
+    return {
+      batch: batchResult.batch,
+      postedCount: 0,
+      entries: [],
+      results: [],
+      message: "All transactions in this batch are already posted."
+    };
+  }
+
+  const results = [];
+
+  for (const row of rows) {
+    const result = await postTellerBatchRow(row, user);
+
+    if (result.error) {
+      return result;
+    }
+
+    const entry = result.entry;
+    results.push({
+      id: row.id,
+      batchType: row.batchType,
+      memberName: row.memberName,
+      entry
+    });
+  }
+
+  return {
+    batch: batchResult.batch,
+    postedCount: results.length,
+    entries: results.map((result) => result.entry),
+    results
+  };
+}
+
 async function submitTellerCashCount(input, user) {
   const batch = await getCurrentTellerBatch(user);
   const tellerBatchRows = await listTellerBatchRows(batch.id);
@@ -2898,6 +2959,29 @@ app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response)
   }
 
   const result = await postInitialPayment(request.params.paymentId, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/ledger/teller-batches/:batchId/post-reviewed", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "ledger:teller-batches:post")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await postReviewedTellerBatch(request.params.batchId, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

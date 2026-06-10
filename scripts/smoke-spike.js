@@ -257,6 +257,18 @@ async function run() {
       throw new Error("Bookkeeper should not post teller transactions before batch review.");
     }
 
+    const earlyPostedBatch = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${ledgerBeforePostingBody.activeBatch.id}/post-reviewed`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+
+    if (earlyPostedBatch.status !== 409) {
+      throw new Error("Bookkeeper should not post a teller batch before review.");
+    }
+
     const memberStatement = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
       headers: { Cookie: tellerCookie }
     });
@@ -381,6 +393,8 @@ async function run() {
       throw new Error("Bookkeeper ledger view should show the submitted teller batch.");
     }
 
+    const firstBatchTransactionCount = ledgerAfterCashCountBody.tellerBatch.length;
+
     const reviewedBatch = await fetch(
       `${baseUrl}/api/teller-batches/${ledgerAfterCashCountBody.activeBatch.id}/review`,
       {
@@ -394,21 +408,29 @@ async function run() {
       throw new Error("Bookkeeper should be able to mark a submitted teller batch as reviewed.");
     }
 
-    const postedSavingsDeposit = await fetch(
-      `${baseUrl}/api/ledger/savings-deposits/${savingsDepositBody.deposit.id}/post`,
+    const postedFirstBatch = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${reviewedBatchBody.batch.id}/post-reviewed`,
       {
         method: "POST",
         headers: { Cookie: bookkeeperCookie }
       }
     );
-    const postedSavingsDepositBody = await postedSavingsDeposit.json();
+    const postedFirstBatchBody = await postedFirstBatch.json();
 
-    if (!postedSavingsDeposit.ok || postedSavingsDepositBody.deposit.status !== "Posted") {
-      throw new Error("Bookkeeper did not post the savings deposit.");
+    if (!postedFirstBatch.ok || postedFirstBatchBody.postedCount !== firstBatchTransactionCount) {
+      throw new Error("Bookkeeper did not post all reviewed first-batch transactions.");
     }
 
-    const savingsDebitTotal = postedSavingsDepositBody.entry.lines.reduce((sum, line) => sum + line.debit, 0);
-    const savingsCreditTotal = postedSavingsDepositBody.entry.lines.reduce((sum, line) => sum + line.credit, 0);
+    const postedSavingsDepositResult = postedFirstBatchBody.results.find(
+      (result) => result.id === savingsDepositBody.deposit.id && result.batchType === "Savings Deposit"
+    );
+
+    if (!postedSavingsDepositResult) {
+      throw new Error("Batch posting result did not include the savings deposit.");
+    }
+
+    const savingsDebitTotal = postedSavingsDepositResult.entry.lines.reduce((sum, line) => sum + line.debit, 0);
+    const savingsCreditTotal = postedSavingsDepositResult.entry.lines.reduce((sum, line) => sum + line.credit, 0);
 
     if (savingsDebitTotal !== 1500 || savingsCreditTotal !== 1500) {
       throw new Error("Posted savings deposit journal entry should be balanced.");
@@ -426,7 +448,7 @@ async function run() {
       throw new Error("Member statement did not show the posted savings deposit.");
     }
 
-    if (statementDeposit.journalEntryNo !== postedSavingsDepositBody.entry.id) {
+    if (statementDeposit.journalEntryNo !== postedSavingsDepositResult.entry.id) {
       throw new Error("Member statement did not link the savings deposit to its journal entry.");
     }
 
@@ -435,24 +457,8 @@ async function run() {
     });
     const ledgerBeforeBatchCloseBody = await ledgerBeforeBatchClose.json();
 
-    for (const batchPayment of ledgerBeforeBatchCloseBody.tellerBatch) {
-      const postPath =
-        batchPayment.batchType === "Savings Deposit"
-          ? `/api/ledger/savings-deposits/${batchPayment.id}/post`
-          : batchPayment.batchType === "Share Capital Contribution"
-            ? `/api/ledger/share-capital-contributions/${batchPayment.id}/post`
-            : batchPayment.batchType === "Savings Withdrawal"
-              ? `/api/ledger/savings-withdrawals/${batchPayment.id}/post`
-              : `/api/ledger/teller-batches/${batchPayment.id}/post`;
-
-      const postedBatchPayment = await fetch(`${baseUrl}${postPath}`, {
-        method: "POST",
-        headers: { Cookie: bookkeeperCookie }
-      });
-
-      if (!postedBatchPayment.ok) {
-        throw new Error("Bookkeeper should post all reviewed batch transactions before closing.");
-      }
+    if (ledgerBeforeBatchCloseBody.tellerBatch.length !== 0) {
+      throw new Error("Reviewed first batch should have no unposted rows after batch posting.");
     }
 
     const closedBatch = await fetch(`${baseUrl}/api/teller-batches/${reviewedBatchBody.batch.id}/close`, {
@@ -658,27 +664,34 @@ async function run() {
       throw new Error("Bookkeeper should review the second teller batch before posting.");
     }
 
-    const postedShareCapitalContribution = await fetch(
-      `${baseUrl}/api/ledger/share-capital-contributions/${shareCapitalContributionBody.contribution.id}/post`,
+    const postedSecondBatch = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${secondReviewedBatchBody.batch.id}/post-reviewed`,
       {
         method: "POST",
         headers: { Cookie: bookkeeperCookie }
       }
     );
-    const postedShareCapitalContributionBody = await postedShareCapitalContribution.json();
+    const postedSecondBatchBody = await postedSecondBatch.json();
 
-    if (
-      !postedShareCapitalContribution.ok ||
-      postedShareCapitalContributionBody.contribution.status !== "Posted"
-    ) {
-      throw new Error("Bookkeeper did not post the share capital contribution.");
+    if (!postedSecondBatch.ok || postedSecondBatchBody.postedCount !== 2) {
+      throw new Error("Bookkeeper did not post all reviewed second-batch transactions.");
     }
 
-    const shareCapitalDebitTotal = postedShareCapitalContributionBody.entry.lines.reduce(
+    const postedShareCapitalContributionResult = postedSecondBatchBody.results.find(
+      (result) =>
+        result.id === shareCapitalContributionBody.contribution.id &&
+        result.batchType === "Share Capital Contribution"
+    );
+
+    if (!postedShareCapitalContributionResult) {
+      throw new Error("Batch posting result did not include the share capital contribution.");
+    }
+
+    const shareCapitalDebitTotal = postedShareCapitalContributionResult.entry.lines.reduce(
       (sum, line) => sum + line.debit,
       0
     );
-    const shareCapitalCreditTotal = postedShareCapitalContributionBody.entry.lines.reduce(
+    const shareCapitalCreditTotal = postedShareCapitalContributionResult.entry.lines.reduce(
       (sum, line) => sum + line.credit,
       0
     );
@@ -702,25 +715,20 @@ async function run() {
       throw new Error("Member statement did not show the posted share capital contribution.");
     }
 
-    if (statementContribution.journalEntryNo !== postedShareCapitalContributionBody.entry.id) {
+    if (statementContribution.journalEntryNo !== postedShareCapitalContributionResult.entry.id) {
       throw new Error("Member statement did not link the share capital contribution to its journal entry.");
     }
 
-    const postedSavingsWithdrawal = await fetch(
-      `${baseUrl}/api/ledger/savings-withdrawals/${savingsWithdrawalBody.withdrawal.id}/post`,
-      {
-        method: "POST",
-        headers: { Cookie: bookkeeperCookie }
-      }
+    const postedSavingsWithdrawalResult = postedSecondBatchBody.results.find(
+      (result) => result.id === savingsWithdrawalBody.withdrawal.id && result.batchType === "Savings Withdrawal"
     );
-    const postedSavingsWithdrawalBody = await postedSavingsWithdrawal.json();
 
-    if (!postedSavingsWithdrawal.ok || postedSavingsWithdrawalBody.withdrawal.status !== "Posted") {
-      throw new Error("Bookkeeper did not post the savings withdrawal.");
+    if (!postedSavingsWithdrawalResult) {
+      throw new Error("Batch posting result did not include the savings withdrawal.");
     }
 
-    const withdrawalDebitTotal = postedSavingsWithdrawalBody.entry.lines.reduce((sum, line) => sum + line.debit, 0);
-    const withdrawalCreditTotal = postedSavingsWithdrawalBody.entry.lines.reduce((sum, line) => sum + line.credit, 0);
+    const withdrawalDebitTotal = postedSavingsWithdrawalResult.entry.lines.reduce((sum, line) => sum + line.debit, 0);
+    const withdrawalCreditTotal = postedSavingsWithdrawalResult.entry.lines.reduce((sum, line) => sum + line.credit, 0);
 
     if (withdrawalDebitTotal !== 700 || withdrawalCreditTotal !== 700) {
       throw new Error("Posted savings withdrawal journal entry should be balanced.");
@@ -738,7 +746,7 @@ async function run() {
       throw new Error("Member statement did not show the posted savings withdrawal.");
     }
 
-    if (statementWithdrawal.journalEntryNo !== postedSavingsWithdrawalBody.entry.id) {
+    if (statementWithdrawal.journalEntryNo !== postedSavingsWithdrawalResult.entry.id) {
       throw new Error("Member statement did not link the savings withdrawal to its journal entry.");
     }
 

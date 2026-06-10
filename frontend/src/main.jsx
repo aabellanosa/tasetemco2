@@ -1466,23 +1466,23 @@ function Ledger({ user }) {
     loadLedger();
   }, []);
 
-  async function postPayment(payment) {
+  async function postReviewedBatch() {
+    if (!activeBatch) {
+      return;
+    }
+
     setError("");
     setMessage("");
 
     try {
-      const path =
-        payment.batchType === "Savings Deposit"
-          ? `/api/ledger/savings-deposits/${payment.id}/post`
-          : payment.batchType === "Share Capital Contribution"
-            ? `/api/ledger/share-capital-contributions/${payment.id}/post`
-          : payment.batchType === "Savings Withdrawal"
-            ? `/api/ledger/savings-withdrawals/${payment.id}/post`
-            : `/api/ledger/teller-batches/${payment.id}/post`;
-      const data = await api(path, {
+      const data = await api(`/api/ledger/teller-batches/${activeBatch.id}/post-reviewed`, {
         method: "POST"
       });
-      setMessage(`${data.entry.id} posted for ${payment.memberName}.`);
+      setMessage(
+        data.postedCount > 0
+          ? `${data.postedCount} teller batch transaction${data.postedCount === 1 ? "" : "s"} posted.`
+          : data.message
+      );
       await loadLedger();
     } catch (postError) {
       setError(postError.message);
@@ -1566,8 +1566,18 @@ function Ledger({ user }) {
                 Mark reviewed
               </Button>
             ) : null}
+            {canPostTellerBatch && activeBatch?.status === "Reviewed" ? (
+              <Button
+                size="sm"
+                colorScheme="green"
+                onClick={postReviewedBatch}
+                isDisabled={tellerBatch.length === 0}
+              >
+                Post reviewed batch
+              </Button>
+            ) : null}
             {canCloseTellerBatch && activeBatch?.status === "Reviewed" ? (
-              <Button size="sm" colorScheme="green" onClick={closeBatch}>
+              <Button size="sm" colorScheme="green" onClick={closeBatch} isDisabled={tellerBatch.length > 0}>
                 Close and open next
               </Button>
             ) : null}
@@ -1602,7 +1612,7 @@ function Ledger({ user }) {
           </Box>
         </Grid>
         <Text mt={3} color="gray.600" fontSize="sm">
-          Posting is available after Bookkeeper review. A variance is shown for attention but does not block posting yet.
+          Post reviewed batch creates the accounting entries for all unposted rows in the reviewed batch. A variance is shown for attention but does not block posting yet.
         </Text>
       </Box>
 
@@ -1649,7 +1659,6 @@ function Ledger({ user }) {
                 <Th isNumeric>Fee</Th>
                 <Th isNumeric>Savings</Th>
                 <Th>Status</Th>
-                {canPostTellerBatch ? <Th>Action</Th> : null}
               </Tr>
             </Thead>
             <Tbody>
@@ -1666,23 +1675,11 @@ function Ledger({ user }) {
                   <Td>
                     <Badge colorScheme="blue">{payment.status}</Badge>
                   </Td>
-                  {canPostTellerBatch ? (
-                    <Td>
-                      <Button
-                        size="sm"
-                        colorScheme="green"
-                        isDisabled={activeBatch?.status !== "Reviewed"}
-                        onClick={() => postPayment(payment)}
-                      >
-                        Post
-                      </Button>
-                    </Td>
-                  ) : null}
                 </Tr>
               ))}
               {tellerBatch.length === 0 ? (
                 <Tr>
-                  <Td colSpan={canPostTellerBatch ? 10 : 9} color="gray.500">
+                  <Td colSpan={9} color="gray.500">
                     No unposted teller batch payments.
                   </Td>
                 </Tr>

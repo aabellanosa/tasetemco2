@@ -117,7 +117,7 @@ Teller and Bookkeeper screens show unposted teller batch cash position: cash in,
 
 Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
-Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. Cash variance is shown as a warning for discussion and review, but it does not block posting yet.
+Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning for discussion and review, but it does not block posting yet.
 
 ## Workflow UI
 
@@ -186,6 +186,7 @@ Example server directory:
 - `GET /api/transactions`
 - `GET /api/ledger`
 - `POST /api/ledger/teller-batches/:paymentId/post`
+- `POST /api/ledger/teller-batches/:batchId/post-reviewed`
 - `POST /api/ledger/share-capital-contributions/:contributionId/post`
 - `POST /api/ledger/savings-deposits/:depositId/post`
 - `POST /api/ledger/savings-withdrawals/:withdrawalId/post`
