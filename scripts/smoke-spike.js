@@ -669,7 +669,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        actualCash: secondExpectedCashCount
+        actualCash: secondExpectedCashCount - 10
       })
     });
     const secondTellerCashCountBody = await secondTellerCashCount.json();
@@ -677,22 +677,44 @@ async function run() {
     if (
       !secondTellerCashCount.ok ||
       secondTellerCashCountBody.batch.status !== "Submitted" ||
-      secondTellerCashCountBody.cashCount.variance !== 0
+      secondTellerCashCountBody.cashCount.variance !== -10
     ) {
       throw new Error("Teller should submit the second active batch before posting.");
     }
 
-    const secondReviewedBatch = await fetch(
+    const secondReviewWithoutNote = await fetch(
       `${baseUrl}/api/teller-batches/${secondTellerCashCountBody.batch.id}/review`,
       {
         method: "POST",
         headers: { Cookie: bookkeeperCookie }
       }
     );
+
+    if (secondReviewWithoutNote.status !== 400) {
+      throw new Error("Bookkeeper should not review a variance batch without a variance note.");
+    }
+
+    const secondReviewedBatch = await fetch(
+      `${baseUrl}/api/teller-batches/${secondTellerCashCountBody.batch.id}/review`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: bookkeeperCookie
+        },
+        body: JSON.stringify({
+          varianceNote: "Cash count short by PHP 10. Teller will recheck drawer after batch review."
+        })
+      }
+    );
     const secondReviewedBatchBody = await secondReviewedBatch.json();
 
     if (!secondReviewedBatch.ok || secondReviewedBatchBody.batch.status !== "Reviewed") {
       throw new Error("Bookkeeper should review the second teller batch before posting.");
+    }
+
+    if (!secondReviewedBatchBody.batch.varianceNote) {
+      throw new Error("Reviewed variance batch should store the Bookkeeper variance note.");
     }
 
     const postedSecondBatch = await fetch(
@@ -720,7 +742,8 @@ async function run() {
       !secondBatchHistoryRow ||
       secondBatchHistoryRow.status !== "Reviewed" ||
       secondBatchHistoryRow.postedEntryCount !== 2 ||
-      secondBatchHistoryRow.unpostedTransactionCount !== 0
+      secondBatchHistoryRow.unpostedTransactionCount !== 0 ||
+      !secondBatchHistoryRow.varianceNote
     ) {
       throw new Error("Ledger should include reviewed second batch posting evidence.");
     }
@@ -733,6 +756,7 @@ async function run() {
     if (
       !secondBatchDetails.ok ||
       secondBatchDetailsBody.batch.status !== "Reviewed" ||
+      !secondBatchDetailsBody.batch.varianceNote ||
       secondBatchDetailsBody.transactions.length !== 2 ||
       secondBatchDetailsBody.journalEntries.length !== 2
     ) {

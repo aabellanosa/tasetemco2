@@ -231,7 +231,10 @@ export const tellerBatches = [
     expectedCash: 0,
     actualCash: 0,
     variance: 0,
-    transactionCount: 0
+    transactionCount: 0,
+    varianceNote: "",
+    varianceNotedBy: "",
+    varianceNotedAt: ""
   }
 ];
 

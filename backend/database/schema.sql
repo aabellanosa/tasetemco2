@@ -136,7 +136,10 @@ CREATE TABLE IF NOT EXISTS teller_batches (
   expected_cash INT NOT NULL DEFAULT 0,
   actual_cash INT NOT NULL DEFAULT 0,
   variance INT NOT NULL DEFAULT 0,
-  transaction_count INT NOT NULL DEFAULT 0
+  transaction_count INT NOT NULL DEFAULT 0,
+  variance_note TEXT,
+  variance_noted_by VARCHAR(80),
+  variance_noted_at TIMESTAMP NULL
 );
 
 CREATE TABLE IF NOT EXISTS teller_cash_counts (

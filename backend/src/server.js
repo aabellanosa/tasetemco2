@@ -726,6 +726,9 @@ async function listTellerBatches() {
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
             closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
             variance, transaction_count AS transactionCount,
+            COALESCE(variance_note, '') AS varianceNote,
+            COALESCE(variance_noted_by, '') AS varianceNotedBy,
+            variance_noted_at AS varianceNotedAt,
             (
               SELECT COUNT(*)
               FROM (
@@ -810,7 +813,10 @@ async function getCurrentTellerBatch(user) {
         expectedCash: 0,
         actualCash: 0,
         variance: 0,
-        transactionCount: 0
+        transactionCount: 0,
+        varianceNote: "",
+        varianceNotedBy: "",
+        varianceNotedAt: ""
       };
       tellerBatches.unshift(batch);
     }
@@ -823,7 +829,10 @@ async function getCurrentTellerBatch(user) {
             opened_at AS openedAt, submitted_at AS submittedAt,
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
             closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
-            variance, transaction_count AS transactionCount
+            variance, transaction_count AS transactionCount,
+            COALESCE(variance_note, '') AS varianceNote,
+            COALESCE(variance_noted_by, '') AS varianceNotedBy,
+            variance_noted_at AS varianceNotedAt
      FROM teller_batches
      WHERE status IN ('Open', 'Submitted', 'Reviewed')
      ORDER BY opened_at DESC, id DESC
@@ -858,7 +867,10 @@ async function getCurrentTellerBatch(user) {
     expectedCash: 0,
     actualCash: 0,
     variance: 0,
-    transactionCount: 0
+    transactionCount: 0,
+    varianceNote: "",
+    varianceNotedBy: "",
+    varianceNotedAt: ""
   };
 }
 
@@ -2269,7 +2281,17 @@ async function submitTellerCashCount(input, user) {
   };
 }
 
-async function reviewTellerBatch(batchId, user) {
+function validateVarianceNote(body) {
+  const varianceNote = String(body?.varianceNote || "").trim();
+
+  if (varianceNote.length > 500) {
+    return { error: "Variance note must be 500 characters or fewer." };
+  }
+
+  return { value: { varianceNote } };
+}
+
+async function reviewTellerBatch(batchId, input, user) {
   const db = await getPool();
 
   if (!db) {
@@ -2283,9 +2305,16 @@ async function reviewTellerBatch(batchId, user) {
       return { error: "Only submitted teller batches can be reviewed.", statusCode: 409 };
     }
 
+    if (batch.variance !== 0 && !input.varianceNote) {
+      return { error: "Variance note is required before reviewing a batch with cash variance.", statusCode: 400 };
+    }
+
     batch.status = "Reviewed";
     batch.reviewedBy = user.username;
     batch.reviewedAt = new Date().toISOString();
+    batch.varianceNote = input.varianceNote || "";
+    batch.varianceNotedBy = input.varianceNote ? user.username : "";
+    batch.varianceNotedAt = input.varianceNote ? batch.reviewedAt : "";
 
     return { batch };
   }
@@ -2295,7 +2324,10 @@ async function reviewTellerBatch(batchId, user) {
             opened_at AS openedAt, submitted_at AS submittedAt,
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
             closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
-            variance, transaction_count AS transactionCount
+            variance, transaction_count AS transactionCount,
+            COALESCE(variance_note, '') AS varianceNote,
+            COALESCE(variance_noted_by, '') AS varianceNotedBy,
+            variance_noted_at AS varianceNotedAt
      FROM teller_batches
      WHERE batch_no = ?
      LIMIT 1`,
@@ -2311,11 +2343,22 @@ async function reviewTellerBatch(batchId, user) {
     return { error: "Only submitted teller batches can be reviewed.", statusCode: 409 };
   }
 
+  if (batch.variance !== 0 && !input.varianceNote) {
+    return { error: "Variance note is required before reviewing a batch with cash variance.", statusCode: 400 };
+  }
+
   await db.execute(
     `UPDATE teller_batches
-     SET status = 'Reviewed', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+     SET status = 'Reviewed', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP,
+         variance_note = ?, variance_noted_by = ?, variance_noted_at = ?
      WHERE batch_no = ?`,
-    [user.username, batchId]
+    [
+      user.username,
+      input.varianceNote || "",
+      input.varianceNote ? user.username : null,
+      input.varianceNote ? new Date() : null,
+      batchId
+    ]
   );
 
   return {
@@ -2323,7 +2366,10 @@ async function reviewTellerBatch(batchId, user) {
       ...batch,
       status: "Reviewed",
       reviewedBy: user.username,
-      reviewedAt: new Date().toISOString()
+      reviewedAt: new Date().toISOString(),
+      varianceNote: input.varianceNote || "",
+      varianceNotedBy: input.varianceNote ? user.username : "",
+      varianceNotedAt: input.varianceNote ? new Date().toISOString() : ""
     }
   };
 }
@@ -2362,7 +2408,10 @@ async function closeTellerBatch(batchId, user) {
       expectedCash: 0,
       actualCash: 0,
       variance: 0,
-      transactionCount: 0
+      transactionCount: 0,
+      varianceNote: "",
+      varianceNotedBy: "",
+      varianceNotedAt: ""
     };
     tellerBatches.unshift(nextBatch);
 
@@ -2374,7 +2423,10 @@ async function closeTellerBatch(batchId, user) {
             opened_at AS openedAt, submitted_at AS submittedAt,
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
             closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
-            variance, transaction_count AS transactionCount
+            variance, transaction_count AS transactionCount,
+            COALESCE(variance_note, '') AS varianceNote,
+            COALESCE(variance_noted_by, '') AS varianceNotedBy,
+            variance_noted_at AS varianceNotedAt
      FROM teller_batches
      WHERE batch_no = ?
      LIMIT 1`,
@@ -2426,7 +2478,10 @@ async function closeTellerBatch(batchId, user) {
       expectedCash: 0,
       actualCash: 0,
       variance: 0,
-      transactionCount: 0
+      transactionCount: 0,
+      varianceNote: "",
+      varianceNotedBy: "",
+      varianceNotedAt: ""
     }
   };
 }
@@ -3020,7 +3075,14 @@ app.post("/api/teller-batches/:batchId/review", async (request, response) => {
     return;
   }
 
-  const result = await reviewTellerBatch(request.params.batchId, user);
+  const validation = validateVarianceNote(request.body);
+
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await reviewTellerBatch(request.params.batchId, validation.value, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

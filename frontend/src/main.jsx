@@ -31,6 +31,7 @@ import {
   Tbody,
   Td,
   Text,
+  Textarea,
   Th,
   Thead,
   Tr,
@@ -1454,12 +1455,14 @@ function Ledger({ user }) {
   const [journalEntries, setJournalEntries] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [varianceNote, setVarianceNote] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingBatchDetailsId, setLoadingBatchDetailsId] = useState("");
   const batchDetails = useDisclosure();
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
   const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
   const canCloseTellerBatch = user.permissions.includes("ledger:teller-batches:close");
+  const needsVarianceNote = activeBatch?.status === "Submitted" && Number(activeBatch.variance || 0) !== 0;
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
 
   async function loadLedger() {
@@ -1473,6 +1476,9 @@ function Ledger({ user }) {
       setTellerBatches(data.tellerBatches || []);
       setLatestCashCount(data.latestCashCount);
       setJournalEntries(data.journalEntries);
+      if (!data.activeBatch || data.activeBatch.status !== "Submitted" || data.activeBatch.variance === 0) {
+        setVarianceNote("");
+      }
     } catch (ledgerError) {
       setError(ledgerError.message);
     } finally {
@@ -1517,9 +1523,11 @@ function Ledger({ user }) {
 
     try {
       const data = await api(`/api/teller-batches/${activeBatch.id}/review`, {
-        method: "POST"
+        method: "POST",
+        body: JSON.stringify({ varianceNote })
       });
       setActiveBatch(data.batch);
+      setVarianceNote("");
       setMessage(`${data.batch.id} marked as Reviewed.`);
       await loadLedger();
     } catch (reviewError) {
@@ -1595,7 +1603,12 @@ function Ledger({ user }) {
               <Badge colorScheme="orange">Variance warning</Badge>
             ) : null}
             {canReviewTellerBatch && activeBatch?.status === "Submitted" ? (
-              <Button size="sm" colorScheme="green" onClick={reviewBatch}>
+              <Button
+                size="sm"
+                colorScheme="green"
+                onClick={reviewBatch}
+                isDisabled={needsVarianceNote && !varianceNote.trim()}
+              >
                 Mark reviewed
               </Button>
             ) : null}
@@ -1645,8 +1658,18 @@ function Ledger({ user }) {
           </Box>
         </Grid>
         <Text mt={3} color="gray.600" fontSize="sm">
-          Post reviewed batch creates the accounting entries for all unposted rows in the reviewed batch. A variance is shown for attention but does not block posting yet.
+          Post reviewed batch creates the accounting entries for all unposted rows in the reviewed batch. A non-zero variance requires a Bookkeeper note before review.
         </Text>
+        {needsVarianceNote ? (
+          <FormControl mt={4} isRequired>
+            <FormLabel>Variance note</FormLabel>
+            <Textarea
+              value={varianceNote}
+              onChange={(event) => setVarianceNote(event.target.value)}
+              placeholder="Record the reason or follow-up action before review."
+            />
+          </FormControl>
+        ) : null}
       </Box>
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
@@ -1739,6 +1762,7 @@ function Ledger({ user }) {
                 <Th isNumeric>Txns</Th>
                 <Th isNumeric>Posted</Th>
                 <Th isNumeric>Unposted</Th>
+                <Th>Variance Note</Th>
                 <Th>Reviewed By</Th>
                 <Th>Closed</Th>
                 <Th>Details</Th>
@@ -1770,6 +1794,7 @@ function Ledger({ user }) {
                   <Td isNumeric>{batch.transactionCount}</Td>
                   <Td isNumeric>{batch.postedEntryCount}</Td>
                   <Td isNumeric>{batch.unpostedTransactionCount}</Td>
+                  <Td>{batch.varianceNote || "-"}</Td>
                   <Td>{batch.reviewedBy || "-"}</Td>
                   <Td>{formatDateTime(batch.closedAt)}</Td>
                   <Td>
@@ -1785,7 +1810,7 @@ function Ledger({ user }) {
               ))}
               {tellerBatches.length === 0 ? (
                 <Tr>
-                  <Td colSpan={12} color="gray.500">
+                  <Td colSpan={13} color="gray.500">
                     No teller batch history yet.
                   </Td>
                 </Tr>
@@ -1887,6 +1912,16 @@ function Ledger({ user }) {
                     <Text fontWeight="bold">{formatDateTime(selectedBatchDetails.batch.submittedAt)}</Text>
                   </Box>
                 </Grid>
+
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Variance Note</Text>
+                  <Text fontWeight="bold">{selectedBatchDetails.batch.varianceNote || "-"}</Text>
+                  {selectedBatchDetails.batch.varianceNotedBy ? (
+                    <Text color="gray.500" fontSize="sm" mt={1}>
+                      Noted by {selectedBatchDetails.batch.varianceNotedBy} on {formatDateTime(selectedBatchDetails.batch.varianceNotedAt)}
+                    </Text>
+                  ) : null}
+                </Box>
 
                 <Box>
                   <Heading size="sm" mb={3}>Cash Count Evidence</Heading>
