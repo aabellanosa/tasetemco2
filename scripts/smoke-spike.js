@@ -475,6 +475,22 @@ async function run() {
       throw new Error("Bookkeeper should close a reviewed empty batch and open the next teller batch.");
     }
 
+    const batchHistoryAfterClose = await fetch(`${baseUrl}/api/teller-batches`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const batchHistoryAfterCloseBody = await batchHistoryAfterClose.json();
+    const closedHistoryRow = batchHistoryAfterCloseBody.find((batch) => batch.id === closedBatchBody.batch.id);
+
+    if (
+      !batchHistoryAfterClose.ok ||
+      !closedHistoryRow ||
+      closedHistoryRow.status !== "Closed" ||
+      closedHistoryRow.postedEntryCount !== firstBatchTransactionCount ||
+      closedHistoryRow.unpostedTransactionCount !== 0
+    ) {
+      throw new Error("Teller batch history should show closed first batch evidence.");
+    }
+
     const duplicateContributionReference = await fetch(`${baseUrl}/api/share-capital-contributions`, {
       method: "POST",
       headers: {
@@ -675,6 +691,23 @@ async function run() {
 
     if (!postedSecondBatch.ok || postedSecondBatchBody.postedCount !== 2) {
       throw new Error("Bookkeeper did not post all reviewed second-batch transactions.");
+    }
+
+    const ledgerAfterSecondBatchPosting = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerAfterSecondBatchPostingBody = await ledgerAfterSecondBatchPosting.json();
+    const secondBatchHistoryRow = ledgerAfterSecondBatchPostingBody.tellerBatches.find(
+      (batch) => batch.id === secondReviewedBatchBody.batch.id
+    );
+
+    if (
+      !secondBatchHistoryRow ||
+      secondBatchHistoryRow.status !== "Reviewed" ||
+      secondBatchHistoryRow.postedEntryCount !== 2 ||
+      secondBatchHistoryRow.unpostedTransactionCount !== 0
+    ) {
+      throw new Error("Ledger should include reviewed second batch posting evidence.");
     }
 
     const postedShareCapitalContributionResult = postedSecondBatchBody.results.find(

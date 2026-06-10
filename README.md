@@ -119,6 +119,8 @@ Teller/Cashier records transactions into the current Open teller batch. In this 
 
 Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning for discussion and review, but it does not block posting yet.
 
+The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, Manager, and Auditor-style users can inspect batch status, cash count evidence, posted entry counts, unposted counts, reviewer, and close timing after the batch leaves the active work area.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
@@ -179,6 +181,7 @@ Example server directory:
 - `POST /api/savings-withdrawals`
 - `GET /api/teller-cash-count`
 - `POST /api/teller-cash-count`
+- `GET /api/teller-batches`
 - `POST /api/teller-batches/:batchId/review`
 - `POST /api/teller-batches/:batchId/close`
 - `GET /api/products`

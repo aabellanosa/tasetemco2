@@ -657,6 +657,75 @@ async function listTellerCashCounts() {
   return rows;
 }
 
+function countBatchTransactions(batchId) {
+  const rows = [
+    ...initialPayments,
+    ...savingsDeposits,
+    ...shareCapitalContributions,
+    ...savingsWithdrawals
+  ].filter((row) => row.batchId === batchId);
+
+  return {
+    postedEntryCount: rows.filter((row) => row.status === "Posted" && row.postedEntryNo).length,
+    unpostedTransactionCount: rows.filter((row) => row.status === "Teller Batch").length
+  };
+}
+
+async function listTellerBatches() {
+  const db = await getPool();
+
+  if (!db) {
+    return tellerBatches
+      .map((batch) => ({
+        ...batch,
+        ...countBatchTransactions(batch.id)
+      }))
+      .sort((left, right) => String(right.openedAt).localeCompare(String(left.openedAt)));
+  }
+
+  const [rows] = await db.execute(
+    `SELECT batch_no AS id, teller_username AS tellerUsername, status,
+            opened_at AS openedAt, submitted_at AS submittedAt,
+            reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
+            closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
+            variance, transaction_count AS transactionCount,
+            (
+              SELECT COUNT(*)
+              FROM (
+                SELECT batch_no, status, posted_entry_no FROM initial_member_payments
+                UNION ALL
+                SELECT batch_no, status, posted_entry_no FROM savings_deposits
+                UNION ALL
+                SELECT batch_no, status, posted_entry_no FROM share_capital_contributions
+                UNION ALL
+                SELECT batch_no, status, posted_entry_no FROM savings_withdrawals
+              ) posted_rows
+              WHERE posted_rows.batch_no = teller_batches.batch_no
+                AND posted_rows.status = 'Posted'
+                AND posted_rows.posted_entry_no IS NOT NULL
+            ) AS postedEntryCount,
+            (
+              SELECT COUNT(*)
+              FROM (
+                SELECT batch_no, status FROM initial_member_payments
+                UNION ALL
+                SELECT batch_no, status FROM savings_deposits
+                UNION ALL
+                SELECT batch_no, status FROM share_capital_contributions
+                UNION ALL
+                SELECT batch_no, status FROM savings_withdrawals
+              ) unposted_rows
+              WHERE unposted_rows.batch_no = teller_batches.batch_no
+                AND unposted_rows.status = 'Teller Batch'
+            ) AS unpostedTransactionCount
+     FROM teller_batches
+     ORDER BY opened_at DESC, id DESC
+     LIMIT 25`
+  );
+
+  return rows;
+}
+
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
@@ -2923,6 +2992,22 @@ app.post("/api/teller-batches/:batchId/close", async (request, response) => {
   response.json(result);
 });
 
+app.get("/api/teller-batches", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "teller-batches:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listTellerBatches());
+});
+
 app.get("/api/ledger", async (request, response) => {
   const user = parseSession(request);
 
@@ -2940,6 +3025,7 @@ app.get("/api/ledger", async (request, response) => {
   response.json({
     activeBatch,
     tellerBatch: activeBatch ? await listTellerBatchRows(activeBatch.id) : await listTellerBatchRows(),
+    tellerBatches: hasPermission(user, "teller-batches:view") ? await listTellerBatches() : [],
     latestCashCount: hasPermission(user, "teller-cash-counts:view") ? await getLatestTellerCashCount() : null,
     journalEntries: await listJournalEntries()
   });

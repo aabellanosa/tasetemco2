@@ -103,6 +103,19 @@ function formatTime(value) {
   }).format(value);
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
 function buildTellerBatchSummary(rows) {
   return rows.reduce(
     (summary, row) => {
@@ -1434,6 +1447,7 @@ function Members({ user }) {
 
 function Ledger({ user }) {
   const [tellerBatch, setTellerBatch] = useState([]);
+  const [tellerBatches, setTellerBatches] = useState([]);
   const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
@@ -1453,6 +1467,7 @@ function Ledger({ user }) {
       const data = await api("/api/ledger");
       setActiveBatch(data.activeBatch);
       setTellerBatch(data.tellerBatch);
+      setTellerBatches(data.tellerBatches || []);
       setLatestCashCount(data.latestCashCount);
       setJournalEntries(data.journalEntries);
     } catch (ledgerError) {
@@ -1681,6 +1696,69 @@ function Ledger({ user }) {
                 <Tr>
                   <Td colSpan={9} color="gray.500">
                     No unposted teller batch payments.
+                  </Td>
+                </Tr>
+              ) : null}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="md" mb={4}>
+          Teller Batch History
+        </Heading>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Batch</Th>
+                <Th>Status</Th>
+                <Th>Teller</Th>
+                <Th isNumeric>Expected</Th>
+                <Th isNumeric>Actual</Th>
+                <Th isNumeric>Variance</Th>
+                <Th isNumeric>Txns</Th>
+                <Th isNumeric>Posted</Th>
+                <Th isNumeric>Unposted</Th>
+                <Th>Reviewed By</Th>
+                <Th>Closed</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {tellerBatches.map((batch) => (
+                <Tr key={batch.id}>
+                  <Td>{batch.id}</Td>
+                  <Td>
+                    <Badge
+                      colorScheme={
+                        batch.status === "Open"
+                          ? "blue"
+                          : batch.status === "Closed"
+                            ? "gray"
+                            : batch.status === "Reviewed"
+                              ? "green"
+                              : "purple"
+                      }
+                    >
+                      {batch.status}
+                    </Badge>
+                  </Td>
+                  <Td>{batch.tellerUsername}</Td>
+                  <Td isNumeric>{formatMoney(batch.expectedCash)}</Td>
+                  <Td isNumeric>{formatMoney(batch.actualCash)}</Td>
+                  <Td isNumeric>{formatMoney(batch.variance)}</Td>
+                  <Td isNumeric>{batch.transactionCount}</Td>
+                  <Td isNumeric>{batch.postedEntryCount}</Td>
+                  <Td isNumeric>{batch.unpostedTransactionCount}</Td>
+                  <Td>{batch.reviewedBy || "-"}</Td>
+                  <Td>{formatDateTime(batch.closedAt)}</Td>
+                </Tr>
+              ))}
+              {tellerBatches.length === 0 ? (
+                <Tr>
+                  <Td colSpan={11} color="gray.500">
+                    No teller batch history yet.
                   </Td>
                 </Tr>
               ) : null}
