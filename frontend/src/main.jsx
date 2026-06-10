@@ -1442,6 +1442,7 @@ function Ledger({ user }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
   const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
+  const canCloseTellerBatch = user.permissions.includes("ledger:teller-batches:close");
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
 
   async function loadLedger() {
@@ -1508,6 +1509,26 @@ function Ledger({ user }) {
     }
   }
 
+  async function closeBatch() {
+    if (!activeBatch) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api(`/api/teller-batches/${activeBatch.id}/close`, {
+        method: "POST"
+      });
+      setActiveBatch(data.nextBatch);
+      setMessage(`${data.batch.id} closed. ${data.nextBatch.id} is now Open.`);
+      await loadLedger();
+    } catch (closeError) {
+      setError(closeError.message);
+    }
+  }
+
   return (
     <VStack align="stretch" spacing={5}>
       <Flex justify="space-between" align="center" gap={4} wrap="wrap">
@@ -1540,6 +1561,11 @@ function Ledger({ user }) {
             {canReviewTellerBatch && activeBatch?.status === "Submitted" ? (
               <Button size="sm" colorScheme="green" onClick={reviewBatch}>
                 Mark reviewed
+              </Button>
+            ) : null}
+            {canCloseTellerBatch && activeBatch?.status === "Reviewed" ? (
+              <Button size="sm" colorScheme="green" onClick={closeBatch}>
+                Close and open next
               </Button>
             ) : null}
           </HStack>

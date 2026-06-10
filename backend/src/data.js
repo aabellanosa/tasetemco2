@@ -119,6 +119,7 @@ export const rolePermissions = {
     "ledger:view",
     "ledger:teller-batches:post",
     "ledger:teller-batches:review",
+    "ledger:teller-batches:close",
     "teller-cash-counts:view",
     "teller-batches:view"
   ],
@@ -203,7 +204,8 @@ export const initialPayments = [
     cashReceived: 6100,
     referenceNo: "OR-10001",
     receivedBy: "teller01",
-    status: "Teller Batch"
+    status: "Teller Batch",
+    batchId: "TB-2026-0001"
   }
 ];
 

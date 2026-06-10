@@ -184,17 +184,17 @@ Restrictions:
 
 The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No |
-| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No | No |
-| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
+| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
+| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No |
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
@@ -218,7 +218,7 @@ The Teller/Cashier UI uses a member-first transaction workspace: select the memb
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
-Teller/Cashier works against a current teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed`: cash count submission moves the batch to Submitted, and Bookkeeper can mark it Reviewed before posting individual transactions.
+Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
 ## 4. Core Workflow
 
@@ -335,13 +335,18 @@ Sample accounting effect:
 6. Teller batch status moves from Open to Submitted.
 7. Accountant / Bookkeeper reviews the submitted teller batch.
 8. Bookkeeper marks the batch as Reviewed.
+9. Bookkeeper posts all teller transactions assigned to the reviewed batch.
+10. Bookkeeper closes the reviewed batch.
+11. System opens the next teller batch for new teller activity.
 
 Current prototype behavior:
 
-- Implemented batch statuses are Open, Submitted, and Reviewed.
+- Implemented batch statuses are Open, Submitted, Reviewed, and Closed.
+- Transactions are assigned to the active Open batch at entry time.
 - Posting remains per transaction.
+- A reviewed batch cannot close while it still has unposted teller transactions.
 - Posting is not blocked by variance yet.
-- A later approval spike can require variance resolution before final batch posting.
+- A later spike can turn reviewed batch posting into one batch-level posting action.
 
 ### 4.6 Loan Application
 

@@ -455,6 +455,45 @@ async function run() {
       throw new Error("Member statement did not link the savings deposit to its journal entry.");
     }
 
+    const ledgerBeforeBatchClose = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerBeforeBatchCloseBody = await ledgerBeforeBatchClose.json();
+
+    for (const batchPayment of ledgerBeforeBatchCloseBody.tellerBatch) {
+      const postPath =
+        batchPayment.batchType === "Savings Deposit"
+          ? `/api/ledger/savings-deposits/${batchPayment.id}/post`
+          : batchPayment.batchType === "Share Capital Contribution"
+            ? `/api/ledger/share-capital-contributions/${batchPayment.id}/post`
+            : batchPayment.batchType === "Savings Withdrawal"
+              ? `/api/ledger/savings-withdrawals/${batchPayment.id}/post`
+              : `/api/ledger/teller-batches/${batchPayment.id}/post`;
+
+      const postedBatchPayment = await fetch(`${baseUrl}${postPath}`, {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      });
+
+      if (!postedBatchPayment.ok) {
+        throw new Error("Bookkeeper should post all reviewed batch transactions before closing.");
+      }
+    }
+
+    const closedBatch = await fetch(`${baseUrl}/api/teller-batches/${reviewedBatchBody.batch.id}/close`, {
+      method: "POST",
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const closedBatchBody = await closedBatch.json();
+
+    if (
+      !closedBatch.ok ||
+      closedBatchBody.batch.status !== "Closed" ||
+      closedBatchBody.nextBatch.status !== "Open"
+    ) {
+      throw new Error("Bookkeeper should close a reviewed empty batch and open the next teller batch.");
+    }
+
     const duplicateContributionReference = await fetch(`${baseUrl}/api/share-capital-contributions`, {
       method: "POST",
       headers: {

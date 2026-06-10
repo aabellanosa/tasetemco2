@@ -81,17 +81,17 @@ The password is stored in SQLite as a salted hash, not plain text.
 
 The React/MySQL spike uses action-level permissions, not just screen access. For membership workflows:
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No |
-| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No | No |
-| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
+| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
+| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No |
 
 The Members workflow auto-refreshes every 5 seconds for demo testing across browser profiles. Users can also click Refresh to pull the latest member applications, active members, and initial payment history.
 
@@ -115,7 +115,7 @@ The Teller/Cashier UI now uses a member-first transaction workspace: select the 
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
-Teller/Cashier works against a current teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed`: cash count submission moves the batch to Submitted, and Bookkeeper can mark it Reviewed before posting individual transactions.
+Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
 ## Workflow UI
 
@@ -178,6 +178,7 @@ Example server directory:
 - `GET /api/teller-cash-count`
 - `POST /api/teller-cash-count`
 - `POST /api/teller-batches/:batchId/review`
+- `POST /api/teller-batches/:batchId/close`
 - `GET /api/products`
 - `GET /api/loans`
 - `GET /api/transactions`

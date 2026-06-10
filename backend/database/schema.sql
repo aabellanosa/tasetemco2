@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS member_applications (
 CREATE TABLE IF NOT EXISTS initial_member_payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   payment_no VARCHAR(40) NOT NULL UNIQUE,
+  batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
   share_capital_amount INT NOT NULL DEFAULT 0,
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS initial_member_payments (
 CREATE TABLE IF NOT EXISTS savings_deposits (
   id INT AUTO_INCREMENT PRIMARY KEY,
   deposit_no VARCHAR(40) NOT NULL UNIQUE,
+  batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
   amount INT NOT NULL DEFAULT 0,
@@ -71,6 +73,7 @@ CREATE TABLE IF NOT EXISTS savings_deposits (
 CREATE TABLE IF NOT EXISTS share_capital_contributions (
   id INT AUTO_INCREMENT PRIMARY KEY,
   contribution_no VARCHAR(40) NOT NULL UNIQUE,
+  batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
   amount INT NOT NULL DEFAULT 0,
@@ -87,6 +90,7 @@ CREATE TABLE IF NOT EXISTS share_capital_contributions (
 CREATE TABLE IF NOT EXISTS savings_withdrawals (
   id INT AUTO_INCREMENT PRIMARY KEY,
   withdrawal_no VARCHAR(40) NOT NULL UNIQUE,
+  batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
   amount INT NOT NULL DEFAULT 0,
@@ -128,6 +132,7 @@ CREATE TABLE IF NOT EXISTS teller_batches (
   submitted_at TIMESTAMP NULL,
   reviewed_at TIMESTAMP NULL,
   reviewed_by VARCHAR(80),
+  closed_at TIMESTAMP NULL,
   expected_cash INT NOT NULL DEFAULT 0,
   actual_cash INT NOT NULL DEFAULT 0,
   variance INT NOT NULL DEFAULT 0,
