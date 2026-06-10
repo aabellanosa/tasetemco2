@@ -498,7 +498,8 @@ async function listInitialPayments() {
     `SELECT payment_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
             share_capital_amount AS shareCapitalAmount, membership_fee_amount AS membershipFeeAmount,
             savings_deposit_amount AS savingsDepositAmount, cash_received AS cashReceived, reference_no AS referenceNo,
-            received_by AS receivedBy, status, created_at AS createdAt
+            received_by AS receivedBy, status, posted_by AS postedBy,
+            posted_entry_no AS postedEntryNo, posted_at AS postedAt, created_at AS createdAt
      FROM initial_member_payments
      ORDER BY created_at DESC, id DESC`
   );
@@ -517,7 +518,7 @@ async function listSavingsDeposits() {
     `SELECT deposit_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
             amount, cash_received AS cashReceived, reference_no AS referenceNo,
             received_by AS receivedBy, status, posted_by AS postedBy,
-            posted_entry_no AS postedEntryNo, created_at AS createdAt
+            posted_entry_no AS postedEntryNo, posted_at AS postedAt, created_at AS createdAt
      FROM savings_deposits
      ORDER BY created_at DESC, id DESC`
   );
@@ -536,7 +537,7 @@ async function listShareCapitalContributions() {
     `SELECT contribution_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
             amount, cash_received AS cashReceived, reference_no AS referenceNo,
             received_by AS receivedBy, status, posted_by AS postedBy,
-            posted_entry_no AS postedEntryNo, created_at AS createdAt
+            posted_entry_no AS postedEntryNo, posted_at AS postedAt, created_at AS createdAt
      FROM share_capital_contributions
      ORDER BY created_at DESC, id DESC`
   );
@@ -555,7 +556,7 @@ async function listSavingsWithdrawals() {
     `SELECT withdrawal_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
             amount, reference_no AS referenceNo, released_by AS releasedBy,
             status, posted_by AS postedBy, posted_entry_no AS postedEntryNo,
-            created_at AS createdAt
+            posted_at AS postedAt, created_at AS createdAt
      FROM savings_withdrawals
      ORDER BY created_at DESC, id DESC`
   );
@@ -637,6 +638,42 @@ async function listTellerBatchRows(batchId = "") {
   }
 
   return rows.filter((row) => row.batchId === batchId);
+}
+
+async function listTellerBatchTransactions(batchId) {
+  return [
+    ...(await listInitialPayments()).map((payment) => ({
+      ...payment,
+      batchType: "Initial Payment",
+      cashOut: 0
+    })),
+    ...(await listSavingsDeposits()).map((deposit) => ({
+      ...deposit,
+      batchType: "Savings Deposit",
+      cashOut: 0,
+      shareCapitalAmount: 0,
+      membershipFeeAmount: 0,
+      savingsDepositAmount: deposit.amount
+    })),
+    ...(await listShareCapitalContributions()).map((contribution) => ({
+      ...contribution,
+      batchType: "Share Capital Contribution",
+      cashOut: 0,
+      shareCapitalAmount: contribution.amount,
+      membershipFeeAmount: 0,
+      savingsDepositAmount: 0
+    })),
+    ...(await listSavingsWithdrawals()).map((withdrawal) => ({
+      ...withdrawal,
+      batchType: "Savings Withdrawal",
+      receivedBy: withdrawal.releasedBy,
+      cashReceived: 0,
+      cashOut: withdrawal.amount,
+      shareCapitalAmount: 0,
+      membershipFeeAmount: 0,
+      savingsDepositAmount: -withdrawal.amount
+    }))
+  ].filter((row) => row.batchId === batchId);
 }
 
 async function listTellerCashCounts() {
@@ -724,6 +761,30 @@ async function listTellerBatches() {
   );
 
   return rows;
+}
+
+async function getTellerBatchDetails(batchId) {
+  const batches = await listTellerBatches();
+  const batch = batches.find((item) => item.id === batchId);
+
+  if (!batch) {
+    return { error: "Teller batch was not found.", statusCode: 404 };
+  }
+
+  const cashCounts = (await listTellerCashCounts()).filter((cashCount) => cashCount.batchId === batchId);
+  const transactions = await listTellerBatchTransactions(batchId);
+  const postedEntryNos = new Set(
+    transactions.map((transaction) => transaction.postedEntryNo).filter((entryNo) => Boolean(entryNo))
+  );
+  const linkedJournalEntries = (await listJournalEntries()).filter((entry) => postedEntryNos.has(entry.id));
+
+  return {
+    batch,
+    cashCounts,
+    latestCashCount: cashCounts[0] || null,
+    transactions,
+    journalEntries: linkedJournalEntries
+  };
 }
 
 async function getLatestTellerCashCount() {
@@ -3006,6 +3067,29 @@ app.get("/api/teller-batches", async (request, response) => {
   }
 
   response.json(await listTellerBatches());
+});
+
+app.get("/api/teller-batches/:batchId", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "teller-batches:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await getTellerBatchDetails(request.params.batchId);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
 });
 
 app.get("/api/ledger", async (request, response) => {

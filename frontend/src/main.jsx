@@ -1448,12 +1448,15 @@ function Members({ user }) {
 function Ledger({ user }) {
   const [tellerBatch, setTellerBatch] = useState([]);
   const [tellerBatches, setTellerBatches] = useState([]);
+  const [selectedBatchDetails, setSelectedBatchDetails] = useState(null);
   const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadingBatchDetailsId, setLoadingBatchDetailsId] = useState("");
+  const batchDetails = useDisclosure();
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
   const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
   const canCloseTellerBatch = user.permissions.includes("ledger:teller-batches:close");
@@ -1541,6 +1544,21 @@ function Ledger({ user }) {
       await loadLedger();
     } catch (closeError) {
       setError(closeError.message);
+    }
+  }
+
+  async function openBatchDetails(batchId) {
+    setError("");
+    setLoadingBatchDetailsId(batchId);
+
+    try {
+      const data = await api(`/api/teller-batches/${batchId}`);
+      setSelectedBatchDetails(data);
+      batchDetails.onOpen();
+    } catch (detailsError) {
+      setError(detailsError.message);
+    } finally {
+      setLoadingBatchDetailsId("");
     }
   }
 
@@ -1723,6 +1741,7 @@ function Ledger({ user }) {
                 <Th isNumeric>Unposted</Th>
                 <Th>Reviewed By</Th>
                 <Th>Closed</Th>
+                <Th>Details</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -1753,11 +1772,20 @@ function Ledger({ user }) {
                   <Td isNumeric>{batch.unpostedTransactionCount}</Td>
                   <Td>{batch.reviewedBy || "-"}</Td>
                   <Td>{formatDateTime(batch.closedAt)}</Td>
+                  <Td>
+                    <Button
+                      size="sm"
+                      onClick={() => openBatchDetails(batch.id)}
+                      isLoading={loadingBatchDetailsId === batch.id}
+                    >
+                      View
+                    </Button>
+                  </Td>
                 </Tr>
               ))}
               {tellerBatches.length === 0 ? (
                 <Tr>
-                  <Td colSpan={11} color="gray.500">
+                  <Td colSpan={12} color="gray.500">
                     No teller batch history yet.
                   </Td>
                 </Tr>
@@ -1810,6 +1838,183 @@ function Ledger({ user }) {
           {journalEntries.length === 0 ? <Text color="gray.500">No posted journal entries yet.</Text> : null}
         </VStack>
       </Box>
+
+      <Modal isOpen={batchDetails.isOpen} onClose={batchDetails.onClose} size="6xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            {selectedBatchDetails ? `Teller Batch Details - ${selectedBatchDetails.batch.id}` : "Teller Batch Details"}
+          </ModalHeader>
+          <ModalBody>
+            {selectedBatchDetails ? (
+              <VStack align="stretch" spacing={5}>
+                <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Status</Text>
+                    <Badge colorScheme={selectedBatchDetails.batch.status === "Closed" ? "gray" : "green"}>
+                      {selectedBatchDetails.batch.status}
+                    </Badge>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Teller</Text>
+                    <Text fontWeight="bold">{selectedBatchDetails.batch.tellerUsername}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Reviewed By</Text>
+                    <Text fontWeight="bold">{selectedBatchDetails.batch.reviewedBy || "-"}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Closed</Text>
+                    <Text fontWeight="bold">{formatDateTime(selectedBatchDetails.batch.closedAt)}</Text>
+                  </Box>
+                </Grid>
+
+                <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Expected Cash</Text>
+                    <Text fontWeight="bold">{formatMoney(selectedBatchDetails.batch.expectedCash)}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Actual Cash</Text>
+                    <Text fontWeight="bold">{formatMoney(selectedBatchDetails.batch.actualCash)}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Variance</Text>
+                    <Text fontWeight="bold">{formatMoney(selectedBatchDetails.batch.variance)}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Submitted</Text>
+                    <Text fontWeight="bold">{formatDateTime(selectedBatchDetails.batch.submittedAt)}</Text>
+                  </Box>
+                </Grid>
+
+                <Box>
+                  <Heading size="sm" mb={3}>Cash Count Evidence</Heading>
+                  <TableContainer>
+                    <Table size="sm">
+                      <Thead>
+                        <Tr>
+                          <Th>Count No.</Th>
+                          <Th isNumeric>Expected</Th>
+                          <Th isNumeric>Actual</Th>
+                          <Th isNumeric>Variance</Th>
+                          <Th isNumeric>Txns</Th>
+                          <Th>Submitted By</Th>
+                          <Th>Submitted</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {selectedBatchDetails.cashCounts.map((cashCount) => (
+                          <Tr key={cashCount.id}>
+                            <Td>{cashCount.id}</Td>
+                            <Td isNumeric>{formatMoney(cashCount.expectedCash)}</Td>
+                            <Td isNumeric>{formatMoney(cashCount.actualCash)}</Td>
+                            <Td isNumeric>{formatMoney(cashCount.variance)}</Td>
+                            <Td isNumeric>{cashCount.transactionCount}</Td>
+                            <Td>{cashCount.submittedBy}</Td>
+                            <Td>{formatDateTime(cashCount.submittedAt)}</Td>
+                          </Tr>
+                        ))}
+                        {selectedBatchDetails.cashCounts.length === 0 ? (
+                          <Tr>
+                            <Td colSpan={7} color="gray.500">No cash count submitted for this batch.</Td>
+                          </Tr>
+                        ) : null}
+                      </Tbody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+
+                <Box>
+                  <Heading size="sm" mb={3}>Transactions</Heading>
+                  <TableContainer>
+                    <Table size="sm">
+                      <Thead>
+                        <Tr>
+                          <Th>No.</Th>
+                          <Th>Type</Th>
+                          <Th>Member</Th>
+                          <Th>Reference</Th>
+                          <Th isNumeric>Cash In</Th>
+                          <Th isNumeric>Cash Out</Th>
+                          <Th>Status</Th>
+                          <Th>Journal Entry</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {selectedBatchDetails.transactions.map((transaction) => (
+                          <Tr key={`${transaction.batchType}-${transaction.id}`}>
+                            <Td>{transaction.id}</Td>
+                            <Td>{transaction.batchType}</Td>
+                            <Td>{transaction.memberName}</Td>
+                            <Td>{transaction.referenceNo}</Td>
+                            <Td isNumeric>{transaction.cashReceived ? formatMoney(transaction.cashReceived) : ""}</Td>
+                            <Td isNumeric>{transaction.cashOut ? formatMoney(transaction.cashOut) : ""}</Td>
+                            <Td>
+                              <Badge colorScheme={transaction.status === "Posted" ? "green" : "blue"}>
+                                {transaction.status}
+                              </Badge>
+                            </Td>
+                            <Td>{transaction.postedEntryNo || "-"}</Td>
+                          </Tr>
+                        ))}
+                        {selectedBatchDetails.transactions.length === 0 ? (
+                          <Tr>
+                            <Td colSpan={8} color="gray.500">No transactions found for this batch.</Td>
+                          </Tr>
+                        ) : null}
+                      </Tbody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+
+                <Box>
+                  <Heading size="sm" mb={3}>Linked Journal Entries</Heading>
+                  <VStack align="stretch" spacing={3}>
+                    {selectedBatchDetails.journalEntries.map((entry) => (
+                      <Box key={entry.id} borderWidth="1px" borderRadius="md" p={4}>
+                        <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+                          <Box>
+                            <Text fontWeight="bold">{entry.id}</Text>
+                            <Text color="gray.600">{entry.description}</Text>
+                          </Box>
+                          <Text color="gray.500" fontSize="sm">Posted by {entry.postedBy}</Text>
+                        </Flex>
+                        <TableContainer>
+                          <Table size="sm">
+                            <Thead>
+                              <Tr>
+                                <Th>Account</Th>
+                                <Th isNumeric>Debit</Th>
+                                <Th isNumeric>Credit</Th>
+                              </Tr>
+                            </Thead>
+                            <Tbody>
+                              {entry.lines.map((line) => (
+                                <Tr key={`${entry.id}-${line.accountCode}`}>
+                                  <Td>{line.accountCode} - {line.accountName}</Td>
+                                  <Td isNumeric>{line.debit ? formatMoney(line.debit) : ""}</Td>
+                                  <Td isNumeric>{line.credit ? formatMoney(line.credit) : ""}</Td>
+                                </Tr>
+                              ))}
+                            </Tbody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
+                    ))}
+                    {selectedBatchDetails.journalEntries.length === 0 ? (
+                      <Text color="gray.500">No linked journal entries yet.</Text>
+                    ) : null}
+                  </VStack>
+                </Box>
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button onClick={batchDetails.onClose}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </VStack>
   );
 }

@@ -491,6 +491,21 @@ async function run() {
       throw new Error("Teller batch history should show closed first batch evidence.");
     }
 
+    const closedBatchDetails = await fetch(`${baseUrl}/api/teller-batches/${closedBatchBody.batch.id}`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const closedBatchDetailsBody = await closedBatchDetails.json();
+
+    if (
+      !closedBatchDetails.ok ||
+      closedBatchDetailsBody.batch.status !== "Closed" ||
+      closedBatchDetailsBody.cashCounts.length !== 1 ||
+      closedBatchDetailsBody.transactions.length !== firstBatchTransactionCount ||
+      closedBatchDetailsBody.journalEntries.length !== firstBatchTransactionCount
+    ) {
+      throw new Error("Closed batch detail should include cash count, transactions, and linked journals.");
+    }
+
     const duplicateContributionReference = await fetch(`${baseUrl}/api/share-capital-contributions`, {
       method: "POST",
       headers: {
@@ -708,6 +723,20 @@ async function run() {
       secondBatchHistoryRow.unpostedTransactionCount !== 0
     ) {
       throw new Error("Ledger should include reviewed second batch posting evidence.");
+    }
+
+    const secondBatchDetails = await fetch(`${baseUrl}/api/teller-batches/${secondReviewedBatchBody.batch.id}`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const secondBatchDetailsBody = await secondBatchDetails.json();
+
+    if (
+      !secondBatchDetails.ok ||
+      secondBatchDetailsBody.batch.status !== "Reviewed" ||
+      secondBatchDetailsBody.transactions.length !== 2 ||
+      secondBatchDetailsBody.journalEntries.length !== 2
+    ) {
+      throw new Error("Reviewed batch detail should include posted transactions and linked journals.");
     }
 
     const postedShareCapitalContributionResult = postedSecondBatchBody.results.find(
