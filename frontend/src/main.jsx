@@ -251,6 +251,7 @@ function Members({ user }) {
   const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
+  const [latestCashCount, setLatestCashCount] = useState(null);
   const [statement, setStatement] = useState(null);
   const [form, setForm] = useState({
     fullName: "",
@@ -283,6 +284,9 @@ function Members({ user }) {
     amount: 500,
     referenceNo: ""
   });
+  const [cashCountForm, setCashCountForm] = useState({
+    actualCash: 0
+  });
   const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
   const [tellerTransactionType, setTellerTransactionType] = useState("initial-payment");
   const [approvedMemberName, setApprovedMemberName] = useState("");
@@ -302,6 +306,8 @@ function Members({ user }) {
   const canCreateSavingsDeposit = user.permissions.includes("members:savings-deposits:create");
   const canViewSavingsWithdrawals = user.permissions.includes("members:savings-withdrawals:view");
   const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
+  const canViewTellerCashCount = user.permissions.includes("teller-cash-counts:view");
+  const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
   const canUseTellerWorkspace =
@@ -353,14 +359,23 @@ function Members({ user }) {
       setIsRefreshing(true);
 
       try {
-        const [memberRows, applicationRows, paymentRows, contributionRows, savingsRows, withdrawalRows] =
+        const [
+          memberRows,
+          applicationRows,
+          paymentRows,
+          contributionRows,
+          savingsRows,
+          withdrawalRows,
+          cashCountData
+        ] =
           await Promise.all([
           api("/api/members"),
           canViewApplications ? api("/api/member-applications") : [],
           canViewInitialPayments ? api("/api/initial-member-payments") : [],
           canViewShareCapitalContributions ? api("/api/share-capital-contributions") : [],
           canViewSavingsDeposits ? api("/api/savings-deposits") : [],
-          canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : []
+          canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : [],
+          canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
         setApplications(applicationRows);
@@ -368,6 +383,7 @@ function Members({ user }) {
         setShareCapitalContributions(contributionRows);
         setSavingsDeposits(savingsRows);
         setSavingsWithdrawals(withdrawalRows);
+        setLatestCashCount(cashCountData.latestCashCount);
         setLastRefreshedAt(new Date());
 
         if (!silent) {
@@ -386,7 +402,8 @@ function Members({ user }) {
       canViewInitialPayments,
       canViewShareCapitalContributions,
       canViewSavingsDeposits,
-      canViewSavingsWithdrawals
+      canViewSavingsWithdrawals,
+      canViewTellerCashCount
     ]
   );
 
@@ -584,6 +601,25 @@ function Members({ user }) {
       await loadMembersWorkflow();
     } catch (withdrawalError) {
       setError(withdrawalError.message);
+    }
+  }
+
+  async function submitCashCount(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api("/api/teller-cash-count", {
+        method: "POST",
+        body: JSON.stringify(cashCountForm)
+      });
+      setMessage(`${data.cashCount.id} submitted with ${formatMoney(data.cashCount.variance)} variance.`);
+      setLatestCashCount(data.cashCount);
+      setCashCountForm({ actualCash: 0 });
+      await loadMembersWorkflow();
+    } catch (cashCountError) {
+      setError(cashCountError.message);
     }
   }
 
@@ -1008,6 +1044,65 @@ function Members({ user }) {
                 </Tbody>
               </Table>
             </TableContainer>
+            {canCreateTellerCashCount ? (
+              <Box as="form" onSubmit={submitCashCount} mt={5} borderTopWidth="1px" pt={5}>
+                <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+                  <Box>
+                    <Heading size="sm">Cash Count Verification</Heading>
+                    <Text color="gray.600" mt={1}>
+                      Count actual cash on hand before sending the batch for accounting review.
+                    </Text>
+                  </Box>
+                  {latestCashCount ? (
+                    <Badge colorScheme={latestCashCount.variance === 0 ? "green" : "orange"} alignSelf="flex-start">
+                      Last count: {latestCashCount.status}
+                    </Badge>
+                  ) : null}
+                </Flex>
+                <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">
+                      Expected Net Cash
+                    </Text>
+                    <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}</Text>
+                  </Box>
+                  <FormControl isRequired>
+                    <FormLabel>Actual cash counted</FormLabel>
+                    <NumberInput
+                      min={0}
+                      value={cashCountForm.actualCash}
+                      onChange={(value) => setCashCountForm({ actualCash: Number(value || 0) })}
+                    >
+                      <NumberInputField />
+                    </NumberInput>
+                  </FormControl>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">
+                      Variance
+                    </Text>
+                    <Text fontWeight="bold">
+                      {formatMoney(Number(cashCountForm.actualCash || 0) - (tellerBatchSummary.cashIn - tellerBatchSummary.cashOut))}
+                    </Text>
+                  </Box>
+                  <Box alignSelf="end">
+                    <Button
+                      type="submit"
+                      colorScheme="green"
+                      width="full"
+                      isDisabled={tellerBatchSummary.transactionCount === 0}
+                    >
+                      Submit cash count
+                    </Button>
+                  </Box>
+                </Grid>
+                {latestCashCount ? (
+                  <Text mt={3} color="gray.600" fontSize="sm">
+                    Latest submitted by {latestCashCount.submittedBy}: expected {formatMoney(latestCashCount.expectedCash)},
+                    actual {formatMoney(latestCashCount.actualCash)}, variance {formatMoney(latestCashCount.variance)}.
+                  </Text>
+                ) : null}
+              </Box>
+            ) : null}
           </Box>
         </Box>
       ) : null}
@@ -1333,6 +1428,7 @@ function Members({ user }) {
 
 function Ledger({ user }) {
   const [tellerBatch, setTellerBatch] = useState([]);
+  const [latestCashCount, setLatestCashCount] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -1347,6 +1443,7 @@ function Ledger({ user }) {
     try {
       const data = await api("/api/ledger");
       setTellerBatch(data.tellerBatch);
+      setLatestCashCount(data.latestCashCount);
       setJournalEntries(data.journalEntries);
     } catch (ledgerError) {
       setError(ledgerError.message);
@@ -1398,6 +1495,48 @@ function Ledger({ user }) {
 
       {message ? <Text color="green.600">{message}</Text> : null}
       {error ? <Text color="red.500">{error}</Text> : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+          <Box>
+            <Heading size="md">Teller Cash Count</Heading>
+            <Text color="gray.600" mt={1}>
+              Latest teller-submitted cash count for the unposted batch.
+            </Text>
+          </Box>
+          <Badge colorScheme={latestCashCount ? (latestCashCount.variance === 0 ? "green" : "orange") : "gray"}>
+            {latestCashCount ? latestCashCount.status : "Not submitted"}
+          </Badge>
+        </Flex>
+        <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Expected Cash
+            </Text>
+            <Text fontWeight="bold">
+              {formatMoney(latestCashCount ? latestCashCount.expectedCash : tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
+            </Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Actual Cash
+            </Text>
+            <Text fontWeight="bold">{latestCashCount ? formatMoney(latestCashCount.actualCash) : "-"}</Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Variance
+            </Text>
+            <Text fontWeight="bold">{latestCashCount ? formatMoney(latestCashCount.variance) : "-"}</Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">
+              Submitted By
+            </Text>
+            <Text fontWeight="bold">{latestCashCount ? latestCashCount.submittedBy : "-"}</Text>
+          </Box>
+        </Grid>
+      </Box>
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Heading size="md" mb={4}>

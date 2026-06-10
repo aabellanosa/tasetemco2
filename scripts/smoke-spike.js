@@ -361,6 +361,43 @@ async function run() {
       throw new Error("Bookkeeper ledger view should show the unposted savings deposit.");
     }
 
+    const expectedCashCount = ledgerBeforeSavingsPostingBody.tellerBatch.reduce(
+      (sum, payment) => sum + Number(payment.cashReceived || 0) - Number(payment.cashOut || 0),
+      0
+    );
+
+    const tellerCashCount = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        actualCash: expectedCashCount
+      })
+    });
+    const tellerCashCountBody = await tellerCashCount.json();
+
+    if (
+      !tellerCashCount.ok ||
+      tellerCashCountBody.cashCount.expectedCash !== expectedCashCount ||
+      tellerCashCountBody.cashCount.variance !== 0
+    ) {
+      throw new Error("Teller cash count should store expected cash, actual cash, and variance.");
+    }
+
+    const ledgerAfterCashCount = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerAfterCashCountBody = await ledgerAfterCashCount.json();
+
+    if (
+      !ledgerAfterCashCountBody.latestCashCount ||
+      ledgerAfterCashCountBody.latestCashCount.id !== tellerCashCountBody.cashCount.id
+    ) {
+      throw new Error("Bookkeeper ledger view should show the latest teller cash count.");
+    }
+
     const postedSavingsDeposit = await fetch(
       `${baseUrl}/api/ledger/savings-deposits/${savingsDepositBody.deposit.id}/post`,
       {

@@ -15,6 +15,7 @@ import {
   savingsDeposits,
   savingsWithdrawals,
   shareCapitalContributions,
+  tellerCashCounts,
   users
 } from "./data.js";
 
@@ -201,6 +202,42 @@ function nextShareCapitalContributionNumber() {
 function nextSavingsWithdrawalNumber() {
   const next = savingsWithdrawals.length + 1;
   return `SW-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
+function nextTellerCashCountNumber() {
+  const next = tellerCashCounts.length + 1;
+  return `TC-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
+function buildTellerBatchSummary(rows) {
+  return rows.reduce(
+    (summary, row) => {
+      const cashIn = Number(row.cashReceived || 0);
+      const cashOut = Number(row.cashOut || 0);
+
+      return {
+        cashIn: summary.cashIn + cashIn,
+        cashOut: summary.cashOut + cashOut,
+        netCash: summary.netCash + cashIn - cashOut,
+        transactionCount: summary.transactionCount + 1,
+        initialPaymentCount: summary.initialPaymentCount + (row.batchType === "Initial Payment" ? 1 : 0),
+        shareCapitalContributionCount:
+          summary.shareCapitalContributionCount + (row.batchType === "Share Capital Contribution" ? 1 : 0),
+        savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
+        savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0)
+      };
+    },
+    {
+      cashIn: 0,
+      cashOut: 0,
+      netCash: 0,
+      transactionCount: 0,
+      initialPaymentCount: 0,
+      shareCapitalContributionCount: 0,
+      savingsDepositCount: 0,
+      savingsWithdrawalCount: 0
+    }
+  );
 }
 
 function normalizeReferenceNo(referenceNo) {
@@ -549,6 +586,68 @@ async function listJournalEntries() {
     ...entry,
     lines: lines.filter((line) => line.entryId === entry.id)
   }));
+}
+
+async function listTellerBatchRows() {
+  return [
+    ...(await listInitialPayments())
+      .filter((payment) => payment.status === "Teller Batch")
+      .map((payment) => ({ ...payment, batchType: "Initial Payment", cashOut: 0 })),
+    ...(await listSavingsDeposits())
+      .filter((deposit) => deposit.status === "Teller Batch")
+      .map((deposit) => ({
+        ...deposit,
+        batchType: "Savings Deposit",
+        cashOut: 0,
+        shareCapitalAmount: 0,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: deposit.amount
+      })),
+    ...(await listShareCapitalContributions())
+      .filter((contribution) => contribution.status === "Teller Batch")
+      .map((contribution) => ({
+        ...contribution,
+        batchType: "Share Capital Contribution",
+        cashOut: 0,
+        shareCapitalAmount: contribution.amount,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: 0
+      })),
+    ...(await listSavingsWithdrawals())
+      .filter((withdrawal) => withdrawal.status === "Teller Batch")
+      .map((withdrawal) => ({
+        ...withdrawal,
+        batchType: "Savings Withdrawal",
+        cashReceived: 0,
+        cashOut: withdrawal.amount,
+        shareCapitalAmount: 0,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: -withdrawal.amount
+      }))
+  ];
+}
+
+async function listTellerCashCounts() {
+  const db = await getPool();
+
+  if (!db) {
+    return tellerCashCounts;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT count_no AS id, expected_cash AS expectedCash, actual_cash AS actualCash,
+            variance, transaction_count AS transactionCount, submitted_by AS submittedBy,
+            status, submitted_at AS submittedAt
+     FROM teller_cash_counts
+     ORDER BY submitted_at DESC, id DESC`
+  );
+
+  return rows;
+}
+
+async function getLatestTellerCashCount() {
+  const rows = await listTellerCashCounts();
+  return rows[0] || null;
 }
 
 async function getMemberStatement(memberId) {
@@ -1635,6 +1734,62 @@ async function postSavingsWithdrawal(withdrawalId, user) {
   }
 }
 
+async function submitTellerCashCount(input, user) {
+  const tellerBatchRows = await listTellerBatchRows();
+  const summary = buildTellerBatchSummary(tellerBatchRows);
+
+  if (summary.transactionCount === 0) {
+    return { error: "There are no unposted teller transactions to count.", statusCode: 409 };
+  }
+
+  const cashCount = {
+    id: nextTellerCashCountNumber(),
+    expectedCash: summary.netCash,
+    actualCash: input.actualCash,
+    variance: input.actualCash - summary.netCash,
+    transactionCount: summary.transactionCount,
+    submittedBy: user.username,
+    status: "Submitted",
+    submittedAt: new Date().toISOString()
+  };
+
+  const db = await getPool();
+
+  if (!db) {
+    tellerCashCounts.unshift(cashCount);
+    return { cashCount };
+  }
+
+  const [countRows] = await db.execute(
+    `SELECT COUNT(*) AS countValue
+     FROM teller_cash_counts
+     WHERE YEAR(submitted_at) = YEAR(CURRENT_DATE)`
+  );
+  const countNo = `TC-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+  await db.execute(
+    `INSERT INTO teller_cash_counts (
+       count_no, expected_cash, actual_cash, variance, transaction_count, submitted_by, status
+     )
+     VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
+    [
+      countNo,
+      cashCount.expectedCash,
+      cashCount.actualCash,
+      cashCount.variance,
+      cashCount.transactionCount,
+      user.username
+    ]
+  );
+
+  return {
+    cashCount: {
+      ...cashCount,
+      id: countNo
+    }
+  };
+}
+
 function validateMemberApplication(body) {
   const fullName = String(body.fullName || "").trim();
   const clusterName = String(body.clusterName || "").trim();
@@ -1804,6 +1959,20 @@ function validateSavingsWithdrawal(body) {
       memberId,
       amount,
       referenceNo
+    }
+  };
+}
+
+function validateTellerCashCount(body) {
+  const actualCash = Number(body.actualCash || 0);
+
+  if (!Number.isInteger(actualCash) || actualCash < 0) {
+    return { error: "Actual cash counted must be a whole peso amount." };
+  }
+
+  return {
+    value: {
+      actualCash
     }
   };
 }
@@ -2145,6 +2314,56 @@ app.post("/api/savings-withdrawals", async (request, response) => {
   response.status(201).json(withdrawalResult);
 });
 
+app.get("/api/teller-cash-count", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "teller-cash-counts:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const tellerBatch = await listTellerBatchRows();
+  response.json({
+    expected: buildTellerBatchSummary(tellerBatch),
+    latestCashCount: await getLatestTellerCashCount()
+  });
+});
+
+app.post("/api/teller-cash-count", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "teller-cash-counts:create")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = validateTellerCashCount(request.body);
+
+  if (result.error) {
+    response.status(400).json({ error: result.error });
+    return;
+  }
+
+  const cashCountResult = await submitTellerCashCount(result.value, user);
+
+  if (cashCountResult.error) {
+    response.status(cashCountResult.statusCode).json({ error: cashCountResult.error });
+    return;
+  }
+
+  response.status(201).json(cashCountResult);
+});
+
 app.get("/api/ledger", async (request, response) => {
   const user = parseSession(request);
 
@@ -2159,41 +2378,8 @@ app.get("/api/ledger", async (request, response) => {
   }
 
   response.json({
-    tellerBatch: [
-      ...(await listInitialPayments())
-        .filter((payment) => payment.status === "Teller Batch")
-        .map((payment) => ({ ...payment, batchType: "Initial Payment" })),
-      ...(await listSavingsDeposits())
-        .filter((deposit) => deposit.status === "Teller Batch")
-        .map((deposit) => ({
-          ...deposit,
-          batchType: "Savings Deposit",
-          shareCapitalAmount: 0,
-          membershipFeeAmount: 0,
-          savingsDepositAmount: deposit.amount
-        })),
-      ...(await listShareCapitalContributions())
-        .filter((contribution) => contribution.status === "Teller Batch")
-        .map((contribution) => ({
-          ...contribution,
-          batchType: "Share Capital Contribution",
-          cashOut: 0,
-          shareCapitalAmount: contribution.amount,
-          membershipFeeAmount: 0,
-          savingsDepositAmount: 0
-        })),
-      ...(await listSavingsWithdrawals())
-        .filter((withdrawal) => withdrawal.status === "Teller Batch")
-        .map((withdrawal) => ({
-          ...withdrawal,
-          batchType: "Savings Withdrawal",
-          cashReceived: 0,
-          cashOut: withdrawal.amount,
-          shareCapitalAmount: 0,
-          membershipFeeAmount: 0,
-          savingsDepositAmount: -withdrawal.amount
-        }))
-    ],
+    tellerBatch: await listTellerBatchRows(),
+    latestCashCount: hasPermission(user, "teller-cash-counts:view") ? await getLatestTellerCashCount() : null,
     journalEntries: await listJournalEntries()
   });
 });

@@ -100,6 +100,7 @@ export const rolePermissions = {
     "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
+    "teller-cash-counts:view",
     "ledger:view"
   ],
   "General Manager": [
@@ -109,9 +110,10 @@ export const rolePermissions = {
     "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
+    "teller-cash-counts:view",
     "ledger:view"
   ],
-  "Accountant / Bookkeeper": ["ledger:view", "ledger:teller-batches:post"],
+  "Accountant / Bookkeeper": ["ledger:view", "ledger:teller-batches:post", "teller-cash-counts:view"],
   "Loan Officer": ["members:view"],
   "Credit Committee / Approver": ["members:view", "members:applications:view"],
   "Teller / Cashier": [
@@ -123,7 +125,9 @@ export const rolePermissions = {
     "members:savings-deposits:view",
     "members:savings-deposits:create",
     "members:savings-withdrawals:view",
-    "members:savings-withdrawals:create"
+    "members:savings-withdrawals:create",
+    "teller-cash-counts:view",
+    "teller-cash-counts:create"
   ],
   "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
   "Auditor / Compliance Officer": [
@@ -133,6 +137,7 @@ export const rolePermissions = {
     "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
+    "teller-cash-counts:view",
     "ledger:view"
   ],
   "Board / Read-Only Executive": []
@@ -199,6 +204,8 @@ export const savingsDeposits = [];
 export const savingsWithdrawals = [];
 
 export const journalEntries = [];
+
+export const tellerCashCounts = [];
 
 export const dashboard = {
   metrics: [

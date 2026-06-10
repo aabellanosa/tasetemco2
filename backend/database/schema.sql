@@ -118,3 +118,15 @@ CREATE TABLE IF NOT EXISTS journal_entry_lines (
   credit INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS teller_cash_counts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  count_no VARCHAR(40) NOT NULL UNIQUE,
+  expected_cash INT NOT NULL DEFAULT 0,
+  actual_cash INT NOT NULL DEFAULT 0,
+  variance INT NOT NULL DEFAULT 0,
+  transaction_count INT NOT NULL DEFAULT 0,
+  submitted_by VARCHAR(80) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Submitted',
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

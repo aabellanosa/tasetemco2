@@ -115,6 +115,8 @@ The Teller/Cashier UI now uses a member-first transaction workspace: select the 
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
+Teller/Cashier can submit a cash count for the current unposted teller batch. The system records expected net cash, actual cash counted, variance, transaction count, submitted by, and status; Bookkeeper can review the latest cash count before posting.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
@@ -173,6 +175,8 @@ Example server directory:
 - `POST /api/savings-deposits`
 - `GET /api/savings-withdrawals`
 - `POST /api/savings-withdrawals`
+- `GET /api/teller-cash-count`
+- `POST /api/teller-cash-count`
 - `GET /api/products`
 - `GET /api/loans`
 - `GET /api/transactions`
