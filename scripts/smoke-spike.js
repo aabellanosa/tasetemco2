@@ -245,37 +245,16 @@ async function run() {
       throw new Error("Bookkeeper ledger view should show the unposted teller payment.");
     }
 
-    const postedPayment = await fetch(
+    const earlyPostedPayment = await fetch(
       `${baseUrl}/api/ledger/teller-batches/${initialPaymentBody.payment.id}/post`,
       {
         method: "POST",
         headers: { Cookie: bookkeeperCookie }
       }
     );
-    const postedPaymentBody = await postedPayment.json();
 
-    if (!postedPayment.ok || postedPaymentBody.payment.status !== "Posted") {
-      throw new Error("Bookkeeper did not post the teller payment.");
-    }
-
-    const debitTotal = postedPaymentBody.entry.lines.reduce((sum, line) => sum + line.debit, 0);
-    const creditTotal = postedPaymentBody.entry.lines.reduce((sum, line) => sum + line.credit, 0);
-
-    if (debitTotal !== 6100 || creditTotal !== 6100) {
-      throw new Error("Posted journal entry should be balanced for the teller payment.");
-    }
-
-    const ledgerAfterPosting = await fetch(`${baseUrl}/api/ledger`, {
-      headers: { Cookie: bookkeeperCookie }
-    });
-    const ledgerAfterPostingBody = await ledgerAfterPosting.json();
-
-    if (ledgerAfterPostingBody.tellerBatch.some((payment) => payment.id === initialPaymentBody.payment.id)) {
-      throw new Error("Posted teller payment should no longer appear in the unposted batch.");
-    }
-
-    if (!ledgerAfterPostingBody.journalEntries.some((entry) => entry.id === postedPaymentBody.entry.id)) {
-      throw new Error("Posted journal entry was not returned by the ledger endpoint.");
+    if (earlyPostedPayment.status !== 409) {
+      throw new Error("Bookkeeper should not post teller transactions before batch review.");
     }
 
     const memberStatement = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
@@ -291,12 +270,8 @@ async function run() {
       (transaction) => transaction.id === initialPaymentBody.payment.id
     );
 
-    if (!statementPayment || statementPayment.status !== "Posted") {
-      throw new Error("Member statement did not show the posted initial payment.");
-    }
-
-    if (statementPayment.journalEntryNo !== postedPaymentBody.entry.id) {
-      throw new Error("Member statement did not link the posted transaction to its journal entry.");
+    if (!statementPayment || statementPayment.status !== "Teller Batch") {
+      throw new Error("Member statement should show initial payment as unposted before batch review.");
     }
 
     const duplicateCashInReference = await fetch(`${baseUrl}/api/savings-deposits`, {
@@ -556,52 +531,16 @@ async function run() {
       throw new Error("Bookkeeper ledger view should show the unposted share capital contribution.");
     }
 
-    const postedShareCapitalContribution = await fetch(
+    const earlyShareCapitalContributionPost = await fetch(
       `${baseUrl}/api/ledger/share-capital-contributions/${shareCapitalContributionBody.contribution.id}/post`,
       {
         method: "POST",
         headers: { Cookie: bookkeeperCookie }
       }
     );
-    const postedShareCapitalContributionBody = await postedShareCapitalContribution.json();
 
-    if (
-      !postedShareCapitalContribution.ok ||
-      postedShareCapitalContributionBody.contribution.status !== "Posted"
-    ) {
-      throw new Error("Bookkeeper did not post the share capital contribution.");
-    }
-
-    const shareCapitalDebitTotal = postedShareCapitalContributionBody.entry.lines.reduce(
-      (sum, line) => sum + line.debit,
-      0
-    );
-    const shareCapitalCreditTotal = postedShareCapitalContributionBody.entry.lines.reduce(
-      (sum, line) => sum + line.credit,
-      0
-    );
-
-    if (shareCapitalDebitTotal !== 2000 || shareCapitalCreditTotal !== 2000) {
-      throw new Error("Posted share capital contribution journal entry should be balanced.");
-    }
-
-    const memberStatementAfterShareCapital = await fetch(
-      `${baseUrl}/api/members/${approvalBody.member.id}/statement`,
-      {
-        headers: { Cookie: tellerCookie }
-      }
-    );
-    const memberStatementAfterShareCapitalBody = await memberStatementAfterShareCapital.json();
-    const statementContribution = memberStatementAfterShareCapitalBody.transactions.find(
-      (transaction) => transaction.id === shareCapitalContributionBody.contribution.id
-    );
-
-    if (!statementContribution || statementContribution.status !== "Posted") {
-      throw new Error("Member statement did not show the posted share capital contribution.");
-    }
-
-    if (statementContribution.journalEntryNo !== postedShareCapitalContributionBody.entry.id) {
-      throw new Error("Member statement did not link the share capital contribution to its journal entry.");
+    if (earlyShareCapitalContributionPost.status !== 409) {
+      throw new Error("Bookkeeper should not post next-batch transactions before batch review.");
     }
 
     const excessiveWithdrawal = await fetch(`${baseUrl}/api/savings-withdrawals`, {
@@ -679,6 +618,92 @@ async function run() {
       )
     ) {
       throw new Error("Bookkeeper ledger view should show the unposted savings withdrawal.");
+    }
+
+    const secondExpectedCashCount = ledgerBeforeWithdrawalPostingBody.tellerBatch.reduce(
+      (sum, payment) => sum + Number(payment.cashReceived || 0) - Number(payment.cashOut || 0),
+      0
+    );
+
+    const secondTellerCashCount = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        actualCash: secondExpectedCashCount
+      })
+    });
+    const secondTellerCashCountBody = await secondTellerCashCount.json();
+
+    if (
+      !secondTellerCashCount.ok ||
+      secondTellerCashCountBody.batch.status !== "Submitted" ||
+      secondTellerCashCountBody.cashCount.variance !== 0
+    ) {
+      throw new Error("Teller should submit the second active batch before posting.");
+    }
+
+    const secondReviewedBatch = await fetch(
+      `${baseUrl}/api/teller-batches/${secondTellerCashCountBody.batch.id}/review`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const secondReviewedBatchBody = await secondReviewedBatch.json();
+
+    if (!secondReviewedBatch.ok || secondReviewedBatchBody.batch.status !== "Reviewed") {
+      throw new Error("Bookkeeper should review the second teller batch before posting.");
+    }
+
+    const postedShareCapitalContribution = await fetch(
+      `${baseUrl}/api/ledger/share-capital-contributions/${shareCapitalContributionBody.contribution.id}/post`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const postedShareCapitalContributionBody = await postedShareCapitalContribution.json();
+
+    if (
+      !postedShareCapitalContribution.ok ||
+      postedShareCapitalContributionBody.contribution.status !== "Posted"
+    ) {
+      throw new Error("Bookkeeper did not post the share capital contribution.");
+    }
+
+    const shareCapitalDebitTotal = postedShareCapitalContributionBody.entry.lines.reduce(
+      (sum, line) => sum + line.debit,
+      0
+    );
+    const shareCapitalCreditTotal = postedShareCapitalContributionBody.entry.lines.reduce(
+      (sum, line) => sum + line.credit,
+      0
+    );
+
+    if (shareCapitalDebitTotal !== 2000 || shareCapitalCreditTotal !== 2000) {
+      throw new Error("Posted share capital contribution journal entry should be balanced.");
+    }
+
+    const memberStatementAfterShareCapital = await fetch(
+      `${baseUrl}/api/members/${approvalBody.member.id}/statement`,
+      {
+        headers: { Cookie: tellerCookie }
+      }
+    );
+    const memberStatementAfterShareCapitalBody = await memberStatementAfterShareCapital.json();
+    const statementContribution = memberStatementAfterShareCapitalBody.transactions.find(
+      (transaction) => transaction.id === shareCapitalContributionBody.contribution.id
+    );
+
+    if (!statementContribution || statementContribution.status !== "Posted") {
+      throw new Error("Member statement did not show the posted share capital contribution.");
+    }
+
+    if (statementContribution.journalEntryNo !== postedShareCapitalContributionBody.entry.id) {
+      throw new Error("Member statement did not link the share capital contribution to its journal entry.");
     }
 
     const postedSavingsWithdrawal = await fetch(

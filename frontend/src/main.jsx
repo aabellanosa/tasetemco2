@@ -1558,6 +1558,9 @@ function Ledger({ user }) {
             <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : activeBatch ? "purple" : "gray"}>
               {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
             </Badge>
+            {latestCashCount && latestCashCount.variance !== 0 ? (
+              <Badge colorScheme="orange">Variance warning</Badge>
+            ) : null}
             {canReviewTellerBatch && activeBatch?.status === "Submitted" ? (
               <Button size="sm" colorScheme="green" onClick={reviewBatch}>
                 Mark reviewed
@@ -1598,6 +1601,9 @@ function Ledger({ user }) {
             <Text fontWeight="bold">{latestCashCount ? latestCashCount.submittedBy : "-"}</Text>
           </Box>
         </Grid>
+        <Text mt={3} color="gray.600" fontSize="sm">
+          Posting is available after Bookkeeper review. A variance is shown for attention but does not block posting yet.
+        </Text>
       </Box>
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
@@ -1662,7 +1668,12 @@ function Ledger({ user }) {
                   </Td>
                   {canPostTellerBatch ? (
                     <Td>
-                      <Button size="sm" colorScheme="green" onClick={() => postPayment(payment)}>
+                      <Button
+                        size="sm"
+                        colorScheme="green"
+                        isDisabled={activeBatch?.status !== "Reviewed"}
+                        onClick={() => postPayment(payment)}
+                      >
                         Post
                       </Button>
                     </Td>

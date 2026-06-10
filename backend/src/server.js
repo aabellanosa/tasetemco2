@@ -742,6 +742,45 @@ async function getOpenTellerBatch(user) {
   return { batch };
 }
 
+async function ensureTellerBatchReviewedForPosting(batchId, connection = null) {
+  if (!batchId) {
+    return { error: "Teller transaction is not assigned to a batch.", statusCode: 409 };
+  }
+
+  if (!connection) {
+    const batch = tellerBatches.find((item) => item.id === batchId);
+
+    if (!batch) {
+      return { error: "Teller batch was not found.", statusCode: 404 };
+    }
+
+    if (batch.status !== "Reviewed") {
+      return { error: "Teller batch must be reviewed before posting transactions.", statusCode: 409 };
+    }
+
+    return { batch };
+  }
+
+  const [rows] = await connection.execute(
+    `SELECT batch_no AS id, status
+     FROM teller_batches
+     WHERE batch_no = ?
+     LIMIT 1`,
+    [batchId]
+  );
+  const batch = rows[0];
+
+  if (!batch) {
+    return { error: "Teller batch was not found.", statusCode: 404 };
+  }
+
+  if (batch.status !== "Reviewed") {
+    return { error: "Teller batch must be reviewed before posting transactions.", statusCode: 409 };
+  }
+
+  return { batch };
+}
+
 async function getMemberStatement(memberId) {
   const db = await getPool();
 
@@ -1439,6 +1478,12 @@ async function postInitialPayment(paymentId, user) {
       return { error: "Only teller batch payments can be posted.", statusCode: 409 };
     }
 
+    const batchResult = await ensureTellerBatchReviewedForPosting(payment.batchId);
+
+    if (batchResult.error) {
+      return batchResult;
+    }
+
     const entry = {
       id: nextJournalEntryNumber(),
       sourceType: "Initial Member Payment",
@@ -1463,7 +1508,7 @@ async function postInitialPayment(paymentId, user) {
     await connection.beginTransaction();
 
     const [paymentRows] = await connection.execute(
-      `SELECT payment_no AS id, member_no AS memberId, member_name AS memberName,
+      `SELECT payment_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
               share_capital_amount AS shareCapitalAmount, membership_fee_amount AS membershipFeeAmount,
               savings_deposit_amount AS savingsDepositAmount, cash_received AS cashReceived,
               reference_no AS referenceNo, received_by AS receivedBy, status
@@ -1482,6 +1527,13 @@ async function postInitialPayment(paymentId, user) {
     if (payment.status !== "Teller Batch") {
       await connection.rollback();
       return { error: "Only teller batch payments can be posted.", statusCode: 409 };
+    }
+
+    const batchResult = await ensureTellerBatchReviewedForPosting(payment.batchId, connection);
+
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
     }
 
     const [countRows] = await connection.execute(
@@ -1559,6 +1611,12 @@ async function postSavingsDeposit(depositId, user) {
       return { error: "Only teller batch savings deposits can be posted.", statusCode: 409 };
     }
 
+    const batchResult = await ensureTellerBatchReviewedForPosting(deposit.batchId);
+
+    if (batchResult.error) {
+      return batchResult;
+    }
+
     const entry = {
       id: nextJournalEntryNumber(),
       sourceType: "Savings Deposit",
@@ -1583,7 +1641,7 @@ async function postSavingsDeposit(depositId, user) {
     await connection.beginTransaction();
 
     const [depositRows] = await connection.execute(
-      `SELECT deposit_no AS id, member_no AS memberId, member_name AS memberName,
+      `SELECT deposit_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
               amount, cash_received AS cashReceived, reference_no AS referenceNo,
               received_by AS receivedBy, status
        FROM savings_deposits
@@ -1601,6 +1659,13 @@ async function postSavingsDeposit(depositId, user) {
     if (deposit.status !== "Teller Batch") {
       await connection.rollback();
       return { error: "Only teller batch savings deposits can be posted.", statusCode: 409 };
+    }
+
+    const batchResult = await ensureTellerBatchReviewedForPosting(deposit.batchId, connection);
+
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
     }
 
     const [countRows] = await connection.execute(
@@ -1678,6 +1743,12 @@ async function postShareCapitalContribution(contributionId, user) {
       return { error: "Only teller batch share capital contributions can be posted.", statusCode: 409 };
     }
 
+    const batchResult = await ensureTellerBatchReviewedForPosting(contribution.batchId);
+
+    if (batchResult.error) {
+      return batchResult;
+    }
+
     const entry = {
       id: nextJournalEntryNumber(),
       sourceType: "Share Capital Contribution",
@@ -1702,7 +1773,7 @@ async function postShareCapitalContribution(contributionId, user) {
     await connection.beginTransaction();
 
     const [contributionRows] = await connection.execute(
-      `SELECT contribution_no AS id, member_no AS memberId, member_name AS memberName,
+      `SELECT contribution_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
               amount, cash_received AS cashReceived, reference_no AS referenceNo,
               received_by AS receivedBy, status
        FROM share_capital_contributions
@@ -1720,6 +1791,13 @@ async function postShareCapitalContribution(contributionId, user) {
     if (contribution.status !== "Teller Batch") {
       await connection.rollback();
       return { error: "Only teller batch share capital contributions can be posted.", statusCode: 409 };
+    }
+
+    const batchResult = await ensureTellerBatchReviewedForPosting(contribution.batchId, connection);
+
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
     }
 
     const [countRows] = await connection.execute(
@@ -1797,6 +1875,12 @@ async function postSavingsWithdrawal(withdrawalId, user) {
       return { error: "Only teller batch savings withdrawals can be posted.", statusCode: 409 };
     }
 
+    const batchResult = await ensureTellerBatchReviewedForPosting(withdrawal.batchId);
+
+    if (batchResult.error) {
+      return batchResult;
+    }
+
     const entry = {
       id: nextJournalEntryNumber(),
       sourceType: "Savings Withdrawal",
@@ -1821,7 +1905,7 @@ async function postSavingsWithdrawal(withdrawalId, user) {
     await connection.beginTransaction();
 
     const [withdrawalRows] = await connection.execute(
-      `SELECT withdrawal_no AS id, member_no AS memberId, member_name AS memberName,
+      `SELECT withdrawal_no AS id, batch_no AS batchId, member_no AS memberId, member_name AS memberName,
               amount, reference_no AS referenceNo, released_by AS releasedBy, status
        FROM savings_withdrawals
        WHERE withdrawal_no = ?
@@ -1838,6 +1922,13 @@ async function postSavingsWithdrawal(withdrawalId, user) {
     if (withdrawal.status !== "Teller Batch") {
       await connection.rollback();
       return { error: "Only teller batch savings withdrawals can be posted.", statusCode: 409 };
+    }
+
+    const batchResult = await ensureTellerBatchReviewedForPosting(withdrawal.batchId, connection);
+
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
     }
 
     const [countRows] = await connection.execute(

@@ -175,6 +175,7 @@
           Accountant / Bookkeeper reviews expected cash, actual cash, and variance before posting.
           The implemented batch status flow is Open to Submitted to Reviewed to Closed, then
           the next teller batch opens for new activity.
+          Posting is allowed only after review; variance is shown as a warning for now.
           The Members workflow auto-refreshes every 5 seconds during demo testing, with a
           manual Refresh button available when users want the latest state immediately.
         </p>
@@ -214,6 +215,7 @@
               <li>Cash in, cash out, net cash, and transaction counts are summarized.</li>
               <li>Teller submits actual cash counted and system computes variance.</li>
               <li>Bookkeeper marks the submitted teller batch as reviewed.</li>
+              <li>System allows posting only after the batch is reviewed.</li>
               <li>Bookkeeper closes a reviewed batch after its transactions are posted.</li>
               <li>Transaction stays in teller batch until posting.</li>
             </ol>

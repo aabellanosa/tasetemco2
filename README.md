@@ -117,6 +117,8 @@ Teller and Bookkeeper screens show unposted teller batch cash position: cash in,
 
 Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
+Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. Cash variance is shown as a warning for discussion and review, but it does not block posting yet.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
