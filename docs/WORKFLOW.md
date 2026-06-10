@@ -218,6 +218,8 @@ The Teller/Cashier UI uses a member-first transaction workspace: select the memb
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
+Teller/Cashier can submit a cash count for the current unposted teller batch. The system records expected net cash, actual cash counted, variance, transaction count, submitted by, and status; Bookkeeper can review the latest cash count before posting.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
@@ -323,7 +325,22 @@ Sample accounting effect:
 - Debit: Savings Deposits Payable
 - Credit: Cash on Hand or Cash in Bank
 
-### 4.5 Loan Application
+### 4.5 Teller Cash Count
+
+1. Teller reviews the unposted teller batch cash position.
+2. System shows cash in, cash out, expected net cash, transaction count, and transaction mix.
+3. Teller counts actual cash on hand.
+4. Teller submits the cash count.
+5. System stores expected cash, actual cash, variance, submitted by, and status.
+6. Accountant / Bookkeeper reviews the latest cash count before posting teller batch transactions.
+
+Current prototype behavior:
+
+- Cash count is a review control only.
+- Posting is not blocked by variance yet.
+- A later approval spike can require variance resolution before final batch posting.
+
+### 4.6 Loan Application
 
 1. Loan Officer creates application.
 2. Borrower details, loan product, amount, term, co-maker, and collateral are encoded.
@@ -345,7 +362,7 @@ Suggested status flow:
 - Closed
 - Written Off
 
-### 4.6 Loan Release
+### 4.7 Loan Release
 
 1. Approved loan is selected for release.
 2. System calculates deductions, charges, net proceeds, and amortization schedule.
@@ -361,7 +378,7 @@ Sample accounting effect:
 - Credit: Service Fees, if deducted
 - Credit: Savings Deposits Payable, if proceeds are credited to savings
 
-### 4.7 Loan Collection
+### 4.8 Loan Collection
 
 1. Teller selects loan account.
 2. System computes amount due, interest, penalties, and principal allocation.
@@ -376,7 +393,7 @@ Sample accounting effect:
 - Credit: Interest Income from Loans
 - Credit: Penalties or Service Fees, if applicable
 
-### 4.8 Journal Voucher
+### 4.9 Journal Voucher
 
 1. Accountant prepares journal voucher.
 2. Debit and credit lines are encoded.
@@ -392,7 +409,7 @@ Suggested status flow:
 - Posted
 - Reversed
 
-### 4.9 Month-End Closing
+### 4.10 Month-End Closing
 
 1. Ensure all teller batches are posted.
 2. Reconcile cash on hand and bank accounts.
