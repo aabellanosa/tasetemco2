@@ -380,10 +380,11 @@ async function run() {
 
     if (
       !tellerCashCount.ok ||
+      tellerCashCountBody.batch.status !== "Submitted" ||
       tellerCashCountBody.cashCount.expectedCash !== expectedCashCount ||
       tellerCashCountBody.cashCount.variance !== 0
     ) {
-      throw new Error("Teller cash count should store expected cash, actual cash, and variance.");
+      throw new Error("Teller cash count should submit the active batch and store cash variance.");
     }
 
     const ledgerAfterCashCount = await fetch(`${baseUrl}/api/ledger`, {
@@ -396,6 +397,26 @@ async function run() {
       ledgerAfterCashCountBody.latestCashCount.id !== tellerCashCountBody.cashCount.id
     ) {
       throw new Error("Bookkeeper ledger view should show the latest teller cash count.");
+    }
+
+    if (
+      !ledgerAfterCashCountBody.activeBatch ||
+      ledgerAfterCashCountBody.activeBatch.status !== "Submitted"
+    ) {
+      throw new Error("Bookkeeper ledger view should show the submitted teller batch.");
+    }
+
+    const reviewedBatch = await fetch(
+      `${baseUrl}/api/teller-batches/${ledgerAfterCashCountBody.activeBatch.id}/review`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const reviewedBatchBody = await reviewedBatch.json();
+
+    if (!reviewedBatch.ok || reviewedBatchBody.batch.status !== "Reviewed") {
+      throw new Error("Bookkeeper should be able to mark a submitted teller batch as reviewed.");
     }
 
     const postedSavingsDeposit = await fetch(

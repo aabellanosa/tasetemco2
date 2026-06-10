@@ -251,6 +251,7 @@ function Members({ user }) {
   const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
+  const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [statement, setStatement] = useState(null);
   const [form, setForm] = useState({
@@ -383,6 +384,7 @@ function Members({ user }) {
         setShareCapitalContributions(contributionRows);
         setSavingsDeposits(savingsRows);
         setSavingsWithdrawals(withdrawalRows);
+        setActiveBatch(cashCountData.activeBatch);
         setLatestCashCount(cashCountData.latestCashCount);
         setLastRefreshedAt(new Date());
 
@@ -615,6 +617,7 @@ function Members({ user }) {
         body: JSON.stringify(cashCountForm)
       });
       setMessage(`${data.cashCount.id} submitted with ${formatMoney(data.cashCount.variance)} variance.`);
+      setActiveBatch(data.batch);
       setLatestCashCount(data.cashCount);
       setCashCountForm({ actualCash: 0 });
       await loadMembersWorkflow();
@@ -976,9 +979,14 @@ function Members({ user }) {
                   Unposted transactions waiting for Bookkeeper posting.
                 </Text>
               </Box>
-              <Badge colorScheme={tellerBatchSummary.transactionCount ? "blue" : "gray"} alignSelf="flex-start">
-                {tellerBatchSummary.transactionCount} unposted
-              </Badge>
+              <HStack alignSelf="flex-start">
+                <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : "purple"}>
+                  {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
+                </Badge>
+                <Badge colorScheme={tellerBatchSummary.transactionCount ? "blue" : "gray"}>
+                  {tellerBatchSummary.transactionCount} unposted
+                </Badge>
+              </HStack>
             </Flex>
             <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={4}>
               <Box borderWidth="1px" borderRadius="md" p={4}>
@@ -1053,11 +1061,9 @@ function Members({ user }) {
                       Count actual cash on hand before sending the batch for accounting review.
                     </Text>
                   </Box>
-                  {latestCashCount ? (
-                    <Badge colorScheme={latestCashCount.variance === 0 ? "green" : "orange"} alignSelf="flex-start">
-                      Last count: {latestCashCount.status}
-                    </Badge>
-                  ) : null}
+                  <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : "purple"} alignSelf="flex-start">
+                    {activeBatch ? activeBatch.status : "No batch"}
+                  </Badge>
                 </Flex>
                 <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
                   <Box borderWidth="1px" borderRadius="md" p={4}>
@@ -1089,7 +1095,7 @@ function Members({ user }) {
                       type="submit"
                       colorScheme="green"
                       width="full"
-                      isDisabled={tellerBatchSummary.transactionCount === 0}
+                      isDisabled={tellerBatchSummary.transactionCount === 0 || activeBatch?.status !== "Open"}
                     >
                       Submit cash count
                     </Button>
@@ -1428,12 +1434,14 @@ function Members({ user }) {
 
 function Ledger({ user }) {
   const [tellerBatch, setTellerBatch] = useState([]);
+  const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
+  const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
 
   async function loadLedger() {
@@ -1442,6 +1450,7 @@ function Ledger({ user }) {
 
     try {
       const data = await api("/api/ledger");
+      setActiveBatch(data.activeBatch);
       setTellerBatch(data.tellerBatch);
       setLatestCashCount(data.latestCashCount);
       setJournalEntries(data.journalEntries);
@@ -1479,6 +1488,26 @@ function Ledger({ user }) {
     }
   }
 
+  async function reviewBatch() {
+    if (!activeBatch) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api(`/api/teller-batches/${activeBatch.id}/review`, {
+        method: "POST"
+      });
+      setActiveBatch(data.batch);
+      setMessage(`${data.batch.id} marked as Reviewed.`);
+      await loadLedger();
+    } catch (reviewError) {
+      setError(reviewError.message);
+    }
+  }
+
   return (
     <VStack align="stretch" spacing={5}>
       <Flex justify="space-between" align="center" gap={4} wrap="wrap">
@@ -1504,9 +1533,16 @@ function Ledger({ user }) {
               Latest teller-submitted cash count for the unposted batch.
             </Text>
           </Box>
-          <Badge colorScheme={latestCashCount ? (latestCashCount.variance === 0 ? "green" : "orange") : "gray"}>
-            {latestCashCount ? latestCashCount.status : "Not submitted"}
-          </Badge>
+          <HStack>
+            <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : activeBatch ? "purple" : "gray"}>
+              {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
+            </Badge>
+            {canReviewTellerBatch && activeBatch?.status === "Submitted" ? (
+              <Button size="sm" colorScheme="green" onClick={reviewBatch}>
+                Mark reviewed
+              </Button>
+            ) : null}
+          </HStack>
         </Flex>
         <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
           <Box borderWidth="1px" borderRadius="md" p={4}>

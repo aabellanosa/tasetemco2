@@ -184,17 +184,17 @@ Restrictions:
 
 The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Post Teller Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No |
-| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No |
-| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No |
+| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No | No |
+| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No |
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
@@ -218,7 +218,7 @@ The Teller/Cashier UI uses a member-first transaction workspace: select the memb
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
-Teller/Cashier can submit a cash count for the current unposted teller batch. The system records expected net cash, actual cash counted, variance, transaction count, submitted by, and status; Bookkeeper can review the latest cash count before posting.
+Teller/Cashier works against a current teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed`: cash count submission moves the batch to Submitted, and Bookkeeper can mark it Reviewed before posting individual transactions.
 
 ## 4. Core Workflow
 
@@ -332,11 +332,14 @@ Sample accounting effect:
 3. Teller counts actual cash on hand.
 4. Teller submits the cash count.
 5. System stores expected cash, actual cash, variance, submitted by, and status.
-6. Accountant / Bookkeeper reviews the latest cash count before posting teller batch transactions.
+6. Teller batch status moves from Open to Submitted.
+7. Accountant / Bookkeeper reviews the submitted teller batch.
+8. Bookkeeper marks the batch as Reviewed.
 
 Current prototype behavior:
 
-- Cash count is a review control only.
+- Implemented batch statuses are Open, Submitted, and Reviewed.
+- Posting remains per transaction.
 - Posting is not blocked by variance yet.
 - A later approval spike can require variance resolution before final batch posting.
 

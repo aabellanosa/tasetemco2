@@ -119,9 +119,25 @@ CREATE TABLE IF NOT EXISTS journal_entry_lines (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS teller_batches (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  batch_no VARCHAR(40) NOT NULL UNIQUE,
+  teller_username VARCHAR(80) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Open',
+  opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  submitted_at TIMESTAMP NULL,
+  reviewed_at TIMESTAMP NULL,
+  reviewed_by VARCHAR(80),
+  expected_cash INT NOT NULL DEFAULT 0,
+  actual_cash INT NOT NULL DEFAULT 0,
+  variance INT NOT NULL DEFAULT 0,
+  transaction_count INT NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS teller_cash_counts (
   id INT AUTO_INCREMENT PRIMARY KEY,
   count_no VARCHAR(40) NOT NULL UNIQUE,
+  batch_no VARCHAR(40) NOT NULL,
   expected_cash INT NOT NULL DEFAULT 0,
   actual_cash INT NOT NULL DEFAULT 0,
   variance INT NOT NULL DEFAULT 0,

@@ -101,6 +101,7 @@ export const rolePermissions = {
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
     "teller-cash-counts:view",
+    "teller-batches:view",
     "ledger:view"
   ],
   "General Manager": [
@@ -111,9 +112,16 @@ export const rolePermissions = {
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
     "teller-cash-counts:view",
+    "teller-batches:view",
     "ledger:view"
   ],
-  "Accountant / Bookkeeper": ["ledger:view", "ledger:teller-batches:post", "teller-cash-counts:view"],
+  "Accountant / Bookkeeper": [
+    "ledger:view",
+    "ledger:teller-batches:post",
+    "ledger:teller-batches:review",
+    "teller-cash-counts:view",
+    "teller-batches:view"
+  ],
   "Loan Officer": ["members:view"],
   "Credit Committee / Approver": ["members:view", "members:applications:view"],
   "Teller / Cashier": [
@@ -127,7 +135,8 @@ export const rolePermissions = {
     "members:savings-withdrawals:view",
     "members:savings-withdrawals:create",
     "teller-cash-counts:view",
-    "teller-cash-counts:create"
+    "teller-cash-counts:create",
+    "teller-batches:view"
   ],
   "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
   "Auditor / Compliance Officer": [
@@ -138,6 +147,7 @@ export const rolePermissions = {
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
     "teller-cash-counts:view",
+    "teller-batches:view",
     "ledger:view"
   ],
   "Board / Read-Only Executive": []
@@ -206,6 +216,22 @@ export const savingsWithdrawals = [];
 export const journalEntries = [];
 
 export const tellerCashCounts = [];
+
+export const tellerBatches = [
+  {
+    id: "TB-2026-0001",
+    tellerUsername: "teller01",
+    status: "Open",
+    openedAt: "2026-06-10T08:00:00.000Z",
+    submittedAt: "",
+    reviewedAt: "",
+    reviewedBy: "",
+    expectedCash: 0,
+    actualCash: 0,
+    variance: 0,
+    transactionCount: 0
+  }
+];
 
 export const dashboard = {
   metrics: [

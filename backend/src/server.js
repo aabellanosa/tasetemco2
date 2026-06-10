@@ -15,6 +15,7 @@ import {
   savingsDeposits,
   savingsWithdrawals,
   shareCapitalContributions,
+  tellerBatches,
   tellerCashCounts,
   users
 } from "./data.js";
@@ -207,6 +208,11 @@ function nextSavingsWithdrawalNumber() {
 function nextTellerCashCountNumber() {
   const next = tellerCashCounts.length + 1;
   return `TC-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
+function nextTellerBatchNumber() {
+  const next = tellerBatches.length + 1;
+  return `TB-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
 }
 
 function buildTellerBatchSummary(rows) {
@@ -635,7 +641,7 @@ async function listTellerCashCounts() {
   }
 
   const [rows] = await db.execute(
-    `SELECT count_no AS id, expected_cash AS expectedCash, actual_cash AS actualCash,
+    `SELECT count_no AS id, batch_no AS batchId, expected_cash AS expectedCash, actual_cash AS actualCash,
             variance, transaction_count AS transactionCount, submitted_by AS submittedBy,
             status, submitted_at AS submittedAt
      FROM teller_cash_counts
@@ -648,6 +654,76 @@ async function listTellerCashCounts() {
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
+}
+
+async function getCurrentTellerBatch(user) {
+  const db = await getPool();
+
+  if (!db) {
+    let batch = tellerBatches.find((item) => ["Open", "Submitted", "Reviewed"].includes(item.status));
+
+    if (!batch) {
+      batch = {
+        id: nextTellerBatchNumber(),
+        tellerUsername: user?.username || "teller01",
+        status: "Open",
+        openedAt: new Date().toISOString(),
+        submittedAt: "",
+        reviewedAt: "",
+        reviewedBy: "",
+        expectedCash: 0,
+        actualCash: 0,
+        variance: 0,
+        transactionCount: 0
+      };
+      tellerBatches.unshift(batch);
+    }
+
+    return batch;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT batch_no AS id, teller_username AS tellerUsername, status,
+            opened_at AS openedAt, submitted_at AS submittedAt,
+            reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
+            expected_cash AS expectedCash, actual_cash AS actualCash,
+            variance, transaction_count AS transactionCount
+     FROM teller_batches
+     WHERE status IN ('Open', 'Submitted', 'Reviewed')
+     ORDER BY opened_at DESC, id DESC
+     LIMIT 1`
+  );
+
+  if (rows[0]) {
+    return rows[0];
+  }
+
+  const [countRows] = await db.execute(
+    `SELECT COUNT(*) AS countValue
+     FROM teller_batches
+     WHERE YEAR(opened_at) = YEAR(CURRENT_DATE)`
+  );
+  const batchNo = `TB-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+
+  await db.execute(
+    `INSERT INTO teller_batches (batch_no, teller_username, status)
+     VALUES (?, ?, 'Open')`,
+    [batchNo, user?.username || "teller01"]
+  );
+
+  return {
+    id: batchNo,
+    tellerUsername: user?.username || "teller01",
+    status: "Open",
+    openedAt: new Date().toISOString(),
+    submittedAt: "",
+    reviewedAt: "",
+    reviewedBy: "",
+    expectedCash: 0,
+    actualCash: 0,
+    variance: 0,
+    transactionCount: 0
+  };
 }
 
 async function getMemberStatement(memberId) {
@@ -1737,13 +1813,19 @@ async function postSavingsWithdrawal(withdrawalId, user) {
 async function submitTellerCashCount(input, user) {
   const tellerBatchRows = await listTellerBatchRows();
   const summary = buildTellerBatchSummary(tellerBatchRows);
+  const batch = await getCurrentTellerBatch(user);
 
   if (summary.transactionCount === 0) {
     return { error: "There are no unposted teller transactions to count.", statusCode: 409 };
   }
 
+  if (batch.status !== "Open") {
+    return { error: "Only an open teller batch can be submitted for cash count.", statusCode: 409 };
+  }
+
   const cashCount = {
     id: nextTellerCashCountNumber(),
+    batchId: batch.id,
     expectedCash: summary.netCash,
     actualCash: input.actualCash,
     variance: input.actualCash - summary.netCash,
@@ -1756,8 +1838,14 @@ async function submitTellerCashCount(input, user) {
   const db = await getPool();
 
   if (!db) {
+    batch.status = "Submitted";
+    batch.submittedAt = cashCount.submittedAt;
+    batch.expectedCash = cashCount.expectedCash;
+    batch.actualCash = cashCount.actualCash;
+    batch.variance = cashCount.variance;
+    batch.transactionCount = cashCount.transactionCount;
     tellerCashCounts.unshift(cashCount);
-    return { cashCount };
+    return { cashCount, batch };
   }
 
   const [countRows] = await db.execute(
@@ -1769,11 +1857,12 @@ async function submitTellerCashCount(input, user) {
 
   await db.execute(
     `INSERT INTO teller_cash_counts (
-       count_no, expected_cash, actual_cash, variance, transaction_count, submitted_by, status
+       count_no, batch_no, expected_cash, actual_cash, variance, transaction_count, submitted_by, status
      )
-     VALUES (?, ?, ?, ?, ?, ?, 'Submitted')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'Submitted')`,
     [
       countNo,
+      batch.id,
       cashCount.expectedCash,
       cashCount.actualCash,
       cashCount.variance,
@@ -1782,10 +1871,86 @@ async function submitTellerCashCount(input, user) {
     ]
   );
 
+  await db.execute(
+    `UPDATE teller_batches
+     SET status = 'Submitted', submitted_at = CURRENT_TIMESTAMP,
+         expected_cash = ?, actual_cash = ?, variance = ?, transaction_count = ?
+     WHERE batch_no = ?`,
+    [cashCount.expectedCash, cashCount.actualCash, cashCount.variance, cashCount.transactionCount, batch.id]
+  );
+
   return {
     cashCount: {
       ...cashCount,
       id: countNo
+    },
+    batch: {
+      ...batch,
+      status: "Submitted",
+      expectedCash: cashCount.expectedCash,
+      actualCash: cashCount.actualCash,
+      variance: cashCount.variance,
+      transactionCount: cashCount.transactionCount,
+      submittedAt: new Date().toISOString()
+    }
+  };
+}
+
+async function reviewTellerBatch(batchId, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const batch = tellerBatches.find((item) => item.id === batchId);
+
+    if (!batch) {
+      return { error: "Teller batch was not found.", statusCode: 404 };
+    }
+
+    if (batch.status !== "Submitted") {
+      return { error: "Only submitted teller batches can be reviewed.", statusCode: 409 };
+    }
+
+    batch.status = "Reviewed";
+    batch.reviewedBy = user.username;
+    batch.reviewedAt = new Date().toISOString();
+
+    return { batch };
+  }
+
+  const [rows] = await db.execute(
+    `SELECT batch_no AS id, teller_username AS tellerUsername, status,
+            opened_at AS openedAt, submitted_at AS submittedAt,
+            reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
+            expected_cash AS expectedCash, actual_cash AS actualCash,
+            variance, transaction_count AS transactionCount
+     FROM teller_batches
+     WHERE batch_no = ?
+     LIMIT 1`,
+    [batchId]
+  );
+  const batch = rows[0];
+
+  if (!batch) {
+    return { error: "Teller batch was not found.", statusCode: 404 };
+  }
+
+  if (batch.status !== "Submitted") {
+    return { error: "Only submitted teller batches can be reviewed.", statusCode: 409 };
+  }
+
+  await db.execute(
+    `UPDATE teller_batches
+     SET status = 'Reviewed', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+     WHERE batch_no = ?`,
+    [user.username, batchId]
+  );
+
+  return {
+    batch: {
+      ...batch,
+      status: "Reviewed",
+      reviewedBy: user.username,
+      reviewedAt: new Date().toISOString()
     }
   };
 }
@@ -2329,6 +2494,7 @@ app.get("/api/teller-cash-count", async (request, response) => {
 
   const tellerBatch = await listTellerBatchRows();
   response.json({
+    activeBatch: await getCurrentTellerBatch(user),
     expected: buildTellerBatchSummary(tellerBatch),
     latestCashCount: await getLatestTellerCashCount()
   });
@@ -2364,6 +2530,29 @@ app.post("/api/teller-cash-count", async (request, response) => {
   response.status(201).json(cashCountResult);
 });
 
+app.post("/api/teller-batches/:batchId/review", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "ledger:teller-batches:review")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await reviewTellerBatch(request.params.batchId, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
 app.get("/api/ledger", async (request, response) => {
   const user = parseSession(request);
 
@@ -2378,6 +2567,7 @@ app.get("/api/ledger", async (request, response) => {
   }
 
   response.json({
+    activeBatch: hasPermission(user, "teller-batches:view") ? await getCurrentTellerBatch(user) : null,
     tellerBatch: await listTellerBatchRows(),
     latestCashCount: hasPermission(user, "teller-cash-counts:view") ? await getLatestTellerCashCount() : null,
     journalEntries: await listJournalEntries()
