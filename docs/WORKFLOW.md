@@ -220,7 +220,7 @@ Teller and Bookkeeper screens show unposted teller batch cash position: cash in,
 
 Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
-Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning for discussion and review, but it does not block posting yet.
+Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning, and non-zero variance requires a Bookkeeper variance note before review.
 
 The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, Manager, and Auditor-style users can inspect batch status, cash count evidence, posted entry counts, unposted counts, reviewer, and close timing after the batch leaves the active work area. Each history row has a View action that opens batch details with cash count evidence, source transactions, and linked journal entries.
 
@@ -351,9 +351,10 @@ Current prototype behavior:
 - Bookkeeper posts all reviewed batch transactions in one action.
 - The system still creates source-level journal entries for traceability.
 - A reviewed batch cannot close while it still has unposted teller transactions.
-- Posting is not blocked by variance yet; variance is shown as a warning.
+- Posting is not blocked directly by variance, but non-zero variance must be explained before review.
 - Teller Batch History is read-only and shows open, submitted, reviewed, and closed batch evidence.
 - Batch History View opens the read-only detail package: batch header, cash count evidence, transactions, and linked journal entries.
+- Variance notes are stored with noted by and noted at fields for audit review.
 
 ### 4.6 Loan Application
 
