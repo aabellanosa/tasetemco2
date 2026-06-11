@@ -37,3 +37,35 @@ ON DUPLICATE KEY UPDATE
   initial_share_capital = VALUES(initial_share_capital),
   status = VALUES(status),
   created_by = VALUES(created_by);
+
+INSERT INTO teller_batches (
+  batch_no, teller_username, status, opened_at, expected_cash,
+  actual_cash, variance, transaction_count
+) VALUES
+  ('TB-2026-0001', 'teller01', 'Open', '2026-06-10 08:00:00', 0, 0, 0, 0)
+ON DUPLICATE KEY UPDATE
+  teller_username = VALUES(teller_username),
+  status = VALUES(status),
+  opened_at = VALUES(opened_at),
+  expected_cash = VALUES(expected_cash),
+  actual_cash = VALUES(actual_cash),
+  variance = VALUES(variance),
+  transaction_count = VALUES(transaction_count);
+
+INSERT INTO initial_member_payments (
+  payment_no, batch_no, member_no, member_name, share_capital_amount,
+  membership_fee_amount, savings_deposit_amount, cash_received,
+  reference_no, received_by, status
+) VALUES
+  ('IP-2026-0001', 'TB-2026-0001', 'M-000482', 'Maria L. Santos', 5000, 100, 1000, 6100, 'OR-10001', 'teller01', 'Teller Batch')
+ON DUPLICATE KEY UPDATE
+  batch_no = VALUES(batch_no),
+  member_no = VALUES(member_no),
+  member_name = VALUES(member_name),
+  share_capital_amount = VALUES(share_capital_amount),
+  membership_fee_amount = VALUES(membership_fee_amount),
+  savings_deposit_amount = VALUES(savings_deposit_amount),
+  cash_received = VALUES(cash_received),
+  reference_no = VALUES(reference_no),
+  received_by = VALUES(received_by),
+  status = VALUES(status);

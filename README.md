@@ -9,11 +9,25 @@ The spike is split into:
 - `frontend/` - Vite, React, Chakra UI
 - `backend/` - Node.js, Express, optional MySQL/MariaDB
 
-The backend runs with in-memory seed data if MySQL is not configured yet. To use MySQL, copy `backend/.env.example` to `backend/.env`, fill in the database settings, then apply:
+The backend runs with in-memory seed data if MySQL/MariaDB is not configured yet. Leave `DB_HOST` blank to keep the original in-memory prototype behavior.
 
-```text
-backend/database/schema.sql
-backend/database/seed.sql
+To use MySQL/MariaDB, copy `backend/.env.example` to `backend/.env`, fill in the database settings, then run:
+
+```powershell
+npm run db:schema
+npm run db:seed
+```
+
+If tester input becomes messy, reset the configured database back to the demo seed:
+
+```powershell
+npm run db:reset-demo
+```
+
+`db:reset-demo` writes a JSON backup under `data/backups/` before clearing and reseeding the configured database. You can also run a backup manually:
+
+```powershell
+npm run db:backup
 ```
 
 ## Running The Spike
@@ -63,7 +77,7 @@ All seeded users currently use this prototype password:
 p@55@LL
 ```
 
-The password is stored in SQLite as a salted hash, not plain text.
+The current spike uses one shared prototype password in code. Production behavior should move passwords into the database as salted hashes with forced password changes.
 
 | Username | Role | Default Screen |
 | --- | --- | --- |

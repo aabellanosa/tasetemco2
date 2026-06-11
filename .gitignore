@@ -5,6 +5,7 @@ frontend/dist/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/backups/
 dist-docs/
 *.log
 .env
