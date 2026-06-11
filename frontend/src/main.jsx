@@ -27,7 +27,7 @@ import {
   StatLabel,
   StatNumber,
   Table,
-  TableContainer,
+  TableContainer as ChakraTableContainer,
   Tbody,
   Td,
   Text,
@@ -45,6 +45,17 @@ const apiBase = import.meta.env.VITE_API_BASE_URL || "";
 const membersPollingMs = 5000;
 
 const theme = extendTheme({
+  styles: {
+    global: {
+      "html, body, #root": {
+        maxWidth: "100%",
+        overflowX: "hidden"
+      },
+      "*": {
+        boxSizing: "border-box"
+      }
+    }
+  },
   fonts: {
     heading: "Inter, system-ui, sans-serif",
     body: "Inter, system-ui, sans-serif"
@@ -65,6 +76,21 @@ const viewTitles = {
   reports: "Reports",
   users: "Users"
 };
+
+function TableContainer(props) {
+  return (
+    <ChakraTableContainer
+      maxW="100%"
+      overflowX="auto"
+      overflowY="hidden"
+      sx={{
+        WebkitOverflowScrolling: "touch",
+        scrollbarGutter: "stable"
+      }}
+      {...props}
+    />
+  );
+}
 
 async function api(path, options = {}) {
   const response = await fetch(`${apiBase}${path}`, {
@@ -229,7 +255,7 @@ function Dashboard() {
   }
 
   return (
-    <VStack align="stretch" spacing={5}>
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
       <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
         {data.metrics.map((metric) => (
           <Box key={metric.label} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
@@ -652,7 +678,7 @@ function Members({ user }) {
   }
 
   return (
-    <VStack align="stretch" spacing={5}>
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
       <Flex justify="space-between" align="center" gap={4} wrap="wrap">
         <Text color="gray.500" fontSize="sm">
           Last refreshed: {formatTime(lastRefreshedAt)}
@@ -697,7 +723,7 @@ function Members({ user }) {
               </NumberInput>
             </FormControl>
           </Grid>
-          <HStack mt={5} spacing={4} align="center">
+          <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
             <Button type="submit" colorScheme="green">
               Submit application
             </Button>
@@ -862,7 +888,7 @@ function Members({ user }) {
                   />
                 </FormControl>
               </Grid>
-              <HStack mt={5} spacing={4} align="center">
+              <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
                 <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
                   Record payment
                 </Button>
@@ -903,7 +929,7 @@ function Members({ user }) {
                   />
                 </FormControl>
               </Grid>
-              <HStack mt={5} spacing={4} align="center">
+              <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
                 <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
                   Record share capital
                 </Button>
@@ -944,7 +970,7 @@ function Members({ user }) {
                   />
                 </FormControl>
               </Grid>
-              <HStack mt={5} spacing={4} align="center">
+              <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
                 <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
                   Record savings deposit
                 </Button>
@@ -975,7 +1001,7 @@ function Members({ user }) {
                   />
                 </FormControl>
               </Grid>
-              <HStack mt={5} spacing={4} align="center">
+              <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
                 <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
                   Record withdrawal
                 </Button>
@@ -993,7 +1019,7 @@ function Members({ user }) {
                   Unposted transactions waiting for Bookkeeper posting.
                 </Text>
               </Box>
-              <HStack alignSelf="flex-start">
+              <HStack alignSelf="flex-start" flexWrap="wrap">
                 <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : "purple"}>
                   {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
                 </Badge>
@@ -1580,7 +1606,7 @@ function Ledger({ user }) {
   }
 
   return (
-    <VStack align="stretch" spacing={5}>
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
       <Flex justify="space-between" align="center" gap={4} wrap="wrap">
         <Box>
           <Heading size="md">Teller Batch Review</Heading>
@@ -1604,7 +1630,7 @@ function Ledger({ user }) {
               Latest teller-submitted cash count for the unposted batch.
             </Text>
           </Box>
-          <HStack>
+          <HStack flexWrap="wrap">
             <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : activeBatch ? "purple" : "gray"}>
               {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
             </Badge>
@@ -2226,7 +2252,7 @@ function Reports() {
   }
 
   return (
-    <VStack align="stretch" spacing={5}>
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
       <Flex justify="space-between" align="flex-start" gap={4} wrap="wrap">
         <Box>
           <Heading size="md">{activeReport.title}</Heading>
@@ -2245,7 +2271,8 @@ function Reports() {
             value={selectedReport}
             onChange={(event) => setSelectedReport(event.target.value)}
             bg="white"
-            minW={{ base: "100%", md: "280px" }}
+            minW={{ base: 0, md: "280px" }}
+            w={{ base: "100%", md: "auto" }}
           >
             {reportOptions.map((report) => (
               <option key={report.id} value={report.id}>
@@ -2652,8 +2679,8 @@ function Shell({ user, onLogout }) {
   }
 
   return (
-    <Grid minH="100vh" templateColumns={{ base: "1fr", lg: "280px 1fr" }} bg="gray.50">
-      <GridItem bg="green.900" color="white" p={5}>
+    <Grid minH="100vh" templateColumns={{ base: "minmax(0, 1fr)", lg: "280px minmax(0, 1fr)" }} bg="gray.50" maxW="100vw">
+      <GridItem bg="green.900" color="white" p={5} minW={0}>
         <Heading size="md">TASETEMCO</Heading>
         <Text color="green.100" mt={1} fontSize="sm">
           React spike
@@ -2672,16 +2699,16 @@ function Shell({ user, onLogout }) {
           ))}
         </VStack>
       </GridItem>
-      <GridItem p={{ base: 4, md: 8 }}>
-        <Flex justify="space-between" align="center" mb={7} gap={4} wrap="wrap">
-          <Box>
+      <GridItem p={{ base: 4, md: 8 }} minW={0} overflowX="hidden">
+        <Flex justify="space-between" align="center" mb={7} gap={4} wrap="wrap" minW={0}>
+          <Box minW={0}>
             <Text color="gray.500" fontSize="sm">
               {user.role}
             </Text>
             <Heading>{viewTitles[view]}</Heading>
           </Box>
-          <Flex align="center" gap={3}>
-            <Box textAlign="right">
+          <Flex align="center" gap={3} wrap="wrap" justify={{ base: "flex-start", md: "flex-end" }} minW={0}>
+            <Box textAlign={{ base: "left", md: "right" }} minW={0}>
               <Text fontWeight="bold">{user.name}</Text>
               <Text color="gray.500" fontSize="sm">
                 @{user.username}
