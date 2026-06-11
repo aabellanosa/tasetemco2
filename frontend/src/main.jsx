@@ -2132,6 +2132,34 @@ function Ledger({ user }) {
 }
 
 function Reports() {
+  const reportOptions = [
+    {
+      id: "daily-cash-position",
+      title: "Daily Cash Position",
+      description: "Read-only teller cash position summarized from batch evidence."
+    },
+    {
+      id: "member-subsidiary-ledger",
+      title: "Member Subsidiary Ledger",
+      description: "Member balance and movement summary for share capital and savings."
+    },
+    {
+      id: "control-account-reconciliation",
+      title: "Control Account Reconciliation",
+      description: "Subsidiary movement compared with posted GL control accounts."
+    },
+    {
+      id: "trial-balance",
+      title: "Trial Balance",
+      description: "Posted general ledger debit and credit totals by account."
+    },
+    {
+      id: "statement-of-financial-condition",
+      title: "Statement of Financial Condition",
+      description: "Balance-sheet view from posted general ledger balances."
+    }
+  ];
+  const [selectedReport, setSelectedReport] = useState("daily-cash-position");
   const [dailyCashReport, setDailyCashReport] = useState(null);
   const [memberLedgerReport, setMemberLedgerReport] = useState(null);
   const [controlReconciliationReport, setControlReconciliationReport] = useState(null);
@@ -2179,6 +2207,14 @@ function Reports() {
   const controlSummary = controlReconciliationReport?.summary;
   const trialBalanceSummary = trialBalanceReport?.summary;
   const financialConditionSummary = financialConditionReport?.summary;
+  const activeReport = reportOptions.find((report) => report.id === selectedReport) || reportOptions[0];
+  const activeGeneratedAt = {
+    "daily-cash-position": dailyCashReport?.generatedAt,
+    "member-subsidiary-ledger": memberLedgerReport?.generatedAt,
+    "control-account-reconciliation": controlReconciliationReport?.generatedAt,
+    "trial-balance": trialBalanceReport?.generatedAt,
+    "statement-of-financial-condition": financialConditionReport?.generatedAt
+  }[selectedReport];
 
   function renderFinancialConditionRows(rows) {
     return rows.map((row) => (
@@ -2191,21 +2227,41 @@ function Reports() {
 
   return (
     <VStack align="stretch" spacing={5}>
-      <Flex justify="space-between" align="center" gap={4} wrap="wrap">
+      <Flex justify="space-between" align="flex-start" gap={4} wrap="wrap">
         <Box>
-          <Heading size="md">Daily Cash Position</Heading>
+          <Heading size="md">{activeReport.title}</Heading>
           <Text color="gray.600" mt={1}>
-            Read-only teller cash position summarized from batch evidence.
+            {activeReport.description}
           </Text>
+          {activeGeneratedAt ? (
+            <Text color="gray.500" fontSize="sm" mt={1}>
+              Generated {formatDateTime(activeGeneratedAt)}
+            </Text>
+          ) : null}
         </Box>
-        <Button size="sm" onClick={loadReport} isLoading={isRefreshing}>
-          Refresh
-        </Button>
+        <Flex gap={3} wrap="wrap">
+          <Select
+            size="sm"
+            value={selectedReport}
+            onChange={(event) => setSelectedReport(event.target.value)}
+            bg="white"
+            minW={{ base: "100%", md: "280px" }}
+          >
+            {reportOptions.map((report) => (
+              <option key={report.id} value={report.id}>
+                {report.title}
+              </option>
+            ))}
+          </Select>
+          <Button size="sm" onClick={loadReport} isLoading={isRefreshing}>
+            Refresh
+          </Button>
+        </Flex>
       </Flex>
 
       {error ? <Text color="red.500">{error}</Text> : null}
 
-      {summary ? (
+      {selectedReport === "daily-cash-position" && summary ? (
         <>
           <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
             <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
@@ -2302,7 +2358,7 @@ function Reports() {
         </>
       ) : null}
 
-      {memberSummary ? (
+      {selectedReport === "member-subsidiary-ledger" && memberSummary ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
             <Box>
@@ -2380,7 +2436,7 @@ function Reports() {
         </Box>
       ) : null}
 
-      {controlSummary ? (
+      {selectedReport === "control-account-reconciliation" && controlSummary ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
             <Box>
@@ -2423,7 +2479,7 @@ function Reports() {
         </Box>
       ) : null}
 
-      {trialBalanceSummary ? (
+      {selectedReport === "trial-balance" && trialBalanceSummary ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
             <Box>
@@ -2488,7 +2544,7 @@ function Reports() {
         </Box>
       ) : null}
 
-      {financialConditionSummary ? (
+      {selectedReport === "statement-of-financial-condition" && financialConditionSummary ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
             <Box>

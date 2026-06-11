@@ -226,6 +226,8 @@ Official batch close uses a confirmation step. The Bookkeeper reviews cash total
 
 The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, Manager, and Auditor-style users can inspect batch status, cash count evidence, posted entry counts, unposted counts, reviewer, and close timing after the batch leaves the active work area. Each history row has a View action that opens batch details with cash count evidence, source transactions, and linked journal entries.
 
+The Reports screen uses a report selector layout. Users choose one report at a time, review its generated timestamp, and refresh the report data without scrolling through every report on one page.
+
 The Reports screen includes a read-only Daily Cash Position report summarizing teller batch cash in, cash out, net cash, expected cash, actual cash, variance, posting counts, and closed batch evidence.
 
 The Reports screen also includes a read-only Member Subsidiary Ledger report summarizing member share capital balances, savings balances, movement totals, and posted/unposted transaction counts.
@@ -373,6 +375,7 @@ Current prototype behavior:
 - Control Account Reconciliation compares prototype activity subsidiary totals to posted GL control account balances.
 - Trial Balance summarizes posted general ledger debit and credit totals and confirms whether the ledger remains balanced.
 - Statement of Financial Condition presents the balance-sheet view and confirms whether Assets equal Liabilities plus Equity.
+- Reports are opened one at a time through a selector layout instead of being stacked on a single long page.
 
 ### 4.6 Loan Application
 
