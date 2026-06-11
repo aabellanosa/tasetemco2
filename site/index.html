@@ -178,6 +178,7 @@
           Posting is allowed only after review. Bookkeeper posts the reviewed batch in one
           action, while the system keeps source-level journal entries for audit traceability.
           Non-zero variance requires a Bookkeeper variance note before review.
+          Official close records closed by, closed time, and optional closing note.
           Teller Batch History remains available as read-only evidence after closing, and
           each row can be opened to inspect cash count evidence, transactions, and linked journals.
           The Members workflow auto-refreshes every 5 seconds during demo testing, with a
@@ -222,7 +223,7 @@
               <li>Bookkeeper marks the submitted teller batch as reviewed.</li>
               <li>System allows posting only after the batch is reviewed.</li>
               <li>Bookkeeper posts the reviewed teller batch in one action.</li>
-              <li>Bookkeeper closes a reviewed batch after its transactions are posted.</li>
+              <li>Bookkeeper confirms official close after its transactions are posted.</li>
               <li>System keeps read-only batch history for audit review.</li>
               <li>Batch history rows can be opened for cash count, transaction, and journal details.</li>
               <li>Transaction stays in teller batch until posting.</li>
