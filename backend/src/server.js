@@ -1026,6 +1026,83 @@ async function getTrialBalanceReport() {
   };
 }
 
+async function getStatementOfFinancialConditionReport() {
+  const trialBalance = await getTrialBalanceReport();
+
+  const accountBalance = (row, normalSide) => {
+    if (normalSide === "debit") {
+      return row.endingDebitBalance - row.endingCreditBalance;
+    }
+
+    return row.endingCreditBalance - row.endingDebitBalance;
+  };
+
+  const assets = trialBalance.rows
+    .filter((row) => row.accountCode.startsWith("1"))
+    .map((row) => ({
+      accountCode: row.accountCode,
+      accountName: row.accountName,
+      amount: accountBalance(row, "debit")
+    }));
+
+  const liabilities = trialBalance.rows
+    .filter((row) => row.accountCode.startsWith("2"))
+    .map((row) => ({
+      accountCode: row.accountCode,
+      accountName: row.accountName,
+      amount: accountBalance(row, "credit")
+    }));
+
+  const equity = trialBalance.rows
+    .filter((row) => row.accountCode.startsWith("3"))
+    .map((row) => ({
+      accountCode: row.accountCode,
+      accountName: row.accountName,
+      amount: accountBalance(row, "credit")
+    }));
+
+  const revenueTotal = trialBalance.rows
+    .filter((row) => row.accountCode.startsWith("4"))
+    .reduce((sum, row) => sum + accountBalance(row, "credit"), 0);
+  const expenseTotal = trialBalance.rows
+    .filter((row) => row.accountCode.startsWith("5"))
+    .reduce((sum, row) => sum + accountBalance(row, "debit"), 0);
+  const currentPeriodSurplus = revenueTotal - expenseTotal;
+
+  if (currentPeriodSurplus !== 0) {
+    equity.push({
+      accountCode: "3999",
+      accountName: currentPeriodSurplus > 0 ? "Current Period Surplus" : "Current Period Deficit",
+      amount: currentPeriodSurplus
+    });
+  }
+
+  const totalAssets = assets.reduce((sum, row) => sum + row.amount, 0);
+  const totalLiabilities = liabilities.reduce((sum, row) => sum + row.amount, 0);
+  const totalEquity = equity.reduce((sum, row) => sum + row.amount, 0);
+  const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+  const difference = totalAssets - totalLiabilitiesAndEquity;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    basis: "Prototype posted journal entries only; income and expense accounts are presented as current period surplus or deficit until formal closing entries exist.",
+    sections: {
+      assets,
+      liabilities,
+      equity
+    },
+    summary: {
+      totalAssets,
+      totalLiabilities,
+      totalEquity,
+      totalLiabilitiesAndEquity,
+      currentPeriodSurplus,
+      difference,
+      status: difference === 0 ? "Balanced" : "Out of Balance"
+    }
+  };
+}
+
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
@@ -3513,6 +3590,22 @@ app.get("/api/reports/trial-balance", async (request, response) => {
   }
 
   response.json(await getTrialBalanceReport());
+});
+
+app.get("/api/reports/statement-of-financial-condition", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "reports:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await getStatementOfFinancialConditionReport());
 });
 
 app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response) => {

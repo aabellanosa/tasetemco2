@@ -2136,6 +2136,7 @@ function Reports() {
   const [memberLedgerReport, setMemberLedgerReport] = useState(null);
   const [controlReconciliationReport, setControlReconciliationReport] = useState(null);
   const [trialBalanceReport, setTrialBalanceReport] = useState(null);
+  const [financialConditionReport, setFinancialConditionReport] = useState(null);
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -2144,16 +2145,24 @@ function Reports() {
     setError("");
 
     try {
-      const [dailyCashData, memberLedgerData, controlReconciliationData, trialBalanceData] = await Promise.all([
+      const [
+        dailyCashData,
+        memberLedgerData,
+        controlReconciliationData,
+        trialBalanceData,
+        financialConditionData
+      ] = await Promise.all([
         api("/api/reports/daily-cash-position"),
         api("/api/reports/member-subsidiary-ledger"),
         api("/api/reports/control-account-reconciliation"),
-        api("/api/reports/trial-balance")
+        api("/api/reports/trial-balance"),
+        api("/api/reports/statement-of-financial-condition")
       ]);
       setDailyCashReport(dailyCashData);
       setMemberLedgerReport(memberLedgerData);
       setControlReconciliationReport(controlReconciliationData);
       setTrialBalanceReport(trialBalanceData);
+      setFinancialConditionReport(financialConditionData);
     } catch (reportError) {
       setError(reportError.message);
     } finally {
@@ -2169,6 +2178,16 @@ function Reports() {
   const memberSummary = memberLedgerReport?.summary;
   const controlSummary = controlReconciliationReport?.summary;
   const trialBalanceSummary = trialBalanceReport?.summary;
+  const financialConditionSummary = financialConditionReport?.summary;
+
+  function renderFinancialConditionRows(rows) {
+    return rows.map((row) => (
+      <Tr key={row.accountCode}>
+        <Td>{row.accountCode} - {row.accountName}</Td>
+        <Td isNumeric>{formatMoney(row.amount)}</Td>
+      </Tr>
+    ));
+  }
 
   return (
     <VStack align="stretch" spacing={5}>
@@ -2466,6 +2485,74 @@ function Reports() {
               </Tbody>
             </Table>
           </TableContainer>
+        </Box>
+      ) : null}
+
+      {financialConditionSummary ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+            <Box>
+              <Heading size="md">Statement of Financial Condition</Heading>
+              <Text color="gray.600" mt={1}>
+                Balance-sheet view from posted general ledger balances.
+              </Text>
+            </Box>
+            <Badge colorScheme={financialConditionSummary.status === "Balanced" ? "green" : "orange"}>
+              {financialConditionSummary.status}
+            </Badge>
+          </Flex>
+
+          <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={5}>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Assets</Text>
+              <Text fontWeight="bold">{formatMoney(financialConditionSummary.totalAssets)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Liabilities</Text>
+              <Text fontWeight="bold">{formatMoney(financialConditionSummary.totalLiabilities)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Equity</Text>
+              <Text fontWeight="bold">{formatMoney(financialConditionSummary.totalEquity)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Difference</Text>
+              <Text fontWeight="bold">{formatMoney(financialConditionSummary.difference)}</Text>
+            </Box>
+          </Grid>
+
+          <Grid templateColumns={{ base: "1fr", lg: "repeat(3, 1fr)" }} gap={5}>
+            <Box>
+              <Heading size="sm" mb={3}>Assets</Heading>
+              <TableContainer>
+                <Table size="sm">
+                  <Tbody>{renderFinancialConditionRows(financialConditionReport.sections.assets)}</Tbody>
+                </Table>
+              </TableContainer>
+            </Box>
+            <Box>
+              <Heading size="sm" mb={3}>Liabilities</Heading>
+              <TableContainer>
+                <Table size="sm">
+                  <Tbody>{renderFinancialConditionRows(financialConditionReport.sections.liabilities)}</Tbody>
+                </Table>
+              </TableContainer>
+            </Box>
+            <Box>
+              <Heading size="sm" mb={3}>Equity</Heading>
+              <TableContainer>
+                <Table size="sm">
+                  <Tbody>{renderFinancialConditionRows(financialConditionReport.sections.equity)}</Tbody>
+                </Table>
+              </TableContainer>
+            </Box>
+          </Grid>
+
+          <Flex justify="flex-end" mt={5}>
+            <Text fontWeight="bold">
+              Liabilities + Equity: {formatMoney(financialConditionSummary.totalLiabilitiesAndEquity)}
+            </Text>
+          </Flex>
         </Box>
       ) : null}
     </VStack>

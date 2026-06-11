@@ -934,6 +934,43 @@ async function run() {
       throw new Error("Trial balance should include known GL accounts and balance posted debit/credit totals.");
     }
 
+    const statementOfFinancialCondition = await fetch(
+      `${baseUrl}/api/reports/statement-of-financial-condition`,
+      {
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const statementOfFinancialConditionBody = await statementOfFinancialCondition.json();
+    const statementCashAccount = statementOfFinancialConditionBody.sections.assets.find(
+      (row) => row.accountCode === "1010"
+    );
+    const statementSavingsAccount = statementOfFinancialConditionBody.sections.liabilities.find(
+      (row) => row.accountCode === "2020"
+    );
+    const statementShareCapitalAccount = statementOfFinancialConditionBody.sections.equity.find(
+      (row) => row.accountCode === "3010"
+    );
+    const currentPeriodSurplus = statementOfFinancialConditionBody.sections.equity.find(
+      (row) => row.accountCode === "3999"
+    );
+
+    if (
+      !statementOfFinancialCondition.ok ||
+      !statementCashAccount ||
+      !statementSavingsAccount ||
+      !statementShareCapitalAccount ||
+      !currentPeriodSurplus ||
+      statementOfFinancialConditionBody.summary.totalAssets !== 15000 ||
+      statementOfFinancialConditionBody.summary.totalLiabilities !== 2800 ||
+      statementOfFinancialConditionBody.summary.totalEquity !== 12200 ||
+      statementOfFinancialConditionBody.summary.totalLiabilitiesAndEquity !== 15000 ||
+      statementOfFinancialConditionBody.summary.currentPeriodSurplus !== 200 ||
+      statementOfFinancialConditionBody.summary.difference !== 0 ||
+      statementOfFinancialConditionBody.summary.status !== "Balanced"
+    ) {
+      throw new Error("Statement of Financial Condition should balance posted assets against liabilities and equity.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

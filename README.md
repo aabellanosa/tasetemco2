@@ -207,6 +207,7 @@ Example server directory:
 - `GET /api/reports/member-subsidiary-ledger`
 - `GET /api/reports/control-account-reconciliation`
 - `GET /api/reports/trial-balance`
+- `GET /api/reports/statement-of-financial-condition`
 - `GET /api/users`
 - `GET /api/roles`
 
