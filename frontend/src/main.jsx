@@ -2135,6 +2135,7 @@ function Reports() {
   const [dailyCashReport, setDailyCashReport] = useState(null);
   const [memberLedgerReport, setMemberLedgerReport] = useState(null);
   const [controlReconciliationReport, setControlReconciliationReport] = useState(null);
+  const [trialBalanceReport, setTrialBalanceReport] = useState(null);
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -2143,14 +2144,16 @@ function Reports() {
     setError("");
 
     try {
-      const [dailyCashData, memberLedgerData, controlReconciliationData] = await Promise.all([
+      const [dailyCashData, memberLedgerData, controlReconciliationData, trialBalanceData] = await Promise.all([
         api("/api/reports/daily-cash-position"),
         api("/api/reports/member-subsidiary-ledger"),
-        api("/api/reports/control-account-reconciliation")
+        api("/api/reports/control-account-reconciliation"),
+        api("/api/reports/trial-balance")
       ]);
       setDailyCashReport(dailyCashData);
       setMemberLedgerReport(memberLedgerData);
       setControlReconciliationReport(controlReconciliationData);
+      setTrialBalanceReport(trialBalanceData);
     } catch (reportError) {
       setError(reportError.message);
     } finally {
@@ -2165,6 +2168,7 @@ function Reports() {
   const summary = dailyCashReport?.summary;
   const memberSummary = memberLedgerReport?.summary;
   const controlSummary = controlReconciliationReport?.summary;
+  const trialBalanceSummary = trialBalanceReport?.summary;
 
   return (
     <VStack align="stretch" spacing={5}>
@@ -2394,6 +2398,71 @@ function Reports() {
                     </Td>
                   </Tr>
                 ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+
+      {trialBalanceSummary ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+            <Box>
+              <Heading size="md">Trial Balance</Heading>
+              <Text color="gray.600" mt={1}>
+                Prototype posted journal entries only: total debit and credit movement by general ledger account.
+              </Text>
+            </Box>
+            <Badge colorScheme={trialBalanceSummary.status === "Balanced" ? "green" : "orange"}>
+              {trialBalanceSummary.status}
+            </Badge>
+          </Flex>
+
+          <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={5}>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Accounts</Text>
+              <Text fontWeight="bold">{trialBalanceSummary.accountCount}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Total Debits</Text>
+              <Text fontWeight="bold">{formatMoney(trialBalanceSummary.totalDebits)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Total Credits</Text>
+              <Text fontWeight="bold">{formatMoney(trialBalanceSummary.totalCredits)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Difference</Text>
+              <Text fontWeight="bold">{formatMoney(trialBalanceSummary.difference)}</Text>
+            </Box>
+          </Grid>
+
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Account</Th>
+                  <Th isNumeric>Total Debit</Th>
+                  <Th isNumeric>Total Credit</Th>
+                  <Th isNumeric>Debit Balance</Th>
+                  <Th isNumeric>Credit Balance</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {trialBalanceReport.rows.map((row) => (
+                  <Tr key={row.accountCode}>
+                    <Td>{row.accountCode} - {row.accountName}</Td>
+                    <Td isNumeric>{formatMoney(row.totalDebit)}</Td>
+                    <Td isNumeric>{formatMoney(row.totalCredit)}</Td>
+                    <Td isNumeric>{formatMoney(row.endingDebitBalance)}</Td>
+                    <Td isNumeric>{formatMoney(row.endingCreditBalance)}</Td>
+                  </Tr>
+                ))}
+                {trialBalanceReport.rows.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={5} color="gray.500">No posted journal entries found.</Td>
+                  </Tr>
+                ) : null}
               </Tbody>
             </Table>
           </TableContainer>

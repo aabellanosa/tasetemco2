@@ -977,6 +977,55 @@ async function getControlAccountReconciliationReport() {
   };
 }
 
+async function getTrialBalanceReport() {
+  const entries = await listJournalEntries();
+  const accountRows = new Map();
+
+  entries.forEach((entry) => {
+    entry.lines.forEach((line) => {
+      const existingRow = accountRows.get(line.accountCode) || {
+        accountCode: line.accountCode,
+        accountName: line.accountName,
+        totalDebit: 0,
+        totalCredit: 0
+      };
+
+      existingRow.totalDebit += Number(line.debit || 0);
+      existingRow.totalCredit += Number(line.credit || 0);
+      accountRows.set(line.accountCode, existingRow);
+    });
+  });
+
+  const rows = Array.from(accountRows.values())
+    .map((row) => {
+      const netBalance = row.totalDebit - row.totalCredit;
+
+      return {
+        ...row,
+        endingDebitBalance: netBalance > 0 ? netBalance : 0,
+        endingCreditBalance: netBalance < 0 ? Math.abs(netBalance) : 0
+      };
+    })
+    .sort((firstRow, secondRow) => firstRow.accountCode.localeCompare(secondRow.accountCode));
+
+  const totalDebits = rows.reduce((sum, row) => sum + row.totalDebit, 0);
+  const totalCredits = rows.reduce((sum, row) => sum + row.totalCredit, 0);
+  const difference = totalDebits - totalCredits;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    basis: "Prototype posted journal entries only",
+    rows,
+    summary: {
+      accountCount: rows.length,
+      totalDebits,
+      totalCredits,
+      difference,
+      status: difference === 0 ? "Balanced" : "Out of Balance"
+    }
+  };
+}
+
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
@@ -3448,6 +3497,22 @@ app.get("/api/reports/control-account-reconciliation", async (request, response)
   }
 
   response.json(await getControlAccountReconciliationReport());
+});
+
+app.get("/api/reports/trial-balance", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "reports:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await getTrialBalanceReport());
 });
 
 app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response) => {

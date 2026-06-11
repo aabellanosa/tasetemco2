@@ -908,6 +908,32 @@ async function run() {
       throw new Error("Control account reconciliation should match subsidiary activity to GL controls.");
     }
 
+    const trialBalance = await fetch(`${baseUrl}/api/reports/trial-balance`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const trialBalanceBody = await trialBalance.json();
+    const cashAccount = trialBalanceBody.rows.find((row) => row.accountCode === "1010");
+    const savingsAccount = trialBalanceBody.rows.find((row) => row.accountCode === "2020");
+    const shareCapitalAccount = trialBalanceBody.rows.find((row) => row.accountCode === "3010");
+    const membershipFeeAccount = trialBalanceBody.rows.find((row) => row.accountCode === "4020");
+
+    if (
+      !trialBalance.ok ||
+      !cashAccount ||
+      !savingsAccount ||
+      !shareCapitalAccount ||
+      !membershipFeeAccount ||
+      cashAccount.accountName !== "Cash on Hand" ||
+      savingsAccount.accountName !== "Savings Deposits Payable" ||
+      shareCapitalAccount.accountName !== "Share Capital" ||
+      membershipFeeAccount.accountName !== "Membership Fee Income" ||
+      trialBalanceBody.summary.totalDebits !== trialBalanceBody.summary.totalCredits ||
+      trialBalanceBody.summary.difference !== 0 ||
+      trialBalanceBody.summary.status !== "Balanced"
+    ) {
+      throw new Error("Trial balance should include known GL accounts and balance posted debit/credit totals.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {
