@@ -228,6 +228,8 @@ The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, 
 
 The Reports screen includes a read-only Daily Cash Position report summarizing teller batch cash in, cash out, net cash, expected cash, actual cash, variance, posting counts, and closed batch evidence.
 
+The Reports screen also includes a read-only Member Subsidiary Ledger report summarizing member share capital balances, savings balances, movement totals, and posted/unposted transaction counts.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
@@ -361,6 +363,7 @@ Current prototype behavior:
 - Variance notes are stored with noted by and noted at fields for audit review.
 - Official close stores closed by, closed at, and optional closing note.
 - Daily Cash Position summarizes teller batch cash evidence for Bookkeeper, Manager, Auditor, and Board review.
+- Member Subsidiary Ledger summarizes member share capital and savings balances for reconciliation.
 
 ### 4.6 Loan Application
 
@@ -449,6 +452,7 @@ Reports should be generated from posted ledger entries and supporting subsidiary
 Priority reports:
 
 - Daily Cash Position
+- Member Subsidiary Ledger
 - Trial Balance
 - Statement of Financial Condition
 - Statement of Operations
