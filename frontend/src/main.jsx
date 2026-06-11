@@ -2134,6 +2134,7 @@ function Ledger({ user }) {
 function Reports() {
   const [dailyCashReport, setDailyCashReport] = useState(null);
   const [memberLedgerReport, setMemberLedgerReport] = useState(null);
+  const [controlReconciliationReport, setControlReconciliationReport] = useState(null);
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -2142,12 +2143,14 @@ function Reports() {
     setError("");
 
     try {
-      const [dailyCashData, memberLedgerData] = await Promise.all([
+      const [dailyCashData, memberLedgerData, controlReconciliationData] = await Promise.all([
         api("/api/reports/daily-cash-position"),
-        api("/api/reports/member-subsidiary-ledger")
+        api("/api/reports/member-subsidiary-ledger"),
+        api("/api/reports/control-account-reconciliation")
       ]);
       setDailyCashReport(dailyCashData);
       setMemberLedgerReport(memberLedgerData);
+      setControlReconciliationReport(controlReconciliationData);
     } catch (reportError) {
       setError(reportError.message);
     } finally {
@@ -2161,6 +2164,7 @@ function Reports() {
 
   const summary = dailyCashReport?.summary;
   const memberSummary = memberLedgerReport?.summary;
+  const controlSummary = controlReconciliationReport?.summary;
 
   return (
     <VStack align="stretch" spacing={5}>
@@ -2347,6 +2351,49 @@ function Reports() {
                     <Td colSpan={11} color="gray.500">No member subsidiary rows found.</Td>
                   </Tr>
                 ) : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+
+      {controlSummary ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+            <Box>
+              <Heading size="md">Control Account Reconciliation</Heading>
+              <Text color="gray.600" mt={1}>
+                Prototype activity only: subsidiary movement compared with posted GL control accounts.
+              </Text>
+            </Box>
+            <Text color="gray.500" fontSize="sm">
+              {controlSummary.reconciledCount} of {controlSummary.accountCount} reconciled
+            </Text>
+          </Flex>
+
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Account</Th>
+                  <Th isNumeric>Subsidiary Total</Th>
+                  <Th isNumeric>General Ledger Total</Th>
+                  <Th isNumeric>Difference</Th>
+                  <Th>Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {controlReconciliationReport.rows.map((row) => (
+                  <Tr key={row.accountCode}>
+                    <Td>{row.accountCode} - {row.accountName}</Td>
+                    <Td isNumeric>{formatMoney(row.subsidiaryTotal)}</Td>
+                    <Td isNumeric>{formatMoney(row.generalLedgerTotal)}</Td>
+                    <Td isNumeric>{formatMoney(row.difference)}</Td>
+                    <Td>
+                      <Badge colorScheme={row.status === "Reconciled" ? "green" : "orange"}>{row.status}</Badge>
+                    </Td>
+                  </Tr>
+                ))}
               </Tbody>
             </Table>
           </TableContainer>

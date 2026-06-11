@@ -914,6 +914,69 @@ async function getMemberSubsidiaryLedgerReport() {
   };
 }
 
+async function getControlAccountReconciliationReport() {
+  const initialPaymentRows = (await listInitialPayments()).filter((payment) => payment.status === "Posted");
+  const shareCapitalContributionRows = (await listShareCapitalContributions()).filter(
+    (contribution) => contribution.status === "Posted"
+  );
+  const savingsDepositRows = (await listSavingsDeposits()).filter((deposit) => deposit.status === "Posted");
+  const savingsWithdrawalRows = (await listSavingsWithdrawals()).filter((withdrawal) => withdrawal.status === "Posted");
+  const entries = await listJournalEntries();
+
+  const glBalance = (accountCode) =>
+    entries.reduce(
+      (sum, entry) =>
+        sum +
+        entry.lines
+          .filter((line) => line.accountCode === accountCode)
+          .reduce((lineSum, line) => lineSum + Number(line.credit || 0) - Number(line.debit || 0), 0),
+      0
+    );
+
+  const shareCapitalSubsidiaryTotal =
+    initialPaymentRows.reduce((sum, payment) => sum + Number(payment.shareCapitalAmount || 0), 0) +
+    shareCapitalContributionRows.reduce((sum, contribution) => sum + Number(contribution.amount || 0), 0);
+
+  const savingsSubsidiaryTotal =
+    initialPaymentRows.reduce((sum, payment) => sum + Number(payment.savingsDepositAmount || 0), 0) +
+    savingsDepositRows.reduce((sum, deposit) => sum + Number(deposit.amount || 0), 0) -
+    savingsWithdrawalRows.reduce((sum, withdrawal) => sum + Number(withdrawal.amount || 0), 0);
+
+  const rows = [
+    {
+      accountCode: "3010",
+      accountName: "Share Capital",
+      subsidiaryTotal: shareCapitalSubsidiaryTotal,
+      generalLedgerTotal: glBalance("3010")
+    },
+    {
+      accountCode: "2020",
+      accountName: "Savings Deposits Payable",
+      subsidiaryTotal: savingsSubsidiaryTotal,
+      generalLedgerTotal: glBalance("2020")
+    }
+  ].map((row) => {
+    const difference = row.subsidiaryTotal - row.generalLedgerTotal;
+
+    return {
+      ...row,
+      difference,
+      status: difference === 0 ? "Reconciled" : "Difference"
+    };
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    basis: "Prototype activity only",
+    rows,
+    summary: {
+      accountCount: rows.length,
+      reconciledCount: rows.filter((row) => row.status === "Reconciled").length,
+      differenceCount: rows.filter((row) => row.status === "Difference").length
+    }
+  };
+}
+
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
@@ -3369,6 +3432,22 @@ app.get("/api/reports/member-subsidiary-ledger", async (request, response) => {
   }
 
   response.json(await getMemberSubsidiaryLedgerReport());
+});
+
+app.get("/api/reports/control-account-reconciliation", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "reports:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await getControlAccountReconciliationReport());
 });
 
 app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response) => {

@@ -230,6 +230,8 @@ The Reports screen includes a read-only Daily Cash Position report summarizing t
 
 The Reports screen also includes a read-only Member Subsidiary Ledger report summarizing member share capital balances, savings balances, movement totals, and posted/unposted transaction counts.
 
+The Reports screen includes a Control Account Reconciliation report that compares prototype-activity subsidiary totals for Share Capital and Savings Deposits Payable against posted general ledger control account balances.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
@@ -364,6 +366,7 @@ Current prototype behavior:
 - Official close stores closed by, closed at, and optional closing note.
 - Daily Cash Position summarizes teller batch cash evidence for Bookkeeper, Manager, Auditor, and Board review.
 - Member Subsidiary Ledger summarizes member share capital and savings balances for reconciliation.
+- Control Account Reconciliation compares prototype activity subsidiary totals to posted GL control account balances.
 
 ### 4.6 Loan Application
 
@@ -453,6 +456,7 @@ Priority reports:
 
 - Daily Cash Position
 - Member Subsidiary Ledger
+- Control Account Reconciliation
 - Trial Balance
 - Statement of Financial Condition
 - Statement of Operations

@@ -887,6 +887,27 @@ async function run() {
       throw new Error("Member subsidiary ledger report should match posted member transactions.");
     }
 
+    const controlReconciliation = await fetch(`${baseUrl}/api/reports/control-account-reconciliation`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const controlReconciliationBody = await controlReconciliation.json();
+    const shareCapitalReconciliation = controlReconciliationBody.rows.find((row) => row.accountCode === "3010");
+    const savingsReconciliation = controlReconciliationBody.rows.find((row) => row.accountCode === "2020");
+
+    if (
+      !controlReconciliation.ok ||
+      !shareCapitalReconciliation ||
+      !savingsReconciliation ||
+      shareCapitalReconciliation.subsidiaryTotal !== shareCapitalReconciliation.generalLedgerTotal ||
+      shareCapitalReconciliation.difference !== 0 ||
+      shareCapitalReconciliation.status !== "Reconciled" ||
+      savingsReconciliation.subsidiaryTotal !== savingsReconciliation.generalLedgerTotal ||
+      savingsReconciliation.difference !== 0 ||
+      savingsReconciliation.status !== "Reconciled"
+    ) {
+      throw new Error("Control account reconciliation should match subsidiary activity to GL controls.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {
