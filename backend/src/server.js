@@ -843,6 +843,77 @@ async function getDailyCashPositionReport() {
   };
 }
 
+async function getMemberSubsidiaryLedgerReport() {
+  const memberRows = await listMembers();
+  const initialPaymentRows = await listInitialPayments();
+  const shareCapitalContributionRows = await listShareCapitalContributions();
+  const savingsDepositRows = await listSavingsDeposits();
+  const savingsWithdrawalRows = await listSavingsWithdrawals();
+
+  const membersWithSubsidiary = memberRows.map((member) => {
+    const memberInitialPayments = initialPaymentRows.filter((payment) => payment.memberId === member.id);
+    const memberShareCapitalContributions = shareCapitalContributionRows.filter(
+      (contribution) => contribution.memberId === member.id
+    );
+    const memberSavingsDeposits = savingsDepositRows.filter((deposit) => deposit.memberId === member.id);
+    const memberSavingsWithdrawals = savingsWithdrawalRows.filter((withdrawal) => withdrawal.memberId === member.id);
+    const transactions = [
+      ...memberInitialPayments,
+      ...memberShareCapitalContributions,
+      ...memberSavingsDeposits,
+      ...memberSavingsWithdrawals
+    ];
+
+    return {
+      id: member.id,
+      name: member.name,
+      status: member.status,
+      shareCapitalBalance: Number(member.share || 0),
+      savingsBalance: Number(member.savings || 0),
+      initialPaymentTotal: memberInitialPayments.reduce(
+        (sum, payment) => sum + Number(payment.shareCapitalAmount || 0),
+        0
+      ),
+      shareCapitalContributionTotal: memberShareCapitalContributions.reduce(
+        (sum, contribution) => sum + Number(contribution.amount || 0),
+        0
+      ),
+      savingsDepositTotal:
+        memberInitialPayments.reduce((sum, payment) => sum + Number(payment.savingsDepositAmount || 0), 0) +
+        memberSavingsDeposits.reduce((sum, deposit) => sum + Number(deposit.amount || 0), 0),
+      savingsWithdrawalTotal: memberSavingsWithdrawals.reduce(
+        (sum, withdrawal) => sum + Number(withdrawal.amount || 0),
+        0
+      ),
+      postedTransactionCount: transactions.filter((transaction) => transaction.status === "Posted").length,
+      unpostedTransactionCount: transactions.filter((transaction) => transaction.status === "Teller Batch").length
+    };
+  });
+
+  const summary = membersWithSubsidiary.reduce(
+    (totals, member) => ({
+      totalMembers: totals.totalMembers + 1,
+      totalShareCapital: totals.totalShareCapital + member.shareCapitalBalance,
+      totalSavings: totals.totalSavings + member.savingsBalance,
+      totalPostedTransactions: totals.totalPostedTransactions + member.postedTransactionCount,
+      totalUnpostedTransactions: totals.totalUnpostedTransactions + member.unpostedTransactionCount
+    }),
+    {
+      totalMembers: 0,
+      totalShareCapital: 0,
+      totalSavings: 0,
+      totalPostedTransactions: 0,
+      totalUnpostedTransactions: 0
+    }
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary,
+    members: membersWithSubsidiary
+  };
+}
+
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
@@ -3282,6 +3353,22 @@ app.get("/api/reports/daily-cash-position", async (request, response) => {
   }
 
   response.json(await getDailyCashPositionReport());
+});
+
+app.get("/api/reports/member-subsidiary-ledger", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "reports:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await getMemberSubsidiaryLedgerReport());
 });
 
 app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response) => {

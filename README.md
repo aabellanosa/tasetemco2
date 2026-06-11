@@ -125,6 +125,8 @@ The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, 
 
 The Reports screen includes a read-only Daily Cash Position report summarizing teller batch cash in, cash out, net cash, expected cash, actual cash, variance, posting counts, and closed batch evidence.
 
+The Reports screen also includes a read-only Member Subsidiary Ledger report summarizing member share capital balances, savings balances, movement totals, and posted/unposted transaction counts.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
@@ -200,6 +202,7 @@ Example server directory:
 - `POST /api/ledger/savings-withdrawals/:withdrawalId/post`
 - `GET /api/reports`
 - `GET /api/reports/daily-cash-position`
+- `GET /api/reports/member-subsidiary-ledger`
 - `GET /api/users`
 - `GET /api/roles`
 

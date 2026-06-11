@@ -866,6 +866,27 @@ async function run() {
       throw new Error("Member statement did not link the savings withdrawal to its journal entry.");
     }
 
+    const memberSubsidiaryLedger = await fetch(`${baseUrl}/api/reports/member-subsidiary-ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const memberSubsidiaryLedgerBody = await memberSubsidiaryLedger.json();
+    const reportMember = memberSubsidiaryLedgerBody.members.find((member) => member.id === approvalBody.member.id);
+
+    if (
+      !memberSubsidiaryLedger.ok ||
+      !reportMember ||
+      reportMember.shareCapitalBalance !== 7000 ||
+      reportMember.savingsBalance !== 1800 ||
+      reportMember.initialPaymentTotal !== 5000 ||
+      reportMember.shareCapitalContributionTotal !== 2000 ||
+      reportMember.savingsDepositTotal !== 2500 ||
+      reportMember.savingsWithdrawalTotal !== 700 ||
+      reportMember.postedTransactionCount !== 4 ||
+      reportMember.unpostedTransactionCount !== 0
+    ) {
+      throw new Error("Member subsidiary ledger report should match posted member transactions.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

@@ -2132,7 +2132,8 @@ function Ledger({ user }) {
 }
 
 function Reports() {
-  const [report, setReport] = useState(null);
+  const [dailyCashReport, setDailyCashReport] = useState(null);
+  const [memberLedgerReport, setMemberLedgerReport] = useState(null);
   const [error, setError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -2141,8 +2142,12 @@ function Reports() {
     setError("");
 
     try {
-      const data = await api("/api/reports/daily-cash-position");
-      setReport(data);
+      const [dailyCashData, memberLedgerData] = await Promise.all([
+        api("/api/reports/daily-cash-position"),
+        api("/api/reports/member-subsidiary-ledger")
+      ]);
+      setDailyCashReport(dailyCashData);
+      setMemberLedgerReport(memberLedgerData);
     } catch (reportError) {
       setError(reportError.message);
     } finally {
@@ -2154,7 +2159,8 @@ function Reports() {
     loadReport();
   }, []);
 
-  const summary = report?.summary;
+  const summary = dailyCashReport?.summary;
+  const memberSummary = memberLedgerReport?.summary;
 
   return (
     <VStack align="stretch" spacing={5}>
@@ -2214,7 +2220,7 @@ function Reports() {
           <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
             <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
               <Heading size="md">Batch Rows</Heading>
-              <Text color="gray.500" fontSize="sm">Generated {formatDateTime(report.generatedAt)}</Text>
+              <Text color="gray.500" fontSize="sm">Generated {formatDateTime(dailyCashReport.generatedAt)}</Text>
             </Flex>
             <TableContainer>
               <Table size="sm">
@@ -2236,7 +2242,7 @@ function Reports() {
                   </Tr>
                 </Thead>
                 <Tbody>
-                  {report.batches.map((batch) => (
+                  {dailyCashReport.batches.map((batch) => (
                     <Tr key={batch.id}>
                       <Td>{batch.id}</Td>
                       <Td>
@@ -2257,7 +2263,7 @@ function Reports() {
                       <Td>{formatDateTime(batch.closedAt)}</Td>
                     </Tr>
                   ))}
-                  {report.batches.length === 0 ? (
+                  {dailyCashReport.batches.length === 0 ? (
                     <Tr>
                       <Td colSpan={13} color="gray.500">No teller batches found.</Td>
                     </Tr>
@@ -2267,6 +2273,84 @@ function Reports() {
             </TableContainer>
           </Box>
         </>
+      ) : null}
+
+      {memberSummary ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+            <Box>
+              <Heading size="md">Member Subsidiary Ledger</Heading>
+              <Text color="gray.600" mt={1}>
+                Read-only member balance and movement summary for share capital and savings.
+              </Text>
+            </Box>
+            <Text color="gray.500" fontSize="sm">Generated {formatDateTime(memberLedgerReport.generatedAt)}</Text>
+          </Flex>
+
+          <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={5}>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Members</Text>
+              <Text fontWeight="bold">{memberSummary.totalMembers}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Share Capital</Text>
+              <Text fontWeight="bold">{formatMoney(memberSummary.totalShareCapital)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Savings</Text>
+              <Text fontWeight="bold">{formatMoney(memberSummary.totalSavings)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Transactions</Text>
+              <Text fontWeight="bold">{memberSummary.totalPostedTransactions} posted</Text>
+              <Text color="gray.500" fontSize="sm">{memberSummary.totalUnpostedTransactions} unposted</Text>
+            </Box>
+          </Grid>
+
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Member No.</Th>
+                  <Th>Name</Th>
+                  <Th>Status</Th>
+                  <Th isNumeric>Share Balance</Th>
+                  <Th isNumeric>Savings Balance</Th>
+                  <Th isNumeric>Initial Share</Th>
+                  <Th isNumeric>Share Adds</Th>
+                  <Th isNumeric>Savings Deposits</Th>
+                  <Th isNumeric>Savings Withdrawals</Th>
+                  <Th isNumeric>Posted</Th>
+                  <Th isNumeric>Unposted</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {memberLedgerReport.members.map((member) => (
+                  <Tr key={member.id}>
+                    <Td>{member.id}</Td>
+                    <Td>{member.name}</Td>
+                    <Td>
+                      <Badge colorScheme={member.status === "Active" ? "green" : "gray"}>{member.status}</Badge>
+                    </Td>
+                    <Td isNumeric>{formatMoney(member.shareCapitalBalance)}</Td>
+                    <Td isNumeric>{formatMoney(member.savingsBalance)}</Td>
+                    <Td isNumeric>{formatMoney(member.initialPaymentTotal)}</Td>
+                    <Td isNumeric>{formatMoney(member.shareCapitalContributionTotal)}</Td>
+                    <Td isNumeric>{formatMoney(member.savingsDepositTotal)}</Td>
+                    <Td isNumeric>{formatMoney(member.savingsWithdrawalTotal)}</Td>
+                    <Td isNumeric>{member.postedTransactionCount}</Td>
+                    <Td isNumeric>{member.unpostedTransactionCount}</Td>
+                  </Tr>
+                ))}
+                {memberLedgerReport.members.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={11} color="gray.500">No member subsidiary rows found.</Td>
+                  </Tr>
+                ) : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
       ) : null}
     </VStack>
   );
