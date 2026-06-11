@@ -232,6 +232,8 @@ The Reports screen also includes a read-only Member Subsidiary Ledger report sum
 
 The Reports screen includes a Control Account Reconciliation report that compares prototype-activity subsidiary totals for Share Capital and Savings Deposits Payable against posted general ledger control account balances.
 
+The Reports screen includes a Trial Balance report that summarizes posted general ledger debit and credit totals per account and flags whether the ledger is Balanced or Out of Balance.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
@@ -367,6 +369,7 @@ Current prototype behavior:
 - Daily Cash Position summarizes teller batch cash evidence for Bookkeeper, Manager, Auditor, and Board review.
 - Member Subsidiary Ledger summarizes member share capital and savings balances for reconciliation.
 - Control Account Reconciliation compares prototype activity subsidiary totals to posted GL control account balances.
+- Trial Balance summarizes posted general ledger debit and credit totals and confirms whether the ledger remains balanced.
 
 ### 4.6 Loan Application
 
