@@ -226,6 +226,8 @@ Official batch close uses a confirmation step. The Bookkeeper reviews cash total
 
 The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, Manager, and Auditor-style users can inspect batch status, cash count evidence, posted entry counts, unposted counts, reviewer, and close timing after the batch leaves the active work area. Each history row has a View action that opens batch details with cash count evidence, source transactions, and linked journal entries.
 
+The Reports screen includes a read-only Daily Cash Position report summarizing teller batch cash in, cash out, net cash, expected cash, actual cash, variance, posting counts, and closed batch evidence.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
@@ -358,6 +360,7 @@ Current prototype behavior:
 - Batch History View opens the read-only detail package: batch header, cash count evidence, transactions, and linked journal entries.
 - Variance notes are stored with noted by and noted at fields for audit review.
 - Official close stores closed by, closed at, and optional closing note.
+- Daily Cash Position summarizes teller batch cash evidence for Bookkeeper, Manager, Auditor, and Board review.
 
 ### 4.6 Loan Application
 
@@ -445,6 +448,7 @@ Reports should be generated from posted ledger entries and supporting subsidiary
 
 Priority reports:
 
+- Daily Cash Position
 - Trial Balance
 - Statement of Financial Condition
 - Statement of Operations

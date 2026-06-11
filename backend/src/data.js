@@ -102,7 +102,8 @@ export const rolePermissions = {
     "members:savings-withdrawals:view",
     "teller-cash-counts:view",
     "teller-batches:view",
-    "ledger:view"
+    "ledger:view",
+    "reports:view"
   ],
   "General Manager": [
     "members:view",
@@ -113,7 +114,8 @@ export const rolePermissions = {
     "members:savings-withdrawals:view",
     "teller-cash-counts:view",
     "teller-batches:view",
-    "ledger:view"
+    "ledger:view",
+    "reports:view"
   ],
   "Accountant / Bookkeeper": [
     "ledger:view",
@@ -121,10 +123,11 @@ export const rolePermissions = {
     "ledger:teller-batches:review",
     "ledger:teller-batches:close",
     "teller-cash-counts:view",
-    "teller-batches:view"
+    "teller-batches:view",
+    "reports:view"
   ],
   "Loan Officer": ["members:view"],
-  "Credit Committee / Approver": ["members:view", "members:applications:view"],
+  "Credit Committee / Approver": ["members:view", "members:applications:view", "reports:view"],
   "Teller / Cashier": [
     "members:view",
     "members:initial-payments:view",
@@ -149,9 +152,10 @@ export const rolePermissions = {
     "members:savings-withdrawals:view",
     "teller-cash-counts:view",
     "teller-batches:view",
-    "ledger:view"
+    "ledger:view",
+    "reports:view"
   ],
-  "Board / Read-Only Executive": []
+  "Board / Read-Only Executive": ["reports:view"]
 };
 
 export const members = [

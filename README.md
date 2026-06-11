@@ -123,6 +123,8 @@ Official batch close uses a confirmation step. The Bookkeeper reviews cash total
 
 The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, Manager, and Auditor-style users can inspect batch status, cash count evidence, posted entry counts, unposted counts, reviewer, and close timing after the batch leaves the active work area. Each history row has a View action that opens batch details with cash count evidence, source transactions, and linked journal entries.
 
+The Reports screen includes a read-only Daily Cash Position report summarizing teller batch cash in, cash out, net cash, expected cash, actual cash, variance, posting counts, and closed batch evidence.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
@@ -197,6 +199,7 @@ Example server directory:
 - `POST /api/ledger/savings-deposits/:depositId/post`
 - `POST /api/ledger/savings-withdrawals/:withdrawalId/post`
 - `GET /api/reports`
+- `GET /api/reports/daily-cash-position`
 - `GET /api/users`
 - `GET /api/roles`
 

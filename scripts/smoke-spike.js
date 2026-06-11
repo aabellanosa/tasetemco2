@@ -518,6 +518,24 @@ async function run() {
       throw new Error("Closed batch detail should include cash count, transactions, and linked journals.");
     }
 
+    const dailyCashPosition = await fetch(`${baseUrl}/api/reports/daily-cash-position`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const dailyCashPositionBody = await dailyCashPosition.json();
+    const closedReportBatch = dailyCashPositionBody.batches.find((batch) => batch.id === closedBatchBody.batch.id);
+
+    if (
+      !dailyCashPosition.ok ||
+      dailyCashPositionBody.summary.closedBatchCount < 1 ||
+      dailyCashPositionBody.summary.postedEntryCount < firstBatchTransactionCount ||
+      !closedReportBatch ||
+      closedReportBatch.status !== "Closed" ||
+      closedReportBatch.closedBy !== "bookkeeper" ||
+      closedReportBatch.netCash !== expectedCashCount
+    ) {
+      throw new Error("Daily cash position report should include closed batch cash evidence.");
+    }
+
     const duplicateContributionReference = await fetch(`${baseUrl}/api/share-capital-contributions`, {
       method: "POST",
       headers: {

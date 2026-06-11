@@ -2131,6 +2131,147 @@ function Ledger({ user }) {
   );
 }
 
+function Reports() {
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  async function loadReport() {
+    setIsRefreshing(true);
+    setError("");
+
+    try {
+      const data = await api("/api/reports/daily-cash-position");
+      setReport(data);
+    } catch (reportError) {
+      setError(reportError.message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    loadReport();
+  }, []);
+
+  const summary = report?.summary;
+
+  return (
+    <VStack align="stretch" spacing={5}>
+      <Flex justify="space-between" align="center" gap={4} wrap="wrap">
+        <Box>
+          <Heading size="md">Daily Cash Position</Heading>
+          <Text color="gray.600" mt={1}>
+            Read-only teller cash position summarized from batch evidence.
+          </Text>
+        </Box>
+        <Button size="sm" onClick={loadReport} isLoading={isRefreshing}>
+          Refresh
+        </Button>
+      </Flex>
+
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      {summary ? (
+        <>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Batches</Text>
+              <Text fontWeight="bold">{summary.batchCount}</Text>
+              <Text color="gray.500" fontSize="sm">{summary.closedBatchCount} closed</Text>
+            </Box>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Cash In</Text>
+              <Text fontWeight="bold">{formatMoney(summary.cashIn)}</Text>
+            </Box>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Cash Out</Text>
+              <Text fontWeight="bold">{formatMoney(summary.cashOut)}</Text>
+            </Box>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Net Cash</Text>
+              <Text fontWeight="bold">{formatMoney(summary.netCash)}</Text>
+            </Box>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Expected Cash</Text>
+              <Text fontWeight="bold">{formatMoney(summary.expectedCash)}</Text>
+            </Box>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Actual Cash</Text>
+              <Text fontWeight="bold">{formatMoney(summary.actualCash)}</Text>
+            </Box>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Variance</Text>
+              <Text fontWeight="bold">{formatMoney(summary.variance)}</Text>
+            </Box>
+            <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+              <Text color="gray.500" fontSize="sm">Posting</Text>
+              <Text fontWeight="bold">{summary.postedEntryCount} posted</Text>
+              <Text color="gray.500" fontSize="sm">{summary.unpostedTransactionCount} unposted</Text>
+            </Box>
+          </Grid>
+
+          <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+            <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+              <Heading size="md">Batch Rows</Heading>
+              <Text color="gray.500" fontSize="sm">Generated {formatDateTime(report.generatedAt)}</Text>
+            </Flex>
+            <TableContainer>
+              <Table size="sm">
+                <Thead>
+                  <Tr>
+                    <Th>Batch</Th>
+                    <Th>Status</Th>
+                    <Th>Teller</Th>
+                    <Th isNumeric>Cash In</Th>
+                    <Th isNumeric>Cash Out</Th>
+                    <Th isNumeric>Net</Th>
+                    <Th isNumeric>Expected</Th>
+                    <Th isNumeric>Actual</Th>
+                    <Th isNumeric>Variance</Th>
+                    <Th isNumeric>Posted</Th>
+                    <Th isNumeric>Unposted</Th>
+                    <Th>Closed By</Th>
+                    <Th>Closed</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {report.batches.map((batch) => (
+                    <Tr key={batch.id}>
+                      <Td>{batch.id}</Td>
+                      <Td>
+                        <Badge colorScheme={batch.status === "Closed" ? "gray" : batch.status === "Open" ? "blue" : "green"}>
+                          {batch.status}
+                        </Badge>
+                      </Td>
+                      <Td>{batch.tellerUsername}</Td>
+                      <Td isNumeric>{formatMoney(batch.cashIn)}</Td>
+                      <Td isNumeric>{formatMoney(batch.cashOut)}</Td>
+                      <Td isNumeric>{formatMoney(batch.netCash)}</Td>
+                      <Td isNumeric>{formatMoney(batch.expectedCash)}</Td>
+                      <Td isNumeric>{formatMoney(batch.actualCash)}</Td>
+                      <Td isNumeric>{formatMoney(batch.variance)}</Td>
+                      <Td isNumeric>{batch.postedEntryCount}</Td>
+                      <Td isNumeric>{batch.unpostedTransactionCount}</Td>
+                      <Td>{batch.closedBy || "-"}</Td>
+                      <Td>{formatDateTime(batch.closedAt)}</Td>
+                    </Tr>
+                  ))}
+                  {report.batches.length === 0 ? (
+                    <Tr>
+                      <Td colSpan={13} color="gray.500">No teller batches found.</Td>
+                    </Tr>
+                  ) : null}
+                </Tbody>
+              </Table>
+            </TableContainer>
+          </Box>
+        </>
+      ) : null}
+    </VStack>
+  );
+}
+
 function Placeholder({ view }) {
   return (
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={6}>
@@ -2158,6 +2299,10 @@ function Shell({ user, onLogout }) {
 
     if (view === "ledger") {
       return <Ledger user={user} />;
+    }
+
+    if (view === "reports") {
+      return <Reports />;
     }
 
     return <Placeholder view={view} />;

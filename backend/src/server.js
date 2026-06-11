@@ -792,6 +792,57 @@ async function getTellerBatchDetails(batchId) {
   };
 }
 
+async function getDailyCashPositionReport() {
+  const batches = await listTellerBatches();
+  const batchRows = [];
+
+  for (const batch of batches) {
+    const transactions = await listTellerBatchTransactions(batch.id);
+    const summary = buildTellerBatchSummary(transactions);
+
+    batchRows.push({
+      ...batch,
+      cashIn: summary.cashIn,
+      cashOut: summary.cashOut,
+      netCash: summary.netCash
+    });
+  }
+
+  const summary = batchRows.reduce(
+    (totals, batch) => ({
+      batchCount: totals.batchCount + 1,
+      closedBatchCount: totals.closedBatchCount + (batch.status === "Closed" ? 1 : 0),
+      cashIn: totals.cashIn + Number(batch.cashIn || 0),
+      cashOut: totals.cashOut + Number(batch.cashOut || 0),
+      netCash: totals.netCash + Number(batch.netCash || 0),
+      expectedCash: totals.expectedCash + Number(batch.expectedCash || 0),
+      actualCash: totals.actualCash + Number(batch.actualCash || 0),
+      variance: totals.variance + Number(batch.variance || 0),
+      postedEntryCount: totals.postedEntryCount + Number(batch.postedEntryCount || 0),
+      unpostedTransactionCount: totals.unpostedTransactionCount + Number(batch.unpostedTransactionCount || 0)
+    }),
+    {
+      batchCount: 0,
+      closedBatchCount: 0,
+      cashIn: 0,
+      cashOut: 0,
+      netCash: 0,
+      expectedCash: 0,
+      actualCash: 0,
+      variance: 0,
+      postedEntryCount: 0,
+      unpostedTransactionCount: 0
+    }
+  );
+
+  return {
+    date: new Date().toISOString().slice(0, 10),
+    generatedAt: new Date().toISOString(),
+    summary,
+    batches: batchRows
+  };
+}
+
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
@@ -3215,6 +3266,22 @@ app.get("/api/ledger", async (request, response) => {
     latestCashCount: hasPermission(user, "teller-cash-counts:view") ? await getLatestTellerCashCount() : null,
     journalEntries: await listJournalEntries()
   });
+});
+
+app.get("/api/reports/daily-cash-position", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "reports:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await getDailyCashPositionReport());
 });
 
 app.post("/api/ledger/teller-batches/:paymentId/post", async (request, response) => {
