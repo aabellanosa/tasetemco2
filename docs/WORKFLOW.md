@@ -234,6 +234,8 @@ The Reports screen includes a Control Account Reconciliation report that compare
 
 The Reports screen includes a Trial Balance report that summarizes posted general ledger debit and credit totals per account and flags whether the ledger is Balanced or Out of Balance.
 
+The Reports screen includes a Statement of Financial Condition report. It presents assets, liabilities, and equity from posted general ledger balances. Until formal closing entries are built, current-period income and expense balances are shown as Current Period Surplus or Deficit under equity.
+
 ## 4. Core Workflow
 
 ### 4.1 Member Registration
@@ -370,6 +372,7 @@ Current prototype behavior:
 - Member Subsidiary Ledger summarizes member share capital and savings balances for reconciliation.
 - Control Account Reconciliation compares prototype activity subsidiary totals to posted GL control account balances.
 - Trial Balance summarizes posted general ledger debit and credit totals and confirms whether the ledger remains balanced.
+- Statement of Financial Condition presents the balance-sheet view and confirms whether Assets equal Liabilities plus Equity.
 
 ### 4.6 Loan Application
 
