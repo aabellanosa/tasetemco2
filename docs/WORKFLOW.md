@@ -524,6 +524,25 @@ Current seeded users:
 | `auditor` | Auditor / Compliance Officer | Financial Reports |
 | `board` | Board / Read-Only Executive | Financial Reports |
 
+## 6.2 Persistence and Demo Reset
+
+The React/MySQL spike keeps in-memory seed mode when `DB_HOST` is blank. This preserves the original prototype behavior for quick local demos.
+
+When MySQL/MariaDB settings are configured, the backend reads and writes cooperative workflow data through the database. The demo database can be prepared with:
+
+```powershell
+npm run db:schema
+npm run db:seed
+```
+
+For shared organic testing, messy tester input should be cleaned through the protected demo reset command:
+
+```powershell
+npm run db:reset-demo
+```
+
+The reset command creates a JSON backup under `data/backups/`, clears the configured database tables, and reapplies the demo seed.
+
 ## 7. Audit Trail Requirements
 
 The system should record who did what, when, and from where.
@@ -555,7 +574,7 @@ Events to audit:
 
 ## 8. Planned Database Modules
 
-For the SQLite phase, the first database tables should include:
+For the MySQL/MariaDB persistence phase, the first database tables should include:
 
 - users
 - roles
