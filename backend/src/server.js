@@ -724,7 +724,9 @@ async function listTellerBatches() {
     `SELECT batch_no AS id, teller_username AS tellerUsername, status,
             opened_at AS openedAt, submitted_at AS submittedAt,
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
-            closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
+            closed_at AS closedAt, COALESCE(closed_by, '') AS closedBy,
+            COALESCE(closing_note, '') AS closingNote,
+            expected_cash AS expectedCash, actual_cash AS actualCash,
             variance, transaction_count AS transactionCount,
             COALESCE(variance_note, '') AS varianceNote,
             COALESCE(variance_noted_by, '') AS varianceNotedBy,
@@ -816,7 +818,9 @@ async function getCurrentTellerBatch(user) {
         transactionCount: 0,
         varianceNote: "",
         varianceNotedBy: "",
-        varianceNotedAt: ""
+        varianceNotedAt: "",
+        closedBy: "",
+        closingNote: ""
       };
       tellerBatches.unshift(batch);
     }
@@ -828,7 +832,9 @@ async function getCurrentTellerBatch(user) {
     `SELECT batch_no AS id, teller_username AS tellerUsername, status,
             opened_at AS openedAt, submitted_at AS submittedAt,
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
-            closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
+            closed_at AS closedAt, COALESCE(closed_by, '') AS closedBy,
+            COALESCE(closing_note, '') AS closingNote,
+            expected_cash AS expectedCash, actual_cash AS actualCash,
             variance, transaction_count AS transactionCount,
             COALESCE(variance_note, '') AS varianceNote,
             COALESCE(variance_noted_by, '') AS varianceNotedBy,
@@ -870,7 +876,9 @@ async function getCurrentTellerBatch(user) {
     transactionCount: 0,
     varianceNote: "",
     varianceNotedBy: "",
-    varianceNotedAt: ""
+    varianceNotedAt: "",
+    closedBy: "",
+    closingNote: ""
   };
 }
 
@@ -2291,6 +2299,16 @@ function validateVarianceNote(body) {
   return { value: { varianceNote } };
 }
 
+function validateClosingNote(body) {
+  const closingNote = String(body?.closingNote || "").trim();
+
+  if (closingNote.length > 500) {
+    return { error: "Closing note must be 500 characters or fewer." };
+  }
+
+  return { value: { closingNote } };
+}
+
 async function reviewTellerBatch(batchId, input, user) {
   const db = await getPool();
 
@@ -2323,7 +2341,9 @@ async function reviewTellerBatch(batchId, input, user) {
     `SELECT batch_no AS id, teller_username AS tellerUsername, status,
             opened_at AS openedAt, submitted_at AS submittedAt,
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
-            closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
+            closed_at AS closedAt, COALESCE(closed_by, '') AS closedBy,
+            COALESCE(closing_note, '') AS closingNote,
+            expected_cash AS expectedCash, actual_cash AS actualCash,
             variance, transaction_count AS transactionCount,
             COALESCE(variance_note, '') AS varianceNote,
             COALESCE(variance_noted_by, '') AS varianceNotedBy,
@@ -2369,12 +2389,14 @@ async function reviewTellerBatch(batchId, input, user) {
       reviewedAt: new Date().toISOString(),
       varianceNote: input.varianceNote || "",
       varianceNotedBy: input.varianceNote ? user.username : "",
-      varianceNotedAt: input.varianceNote ? new Date().toISOString() : ""
+      varianceNotedAt: input.varianceNote ? new Date().toISOString() : "",
+      closedBy: batch.closedBy || "",
+      closingNote: batch.closingNote || ""
     }
   };
 }
 
-async function closeTellerBatch(batchId, user) {
+async function closeTellerBatch(batchId, input, user) {
   const unpostedRows = await listTellerBatchRows(batchId);
 
   if (unpostedRows.length > 0) {
@@ -2396,6 +2418,8 @@ async function closeTellerBatch(batchId, user) {
 
     batch.status = "Closed";
     batch.closedAt = new Date().toISOString();
+    batch.closedBy = user.username;
+    batch.closingNote = input.closingNote || "";
 
     const nextBatch = {
       id: nextTellerBatchNumber(),
@@ -2411,7 +2435,9 @@ async function closeTellerBatch(batchId, user) {
       transactionCount: 0,
       varianceNote: "",
       varianceNotedBy: "",
-      varianceNotedAt: ""
+      varianceNotedAt: "",
+      closedBy: "",
+      closingNote: ""
     };
     tellerBatches.unshift(nextBatch);
 
@@ -2422,7 +2448,9 @@ async function closeTellerBatch(batchId, user) {
     `SELECT batch_no AS id, teller_username AS tellerUsername, status,
             opened_at AS openedAt, submitted_at AS submittedAt,
             reviewed_at AS reviewedAt, COALESCE(reviewed_by, '') AS reviewedBy,
-            closed_at AS closedAt, expected_cash AS expectedCash, actual_cash AS actualCash,
+            closed_at AS closedAt, COALESCE(closed_by, '') AS closedBy,
+            COALESCE(closing_note, '') AS closingNote,
+            expected_cash AS expectedCash, actual_cash AS actualCash,
             variance, transaction_count AS transactionCount,
             COALESCE(variance_note, '') AS varianceNote,
             COALESCE(variance_noted_by, '') AS varianceNotedBy,
@@ -2451,9 +2479,9 @@ async function closeTellerBatch(batchId, user) {
 
   await db.execute(
     `UPDATE teller_batches
-     SET status = 'Closed', closed_at = CURRENT_TIMESTAMP
+     SET status = 'Closed', closed_at = CURRENT_TIMESTAMP, closed_by = ?, closing_note = ?
      WHERE batch_no = ?`,
-    [batchId]
+    [user.username, input.closingNote || "", batchId]
   );
 
   await db.execute(
@@ -2465,7 +2493,10 @@ async function closeTellerBatch(batchId, user) {
   return {
     batch: {
       ...batch,
-      status: "Closed"
+      status: "Closed",
+      closedBy: user.username,
+      closingNote: input.closingNote || "",
+      closedAt: new Date().toISOString()
     },
     nextBatch: {
       id: nextBatchNo,
@@ -2481,7 +2512,9 @@ async function closeTellerBatch(batchId, user) {
       transactionCount: 0,
       varianceNote: "",
       varianceNotedBy: "",
-      varianceNotedAt: ""
+      varianceNotedAt: "",
+      closedBy: "",
+      closingNote: ""
     }
   };
 }
@@ -3105,7 +3138,14 @@ app.post("/api/teller-batches/:batchId/close", async (request, response) => {
     return;
   }
 
-  const result = await closeTellerBatch(request.params.batchId, user);
+  const validation = validateClosingNote(request.body);
+
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await closeTellerBatch(request.params.batchId, validation.value, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

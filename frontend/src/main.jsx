@@ -1456,14 +1456,17 @@ function Ledger({ user }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [varianceNote, setVarianceNote] = useState("");
+  const [closingNote, setClosingNote] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingBatchDetailsId, setLoadingBatchDetailsId] = useState("");
   const batchDetails = useDisclosure();
+  const closeConfirmation = useDisclosure();
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
   const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
   const canCloseTellerBatch = user.permissions.includes("ledger:teller-batches:close");
   const needsVarianceNote = activeBatch?.status === "Submitted" && Number(activeBatch.variance || 0) !== 0;
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
+  const activeBatchHistory = activeBatch ? tellerBatches.find((batch) => batch.id === activeBatch.id) : null;
 
   async function loadLedger() {
     setIsRefreshing(true);
@@ -1478,6 +1481,9 @@ function Ledger({ user }) {
       setJournalEntries(data.journalEntries);
       if (!data.activeBatch || data.activeBatch.status !== "Submitted" || data.activeBatch.variance === 0) {
         setVarianceNote("");
+      }
+      if (!data.activeBatch || data.activeBatch.status !== "Reviewed") {
+        setClosingNote("");
       }
     } catch (ledgerError) {
       setError(ledgerError.message);
@@ -1545,9 +1551,12 @@ function Ledger({ user }) {
 
     try {
       const data = await api(`/api/teller-batches/${activeBatch.id}/close`, {
-        method: "POST"
+        method: "POST",
+        body: JSON.stringify({ closingNote })
       });
       setActiveBatch(data.nextBatch);
+      setClosingNote("");
+      closeConfirmation.onClose();
       setMessage(`${data.batch.id} closed. ${data.nextBatch.id} is now Open.`);
       await loadLedger();
     } catch (closeError) {
@@ -1623,7 +1632,12 @@ function Ledger({ user }) {
               </Button>
             ) : null}
             {canCloseTellerBatch && activeBatch?.status === "Reviewed" ? (
-              <Button size="sm" colorScheme="green" onClick={closeBatch} isDisabled={tellerBatch.length > 0}>
+              <Button
+                size="sm"
+                colorScheme="green"
+                onClick={closeConfirmation.onOpen}
+                isDisabled={tellerBatch.length > 0}
+              >
                 Close and open next
               </Button>
             ) : null}
@@ -1764,6 +1778,7 @@ function Ledger({ user }) {
                 <Th isNumeric>Unposted</Th>
                 <Th>Variance Note</Th>
                 <Th>Reviewed By</Th>
+                <Th>Closed By</Th>
                 <Th>Closed</Th>
                 <Th>Details</Th>
               </Tr>
@@ -1796,6 +1811,7 @@ function Ledger({ user }) {
                   <Td isNumeric>{batch.unpostedTransactionCount}</Td>
                   <Td>{batch.varianceNote || "-"}</Td>
                   <Td>{batch.reviewedBy || "-"}</Td>
+                  <Td>{batch.closedBy || "-"}</Td>
                   <Td>{formatDateTime(batch.closedAt)}</Td>
                   <Td>
                     <Button
@@ -1810,7 +1826,7 @@ function Ledger({ user }) {
               ))}
               {tellerBatches.length === 0 ? (
                 <Tr>
-                  <Td colSpan={13} color="gray.500">
+                  <Td colSpan={14} color="gray.500">
                     No teller batch history yet.
                   </Td>
                 </Tr>
@@ -1864,6 +1880,59 @@ function Ledger({ user }) {
         </VStack>
       </Box>
 
+      <Modal isOpen={closeConfirmation.isOpen} onClose={closeConfirmation.onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Confirm Teller Batch Close</ModalHeader>
+          <ModalBody>
+            <VStack align="stretch" spacing={4}>
+              <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Batch</Text>
+                  <Text fontWeight="bold">{activeBatch?.id || "-"}</Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Variance</Text>
+                  <Text fontWeight="bold">{formatMoney(activeBatch?.variance || 0)}</Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Expected Cash</Text>
+                  <Text fontWeight="bold">{formatMoney(activeBatch?.expectedCash || 0)}</Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Actual Cash</Text>
+                  <Text fontWeight="bold">{formatMoney(activeBatch?.actualCash || 0)}</Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Posted Entries</Text>
+                  <Text fontWeight="bold">{activeBatchHistory?.postedEntryCount || 0}</Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Unposted Transactions</Text>
+                  <Text fontWeight="bold">{activeBatchHistory?.unpostedTransactionCount || tellerBatch.length}</Text>
+                </Box>
+              </Grid>
+              <FormControl>
+                <FormLabel>Closing note</FormLabel>
+                <Textarea
+                  value={closingNote}
+                  onChange={(event) => setClosingNote(event.target.value)}
+                  placeholder="Optional end-of-day close note."
+                />
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button mr={3} onClick={closeConfirmation.onClose}>
+              Cancel
+            </Button>
+            <Button colorScheme="green" onClick={closeBatch} isDisabled={tellerBatch.length > 0}>
+              Confirm close
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       <Modal isOpen={batchDetails.isOpen} onClose={batchDetails.onClose} size="6xl" scrollBehavior="inside">
         <ModalOverlay />
         <ModalContent>
@@ -1889,8 +1958,11 @@ function Ledger({ user }) {
                     <Text fontWeight="bold">{selectedBatchDetails.batch.reviewedBy || "-"}</Text>
                   </Box>
                   <Box borderWidth="1px" borderRadius="md" p={4}>
-                    <Text color="gray.500" fontSize="sm">Closed</Text>
-                    <Text fontWeight="bold">{formatDateTime(selectedBatchDetails.batch.closedAt)}</Text>
+                    <Text color="gray.500" fontSize="sm">Closed By</Text>
+                    <Text fontWeight="bold">{selectedBatchDetails.batch.closedBy || "-"}</Text>
+                    <Text color="gray.500" fontSize="sm" mt={1}>
+                      {formatDateTime(selectedBatchDetails.batch.closedAt)}
+                    </Text>
                   </Box>
                 </Grid>
 
@@ -1921,6 +1993,11 @@ function Ledger({ user }) {
                       Noted by {selectedBatchDetails.batch.varianceNotedBy} on {formatDateTime(selectedBatchDetails.batch.varianceNotedAt)}
                     </Text>
                   ) : null}
+                </Box>
+
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Closing Note</Text>
+                  <Text fontWeight="bold">{selectedBatchDetails.batch.closingNote || "-"}</Text>
                 </Box>
 
                 <Box>

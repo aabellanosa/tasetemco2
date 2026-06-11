@@ -222,6 +222,8 @@ Teller/Cashier records transactions into the current Open teller batch. In this 
 
 Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning, and non-zero variance requires a Bookkeeper variance note before review.
 
+Official batch close uses a confirmation step. The Bookkeeper reviews cash totals, posted and unposted counts, may enter a closing note, and the system stores closed by, closed at, and closing note for audit review.
+
 The Ledger screen includes read-only Teller Batch History so Bookkeeper, Admin, Manager, and Auditor-style users can inspect batch status, cash count evidence, posted entry counts, unposted counts, reviewer, and close timing after the batch leaves the active work area. Each history row has a View action that opens batch details with cash count evidence, source transactions, and linked journal entries.
 
 ## 4. Core Workflow
@@ -340,7 +342,7 @@ Sample accounting effect:
 7. Accountant / Bookkeeper reviews the submitted teller batch.
 8. Bookkeeper marks the batch as Reviewed.
 9. Bookkeeper posts all teller transactions assigned to the reviewed batch.
-10. Bookkeeper closes the reviewed batch.
+10. Bookkeeper confirms official close and may record a closing note.
 11. System opens the next teller batch for new teller activity.
 
 Current prototype behavior:
@@ -355,6 +357,7 @@ Current prototype behavior:
 - Teller Batch History is read-only and shows open, submitted, reviewed, and closed batch evidence.
 - Batch History View opens the read-only detail package: batch header, cash count evidence, transactions, and linked journal entries.
 - Variance notes are stored with noted by and noted at fields for audit review.
+- Official close stores closed by, closed at, and optional closing note.
 
 ### 4.6 Loan Application
 

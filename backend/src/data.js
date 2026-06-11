@@ -234,7 +234,9 @@ export const tellerBatches = [
     transactionCount: 0,
     varianceNote: "",
     varianceNotedBy: "",
-    varianceNotedAt: ""
+    varianceNotedAt: "",
+    closedBy: "",
+    closingNote: ""
   }
 ];
 

@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS teller_batches (
   reviewed_at TIMESTAMP NULL,
   reviewed_by VARCHAR(80),
   closed_at TIMESTAMP NULL,
+  closed_by VARCHAR(80),
+  closing_note TEXT,
   expected_cash INT NOT NULL DEFAULT 0,
   actual_cash INT NOT NULL DEFAULT 0,
   variance INT NOT NULL DEFAULT 0,

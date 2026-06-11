@@ -463,13 +463,21 @@ async function run() {
 
     const closedBatch = await fetch(`${baseUrl}/api/teller-batches/${reviewedBatchBody.batch.id}/close`, {
       method: "POST",
-      headers: { Cookie: bookkeeperCookie }
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        closingNote: "Smoke test EOD close completed."
+      })
     });
     const closedBatchBody = await closedBatch.json();
 
     if (
       !closedBatch.ok ||
       closedBatchBody.batch.status !== "Closed" ||
+      closedBatchBody.batch.closedBy !== "bookkeeper" ||
+      closedBatchBody.batch.closingNote !== "Smoke test EOD close completed." ||
       closedBatchBody.nextBatch.status !== "Open"
     ) {
       throw new Error("Bookkeeper should close a reviewed empty batch and open the next teller batch.");
@@ -486,7 +494,9 @@ async function run() {
       !closedHistoryRow ||
       closedHistoryRow.status !== "Closed" ||
       closedHistoryRow.postedEntryCount !== firstBatchTransactionCount ||
-      closedHistoryRow.unpostedTransactionCount !== 0
+      closedHistoryRow.unpostedTransactionCount !== 0 ||
+      closedHistoryRow.closedBy !== "bookkeeper" ||
+      closedHistoryRow.closingNote !== "Smoke test EOD close completed."
     ) {
       throw new Error("Teller batch history should show closed first batch evidence.");
     }
@@ -499,6 +509,8 @@ async function run() {
     if (
       !closedBatchDetails.ok ||
       closedBatchDetailsBody.batch.status !== "Closed" ||
+      closedBatchDetailsBody.batch.closedBy !== "bookkeeper" ||
+      closedBatchDetailsBody.batch.closingNote !== "Smoke test EOD close completed." ||
       closedBatchDetailsBody.cashCounts.length !== 1 ||
       closedBatchDetailsBody.transactions.length !== firstBatchTransactionCount ||
       closedBatchDetailsBody.journalEntries.length !== firstBatchTransactionCount
