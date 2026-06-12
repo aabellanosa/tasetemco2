@@ -186,13 +186,15 @@ Example server directory:
 /public_html/docs/
 ```
 
-## Planned Stack
+## Active App Stack
 
-- Frontend: HTML/CSS/JavaScript first, upgradeable to a component framework later if needed
-- Backend: Node.js HTTP server
-- Database: SQLite via Node's built-in `node:sqlite` module
-- Auth: Multi-user accounts with role-based access control
-- Reporting: Ledger-driven reports generated from posted transactions
+- Frontend: Vite, React, Chakra UI in `frontend/`
+- Backend: Node.js, Express in `backend/`
+- Database: in-memory seed mode by default, optional MySQL/MariaDB when DB env vars are configured
+- Auth: multi-user prototype login with role-based access control
+- Reporting: ledger-driven reports generated from posted transactions
+
+The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css` belong to the earlier SQLite prototype. They are kept only as historical reference and should not be used for the active React/MySQL app or Render deployment.
 
 ## API Endpoints
 
