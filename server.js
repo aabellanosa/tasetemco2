@@ -2,6 +2,23 @@ const { createServer } = require("node:http");
 const { randomUUID } = require("node:crypto");
 const { readFile } = require("node:fs/promises");
 const { extname, join, normalize } = require("node:path");
+
+if (process.env.ALLOW_LEGACY_SQLITE_SERVER !== "true") {
+  console.error(
+    [
+      "This root-level SQLite server is a legacy prototype and is not the active React/MySQL app.",
+      "",
+      "Use these commands instead:",
+      "  npm run dev:backend",
+      "  npm run dev:frontend",
+      "  npm start",
+      "",
+      "To intentionally run the old SQLite prototype, set ALLOW_LEGACY_SQLITE_SERVER=true."
+    ].join("\n")
+  );
+  process.exit(1);
+}
+
 const { all, authenticateUser, get, initDatabase } = require("./src/db");
 
 const host = "127.0.0.1";

@@ -1,3 +1,5 @@
+// Legacy root-level SQLite prototype only.
+// The active React/MySQL backend lives in backend/src/server.js and uses mysql2.
 const { mkdirSync } = require("node:fs");
 const { pbkdf2Sync, randomBytes, timingSafeEqual } = require("node:crypto");
 const { dirname, join } = require("node:path");
