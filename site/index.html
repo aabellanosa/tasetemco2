@@ -268,7 +268,8 @@
           <p>
             The working app can remain in in-memory seed mode while DB settings are blank.
             When MySQL/MariaDB is configured, demo data can be restored with a reset command
-            that creates a JSON backup before reseeding the configured database.
+            that creates a JSON backup before reseeding the configured database. The MySQL
+            smoke test then verifies the same workflow against persistent tables.
           </p>
         </div>
       </section>
