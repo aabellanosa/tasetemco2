@@ -1209,6 +1209,29 @@ async function ensureTellerBatchReviewedForPosting(batchId, connection = null) {
   }
 
   if (!connection) {
+    const db = await getPool();
+
+    if (db) {
+      const [rows] = await db.execute(
+        `SELECT batch_no AS id, status
+         FROM teller_batches
+         WHERE batch_no = ?
+         LIMIT 1`,
+        [batchId]
+      );
+      const batch = rows[0];
+
+      if (!batch) {
+        return { error: "Teller batch was not found.", statusCode: 404 };
+      }
+
+      if (batch.status !== "Reviewed") {
+        return { error: "Teller batch must be reviewed before posting transactions.", statusCode: 409 };
+      }
+
+      return { batch };
+    }
+
     const batch = tellerBatches.find((item) => item.id === batchId);
 
     if (!batch) {
