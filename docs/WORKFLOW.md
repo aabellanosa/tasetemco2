@@ -543,6 +543,14 @@ npm run db:reset-demo
 
 The reset command creates a JSON backup under `data/backups/`, clears the configured database tables, and reapplies the demo seed.
 
+After local MySQL/MariaDB settings are confirmed, run the persistence smoke test with:
+
+```powershell
+npm run smoke:mysql
+```
+
+This resets the configured database to the demo seed, starts the backend in MySQL mode, verifies `/api/health`, and runs the core workflow against persistent tables.
+
 ## 7. Audit Trail Requirements
 
 The system should record who did what, when, and from where.

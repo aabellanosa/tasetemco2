@@ -65,7 +65,15 @@ npm run check
 npm test
 ```
 
-`npm test` starts the spike API, checks `/api/health`, and verifies that the `membership` user can log in.
+`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test.
+
+After `backend/.env` points to a local MySQL/MariaDB database, run the persistence smoke test with:
+
+```powershell
+npm run smoke:mysql
+```
+
+The MySQL smoke test resets the configured database to the demo seed, confirms `/api/health` reports `database: "mysql"`, and runs the same core workflow against persistent tables.
 
 ## Prototype Login Accounts
 

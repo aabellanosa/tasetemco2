@@ -18,7 +18,8 @@
     "db:reset-demo": "node scripts/db-maintenance.js reset-demo",
     "test": "node scripts/smoke-spike.js",
     "smoke": "node scripts/smoke-spike.js",
-    "check": "node --check backend/src/server.js && node --check backend/src/data.js && node --check scripts/smoke-spike.js && node --check scripts/db-maintenance.js && npm --prefix frontend run check"
+    "smoke:mysql": "node scripts/smoke-mysql.js",
+    "check": "node --check backend/src/server.js && node --check backend/src/data.js && node --check scripts/smoke-spike.js && node --check scripts/smoke-mysql.js && node --check scripts/db-maintenance.js && npm --prefix frontend run check"
   },
   "engines": {
     "node": ">=22.5.0"

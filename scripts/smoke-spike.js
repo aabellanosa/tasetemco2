@@ -1,7 +1,16 @@
 const { spawn } = require("node:child_process");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
+const dotenv = require("dotenv");
 
 const port = String(4300 + Math.floor(Math.random() * 500));
 const baseUrl = `http://127.0.0.1:${port}`;
+const smokeMode = process.env.SMOKE_DB_MODE || "memory";
+
+if (smokeMode === "mysql") {
+  dotenv.config({ path: path.join(process.cwd(), "backend", ".env") });
+  dotenv.config();
+}
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -25,13 +34,35 @@ async function waitForHealth() {
 }
 
 async function run() {
+  if (!["memory", "mysql"].includes(smokeMode)) {
+    throw new Error("SMOKE_DB_MODE must be memory or mysql.");
+  }
+
+  if (smokeMode === "mysql") {
+    const missing = ["DB_HOST", "DB_USER", "DB_NAME"].filter((key) => !process.env[key]);
+
+    if (missing.length > 0) {
+      throw new Error(`MySQL smoke test requires DB settings: ${missing.join(", ")}.`);
+    }
+
+    const reset = spawnSync(process.execPath, ["scripts/db-maintenance.js", "reset-demo"], {
+      cwd: process.cwd(),
+      env: process.env,
+      encoding: "utf8"
+    });
+
+    if (reset.status !== 0) {
+      throw new Error(`MySQL demo reset failed.\n${reset.stdout}${reset.stderr}`);
+    }
+  }
+
   const server = spawn(process.execPath, ["backend/src/server.js"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       HOST: "127.0.0.1",
       PORT: port,
-      DB_HOST: ""
+      ...(smokeMode === "memory" ? { DB_HOST: "" } : {})
     },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -45,7 +76,15 @@ async function run() {
   });
 
   try {
-    await waitForHealth();
+    const health = await waitForHealth();
+
+    if (smokeMode === "memory" && health.database !== "seed-memory") {
+      throw new Error("Memory smoke test expected the API to use seed-memory mode.");
+    }
+
+    if (smokeMode === "mysql" && health.database !== "mysql") {
+      throw new Error("MySQL smoke test expected the API to use mysql mode.");
+    }
 
     const login = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
@@ -1025,7 +1064,7 @@ async function run() {
       throw new Error("Loan officer should be denied member application creation.");
     }
 
-    console.log("React/MySQL spike API smoke test passed.");
+    console.log(`React/MySQL spike API ${smokeMode} smoke test passed.`);
   } finally {
     server.kill();
     await wait(200);
