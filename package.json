@@ -12,18 +12,14 @@
     "dev:backend": "npm --prefix backend run dev",
     "build": "npm --prefix frontend run build",
     "start": "npm --prefix backend start",
-    "db:schema": "node scripts/db-maintenance.js schema",
-    "db:seed": "node scripts/db-maintenance.js seed",
-    "db:backup": "node scripts/db-maintenance.js backup",
-    "db:reset-demo": "node scripts/db-maintenance.js reset-demo",
     "pg:schema": "node scripts/pg-maintenance.js schema",
     "pg:seed": "node scripts/pg-maintenance.js seed",
     "pg:backup": "node scripts/pg-maintenance.js backup",
     "pg:reset-demo": "node scripts/pg-maintenance.js reset-demo",
     "test": "node scripts/smoke-spike.js",
     "smoke": "node scripts/smoke-spike.js",
-    "smoke:mysql": "node scripts/smoke-mysql.js",
-    "check": "node --check backend/src/server.js && node --check backend/src/data.js && node --check scripts/smoke-spike.js && node --check scripts/smoke-mysql.js && node --check scripts/db-maintenance.js && node --check scripts/pg-maintenance.js && npm --prefix frontend run check"
+    "smoke:postgres": "node scripts/smoke-postgres.js",
+    "check": "node --check backend/src/server.js && node --check backend/src/data.js && node --check scripts/smoke-spike.js && node --check scripts/smoke-postgres.js && node --check scripts/pg-maintenance.js && npm --prefix frontend run check"
   },
   "engines": {
     "node": ">=22.5.0"

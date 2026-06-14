@@ -7,9 +7,9 @@ TASETEMCO is a prototype cooperative core ledger system for Philippine cooperati
 The spike is split into:
 
 - `frontend/` - Vite, React, Chakra UI
-- `backend/` - Node.js, Express, in-memory seed mode today, Postgres tooling for the persistence pivot
+- `backend/` - Node.js, Express, in-memory seed mode or Postgres persistence
 
-The backend still runs with in-memory seed data while the Postgres backend conversion is in progress. Leave `DB_HOST` blank to keep the current in-memory prototype behavior.
+The backend runs with in-memory seed data when `DATABASE_URL` is blank. Set `DATABASE_URL` to use local or hosted Postgres persistence.
 
 To prepare a local Postgres database for the pivot, copy `backend/.env.example` to `backend/.env`, set `DATABASE_URL`, then run:
 
@@ -29,8 +29,6 @@ npm run pg:reset-demo
 ```powershell
 npm run pg:backup
 ```
-
-The older `db:*` and `smoke:mysql` commands are retained temporarily from the MySQL persistence spike. New persistence work should use the `pg:*` commands.
 
 ## Running The Spike
 
@@ -69,13 +67,13 @@ npm test
 
 `npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test.
 
-Postgres persistence smoke testing will be added after the backend is converted from MySQL-style queries to Postgres. For this spike, verify the database lifecycle with:
+After `backend/.env` points to a local Postgres database, run the persistence smoke test with:
 
 ```powershell
-npm run pg:reset-demo
+npm run smoke:postgres
 ```
 
-That command applies the Postgres schema, creates a JSON backup, clears the configured tables, and reapplies the demo seed.
+The Postgres smoke test resets the configured database to the demo seed, confirms `/api/health` reports `database: "postgres"`, and runs the same core workflow against persistent tables.
 
 ## Prototype Login Accounts
 

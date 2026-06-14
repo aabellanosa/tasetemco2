@@ -526,7 +526,7 @@ Current seeded users:
 
 ## 6.2 Persistence and Demo Reset
 
-The React/Postgres pivot keeps in-memory seed mode while the backend conversion is in progress. This preserves the original prototype behavior for quick local demos.
+The React/Postgres pivot keeps in-memory seed mode when `DATABASE_URL` is blank. This preserves the original prototype behavior for quick local demos.
 
 When Postgres settings are configured, the demo database can be prepared with:
 
@@ -543,13 +543,13 @@ npm run pg:reset-demo
 
 The reset command creates a JSON backup under `data/backups/`, clears the configured Postgres database tables, and reapplies the demo seed.
 
-Postgres persistence smoke testing will be added after the backend query layer is converted. For this spike, use the reset command to validate the schema, backup, clear, and seed lifecycle:
+After local Postgres settings are confirmed, run the persistence smoke test with:
 
 ```powershell
-npm run pg:reset-demo
+npm run smoke:postgres
 ```
 
-The older `db:*` and `smoke:mysql` commands are retained only as transition tooling from the earlier MySQL spike.
+This resets the configured database to the demo seed, starts the backend in Postgres mode, verifies `/api/health`, and runs the core workflow against persistent tables.
 
 ## 7. Audit Trail Requirements
 

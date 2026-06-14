@@ -7,7 +7,7 @@ const port = String(4300 + Math.floor(Math.random() * 500));
 const baseUrl = `http://127.0.0.1:${port}`;
 const smokeMode = process.env.SMOKE_DB_MODE || "memory";
 
-if (smokeMode === "mysql") {
+if (smokeMode === "postgres") {
   dotenv.config({ path: path.join(process.cwd(), "backend", ".env") });
   dotenv.config();
 }
@@ -34,25 +34,26 @@ async function waitForHealth() {
 }
 
 async function run() {
-  if (!["memory", "mysql"].includes(smokeMode)) {
-    throw new Error("SMOKE_DB_MODE must be memory or mysql.");
+  if (!["memory", "postgres"].includes(smokeMode)) {
+    throw new Error("SMOKE_DB_MODE must be memory or postgres.");
   }
 
-  if (smokeMode === "mysql") {
-    const missing = ["DB_HOST", "DB_USER", "DB_NAME"].filter((key) => !process.env[key]);
-
-    if (missing.length > 0) {
-      throw new Error(`MySQL smoke test requires DB settings: ${missing.join(", ")}.`);
+  if (smokeMode === "postgres") {
+    if (
+      !process.env.DATABASE_URL &&
+      !(process.env.PGHOST && process.env.PGUSER && process.env.PGDATABASE)
+    ) {
+      throw new Error("Postgres smoke test requires DATABASE_URL or PGHOST, PGUSER, and PGDATABASE.");
     }
 
-    const reset = spawnSync(process.execPath, ["scripts/db-maintenance.js", "reset-demo"], {
+    const reset = spawnSync(process.execPath, ["scripts/pg-maintenance.js", "reset-demo"], {
       cwd: process.cwd(),
       env: process.env,
       encoding: "utf8"
     });
 
     if (reset.status !== 0) {
-      throw new Error(`MySQL demo reset failed.\n${reset.stdout}${reset.stderr}`);
+      throw new Error(`Postgres demo reset failed.\n${reset.stdout}${reset.stderr}`);
     }
   }
 
@@ -62,7 +63,14 @@ async function run() {
       ...process.env,
       HOST: "127.0.0.1",
       PORT: port,
-      ...(smokeMode === "memory" ? { DB_HOST: "" } : {})
+      ...(smokeMode === "memory"
+        ? {
+            DATABASE_URL: "",
+            PGHOST: "",
+            PGUSER: "",
+            PGDATABASE: ""
+          }
+        : {})
     },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -82,8 +90,8 @@ async function run() {
       throw new Error("Memory smoke test expected the API to use seed-memory mode.");
     }
 
-    if (smokeMode === "mysql" && health.database !== "mysql") {
-      throw new Error("MySQL smoke test expected the API to use mysql mode.");
+    if (smokeMode === "postgres" && health.database !== "postgres") {
+      throw new Error("Postgres smoke test expected the API to use postgres mode.");
     }
 
     const login = await fetch(`${baseUrl}/api/login`, {

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import cookie from "cookie";
 import dotenv from "dotenv";
 import express from "express";
-import mysql from "mysql2/promise";
+import pg from "pg";
 import {
   dashboard,
   defaultPassword,
@@ -22,6 +22,8 @@ import {
 
 dotenv.config();
 
+pg.types.setTypeParser(20, (value) => Number(value));
+
 const app = express();
 const host = process.env.HOST || "127.0.0.1";
 const port = Number(process.env.PORT || 4000);
@@ -30,25 +32,97 @@ let pool = null;
 
 app.use(express.json());
 
-function wantsMySql() {
-  return Boolean(process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME);
+function wantsPostgres() {
+  return Boolean(
+    process.env.DATABASE_URL ||
+      (process.env.PGHOST && process.env.PGUSER && process.env.PGDATABASE)
+  );
+}
+
+function translateSql(sql) {
+  let parameterIndex = 0;
+
+  return sql
+    .replace(/`/g, '"')
+    .replace(/\?/g, () => `$${(parameterIndex += 1)}`)
+    .replace(/AS UNSIGNED/gi, "AS INTEGER")
+    .replace(/YEAR\(([^)]+)\)/gi, "EXTRACT(YEAR FROM $1)")
+    .replace(/\bAS\s+([a-z][A-Za-z0-9]*)(?=[\s,\n\r)]|$)/g, 'AS "$1"');
+}
+
+function createPostgresConfig() {
+  const baseConfig = {
+    max: 5,
+    connectionTimeoutMillis: Number(process.env.PGCONNECT_TIMEOUT_MS || 8000)
+  };
+
+  if (process.env.DATABASE_URL) {
+    return {
+      ...baseConfig,
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : undefined
+    };
+  }
+
+  return {
+    ...baseConfig,
+    host: process.env.PGHOST,
+    port: Number(process.env.PGPORT || 5432),
+    user: process.env.PGUSER,
+    password: process.env.PGPASSWORD,
+    database: process.env.PGDATABASE
+  };
+}
+
+function wrapPostgresClient(client) {
+  return {
+    async execute(sql, params = []) {
+      const result = await client.query(translateSql(sql), params);
+      return [result.rows, result];
+    },
+    async query(sql, params = []) {
+      const result = await client.query(translateSql(sql), params);
+      return [result.rows, result];
+    },
+    beginTransaction() {
+      return client.query("BEGIN");
+    },
+    commit() {
+      return client.query("COMMIT");
+    },
+    rollback() {
+      return client.query("ROLLBACK");
+    },
+    release() {
+      client.release();
+    }
+  };
 }
 
 async function getPool() {
-  if (!wantsMySql()) {
+  if (!wantsPostgres()) {
     return null;
   }
 
   if (!pool) {
-    pool = mysql.createPool({
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT || 3306),
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      waitForConnections: true,
-      connectionLimit: 5
-    });
+    const postgresPool = new pg.Pool(createPostgresConfig());
+    pool = {
+      async execute(sql, params = []) {
+        const result = await postgresPool.query(translateSql(sql), params);
+        return [result.rows, result];
+      },
+      async query(sql, params = []) {
+        const result = await postgresPool.query(translateSql(sql), params);
+        return [result.rows, result];
+      },
+      async getConnection() {
+        const client = await postgresPool.connect();
+        return wrapPostgresClient(client);
+      },
+      end() {
+        return postgresPool.end();
+      }
+    };
   }
 
   return pool;
@@ -3049,11 +3123,11 @@ app.get("/api/health", async (request, response) => {
   let database = "seed-memory";
 
   if (db) {
-    await db.query("SELECT 1");
-    database = "mysql";
+    await db.query("SELECT 1 AS ok");
+    database = "postgres";
   }
 
-  response.json({ ok: true, app: "TASETEMCO", stack: "react-chakra-mysql-spike", database });
+  response.json({ ok: true, app: "TASETEMCO", stack: "react-chakra-postgres-spike", database });
 });
 
 app.post("/api/login", async (request, response) => {
