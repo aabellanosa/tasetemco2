@@ -89,6 +89,8 @@ p@55@LL
 
 The current spike uses one shared prototype password in code. Production behavior should move passwords into the database as salted hashes with forced password changes.
 
+The `admin` user can manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; per-user password storage belongs to a later security spike.
+
 | Username | Role | Default Screen |
 | --- | --- | --- |
 | `admin` | System Administrator | Users and Roles |

@@ -555,6 +555,8 @@ The hosted Render demo includes admin-only Demo Maintenance controls under Users
 
 Maintenance controls are intentionally limited to the System Administrator. Other users should not be able to access these actions through the UI or direct API calls.
 
+The System Administrator also manages prototype staff users under Users. Admin can create a staff user, assign role and default screen, and activate or deactivate non-admin accounts. All users continue to share the prototype password `p@55@LL` until a later authentication security spike introduces per-user password storage and reset flows.
+
 ## 7. Audit Trail Requirements
 
 The system should record who did what, when, and from where.
