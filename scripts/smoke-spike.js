@@ -1064,7 +1064,7 @@ async function run() {
       throw new Error("Loan officer should be denied member application creation.");
     }
 
-    console.log(`React/MySQL spike API ${smokeMode} smoke test passed.`);
+    console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
   } finally {
     server.kill();
     await wait(200);
