@@ -1,34 +1,36 @@
 # TASETEMCO
 
-TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. This branch is the React, Chakra UI, and MySQL/MariaDB spike for the next working prototype.
+TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. This branch documents the React, Chakra UI, Node.js, Render, and Postgres working prototype.
 
-## React/MySQL Spike
+## React/Postgres Working Prototype
 
 The spike is split into:
 
 - `frontend/` - Vite, React, Chakra UI
-- `backend/` - Node.js, Express, optional MySQL/MariaDB
+- `backend/` - Node.js, Express, in-memory seed mode or Postgres persistence
 
-The backend runs with in-memory seed data if MySQL/MariaDB is not configured yet. Leave `DB_HOST` blank to keep the original in-memory prototype behavior.
+The backend runs with in-memory seed data when `DATABASE_URL` is blank. Set `DATABASE_URL` to use local or hosted Postgres persistence.
 
-To use MySQL/MariaDB, copy `backend/.env.example` to `backend/.env`, fill in the database settings, then run:
+To prepare a local Postgres database, copy `backend/.env.example` to `backend/.env`, set `DATABASE_URL`, then run:
 
 ```powershell
-npm run db:schema
-npm run db:seed
+npm run pg:schema
+npm run pg:seed
 ```
 
 If tester input becomes messy, reset the configured database back to the demo seed:
 
 ```powershell
-npm run db:reset-demo
+npm run pg:reset-demo
 ```
 
-`db:reset-demo` writes a JSON backup under `data/backups/` before clearing and reseeding the configured database. You can also run a backup manually:
+`pg:reset-demo` writes a JSON backup under `data/backups/` before clearing and reseeding the configured database. You can also run a backup manually:
 
 ```powershell
-npm run db:backup
+npm run pg:backup
 ```
+
+The hosted Render demo uses Postgres. The `admin` user has a Demo Maintenance panel under Users to download a JSON backup and reset hosted demo data to seed rows. Reset requires typing `RESET TASETEMCO` and downloads a pre-reset backup automatically.
 
 ## Running The Spike
 
@@ -67,13 +69,13 @@ npm test
 
 `npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test.
 
-After `backend/.env` points to a local MySQL/MariaDB database, run the persistence smoke test with:
+After `backend/.env` points to a local Postgres database, run the persistence smoke test with:
 
 ```powershell
-npm run smoke:mysql
+npm run smoke:postgres
 ```
 
-The MySQL smoke test resets the configured database to the demo seed, confirms `/api/health` reports `database: "mysql"`, and runs the same core workflow against persistent tables.
+The Postgres smoke test resets the configured database to the demo seed, confirms `/api/health` reports `database: "postgres"`, and runs the same core workflow against persistent tables.
 
 ## Prototype Login Accounts
 
@@ -101,7 +103,7 @@ The current spike uses one shared prototype password in code. Production behavio
 
 ## Spike Role Permissions
 
-The React/MySQL spike uses action-level permissions, not just screen access. For membership workflows:
+The React/Postgres prototype uses action-level permissions, not just screen access. For membership workflows:
 
 | Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -116,6 +118,8 @@ The React/MySQL spike uses action-level permissions, not just screen access. For
 | Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No |
 
 The Members workflow auto-refreshes every 5 seconds for demo testing across browser profiles. Users can also click Refresh to pull the latest member applications, active members, and initial payment history.
+
+Only the `admin` user can access Demo Maintenance controls. Other roles are blocked by the API even if they attempt to call the maintenance endpoints directly.
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
@@ -198,11 +202,11 @@ Example server directory:
 
 - Frontend: Vite, React, Chakra UI in `frontend/`
 - Backend: Node.js, Express in `backend/`
-- Database: in-memory seed mode by default, optional MySQL/MariaDB when DB env vars are configured
+- Database: in-memory seed mode by default, Postgres when `DATABASE_URL` is configured
 - Auth: multi-user prototype login with role-based access control
 - Reporting: ledger-driven reports generated from posted transactions
 
-The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css` belong to the earlier SQLite prototype. They are kept only as historical reference and should not be used for the active React/MySQL app or Render deployment.
+The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css` belong to the earlier SQLite prototype. They are kept only as historical reference and should not be used for the active React/Postgres app or Render deployment.
 
 ## API Endpoints
 

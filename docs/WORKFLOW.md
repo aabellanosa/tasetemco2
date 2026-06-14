@@ -182,7 +182,7 @@ Restrictions:
 
 ### 3.10 Current Spike Membership Permissions
 
-The React/MySQL spike separates screen access from action access. A role may view member records without being allowed to encode a new member application.
+The React/Postgres prototype separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
 | Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -526,30 +526,34 @@ Current seeded users:
 
 ## 6.2 Persistence and Demo Reset
 
-The React/MySQL spike keeps in-memory seed mode when `DB_HOST` is blank. This preserves the original prototype behavior for quick local demos.
+The React/Postgres prototype keeps in-memory seed mode when `DATABASE_URL` is blank. This preserves the original prototype behavior for quick local demos.
 
-When MySQL/MariaDB settings are configured, the backend reads and writes cooperative workflow data through the database. The demo database can be prepared with:
+When Postgres settings are configured, the backend reads and writes cooperative workflow data through the database. The demo database can be prepared with:
 
 ```powershell
-npm run db:schema
-npm run db:seed
+npm run pg:schema
+npm run pg:seed
 ```
 
 For shared organic testing, messy tester input should be cleaned through the protected demo reset command:
 
 ```powershell
-npm run db:reset-demo
+npm run pg:reset-demo
 ```
 
-The reset command creates a JSON backup under `data/backups/`, clears the configured database tables, and reapplies the demo seed.
+The reset command creates a JSON backup under `data/backups/`, clears the configured Postgres database tables, and reapplies the demo seed.
 
-After local MySQL/MariaDB settings are confirmed, run the persistence smoke test with:
+After local Postgres settings are confirmed, run the persistence smoke test with:
 
 ```powershell
-npm run smoke:mysql
+npm run smoke:postgres
 ```
 
-This resets the configured database to the demo seed, starts the backend in MySQL mode, verifies `/api/health`, and runs the core workflow against persistent tables.
+This resets the configured database to the demo seed, starts the backend in Postgres mode, verifies `/api/health`, and runs the core workflow against persistent tables.
+
+The hosted Render demo includes admin-only Demo Maintenance controls under Users. The `admin` user can view table counts, download a JSON backup, and reset hosted demo data to the seed rows. Reset requires the typed confirmation `RESET TASETEMCO` and downloads a pre-reset backup automatically.
+
+Maintenance controls are intentionally limited to the System Administrator. Other users should not be able to access these actions through the UI or direct API calls.
 
 ## 7. Audit Trail Requirements
 
@@ -582,7 +586,7 @@ Events to audit:
 
 ## 8. Planned Database Modules
 
-For the MySQL/MariaDB persistence phase, the first database tables should include:
+For the Postgres persistence phase, the first database tables should include:
 
 - users
 - roles

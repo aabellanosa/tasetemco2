@@ -266,10 +266,11 @@
           <p class="eyebrow">Persistence</p>
           <h2>Demo Reset Safety</h2>
           <p>
-            The working app can remain in in-memory seed mode while DB settings are blank.
-            When MySQL/MariaDB is configured, demo data can be restored with a reset command
-            that creates a JSON backup before reseeding the configured database. The MySQL
-            smoke test then verifies the same workflow against persistent tables.
+            The working app can remain in in-memory seed mode while DATABASE_URL is blank.
+            When Postgres is configured, demo data can be restored with a reset command
+            that creates a JSON backup before reseeding the configured database. The hosted
+            Render demo also includes an admin-only Demo Maintenance panel for backups and
+            typed-confirmation resets.
           </p>
         </div>
       </section>
