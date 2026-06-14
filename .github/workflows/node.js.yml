@@ -1,0 +1,32 @@
+name: App Build And Smoke Test
+
+on:
+  push:
+    branches:
+      - react-mysql-spike
+  pull_request:
+    branches:
+      - react-mysql-spike
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check build and syntax
+        run: npm run check
+
+      - name: Run memory smoke test
+        run: npm test
