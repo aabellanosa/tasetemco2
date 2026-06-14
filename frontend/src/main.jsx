@@ -2642,6 +2642,266 @@ function Reports() {
   );
 }
 
+function AdminUserManagement({ user }) {
+  const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [defaultPassword, setDefaultPassword] = useState("");
+  const [form, setForm] = useState({
+    name: "",
+    username: "",
+    role: "Membership Officer",
+    defaultView: "members"
+  });
+  const [drafts, setDrafts] = useState({});
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const roleOptions = useMemo(() => roles.map((role) => role.name), [roles]);
+  const defaultViews = useMemo(
+    () => roles.find((role) => role.name === form.role)?.defaultViews || [],
+    [form.role, roles]
+  );
+
+  const loadUsers = useCallback(async () => {
+    setError("");
+
+    try {
+      const data = await api("/api/admin/users");
+      setUsers(data.users);
+      setRoles(data.roles);
+      setDefaultPassword(data.defaultPassword);
+      setDrafts(
+        Object.fromEntries(
+          data.users.map((item) => [
+            item.username,
+            {
+              role: item.role,
+              status: item.status,
+              defaultView: item.defaultView
+            }
+          ])
+        )
+      );
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  useEffect(() => {
+    if (!defaultViews.includes(form.defaultView) && defaultViews[0]) {
+      setForm((current) => ({ ...current, defaultView: defaultViews[0] }));
+    }
+  }, [defaultViews, form.defaultView]);
+
+  function updateDraft(username, patch) {
+    setDrafts((current) => {
+      const nextDraft = { ...current[username], ...patch };
+      const nextRoleViews = roles.find((role) => role.name === nextDraft.role)?.defaultViews || [];
+
+      if (!nextRoleViews.includes(nextDraft.defaultView)) {
+        nextDraft.defaultView = nextRoleViews[0] || "dashboard";
+      }
+
+      return { ...current, [username]: nextDraft };
+    });
+  }
+
+  async function createUser(event) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    setError("");
+
+    try {
+      await api("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setForm({
+        name: "",
+        username: "",
+        role: "Membership Officer",
+        defaultView: "members"
+      });
+      setMessage(`Created ${form.username}. Prototype password is ${defaultPassword}.`);
+      await loadUsers();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveUser(username) {
+    setBusy(true);
+    setMessage("");
+    setError("");
+
+    try {
+      await api(`/api/admin/users/${username}`, {
+        method: "PATCH",
+        body: JSON.stringify(drafts[username])
+      });
+      setMessage(`Updated ${username}.`);
+      await loadUsers();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (user.username !== "admin") {
+    return null;
+  }
+
+  return (
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" align="flex-start" gap={4} wrap="wrap" mb={4}>
+        <Box>
+          <Heading size="md">User Management</Heading>
+          <Text color="gray.600" mt={1}>
+            Staff accounts use the shared prototype password while role and access testing continues.
+          </Text>
+        </Box>
+        <Badge colorScheme="purple">{users.length} users</Badge>
+      </Flex>
+
+      {message ? (
+        <Box mb={4} borderWidth="1px" borderColor="green.200" bg="green.50" borderRadius="md" p={3}>
+          <Text color="green.800">{message}</Text>
+        </Box>
+      ) : null}
+
+      {error ? (
+        <Box mb={4} borderWidth="1px" borderColor="red.200" bg="red.50" borderRadius="md" p={3}>
+          <Text color="red.800">{error}</Text>
+        </Box>
+      ) : null}
+
+      <Box as="form" onSubmit={createUser} borderWidth="1px" borderRadius="md" p={4} mb={5}>
+        <Heading size="sm" mb={4}>Create Staff User</Heading>
+        <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "2fr 1fr 1fr 1fr" }} gap={4}>
+          <FormControl>
+            <FormLabel>Full Name</FormLabel>
+            <Input
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Juan D. Cruz"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Username</FormLabel>
+            <Input
+              value={form.username}
+              onChange={(event) => setForm((current) => ({ ...current, username: event.target.value.toLowerCase() }))}
+              placeholder="juancruz"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Role</FormLabel>
+            <Select
+              value={form.role}
+              onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}
+            >
+              {roleOptions.map((role) => (
+                <option key={role} value={role}>{role}</option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl>
+            <FormLabel>Default Screen</FormLabel>
+            <Select
+              value={form.defaultView}
+              onChange={(event) => setForm((current) => ({ ...current, defaultView: event.target.value }))}
+            >
+              {defaultViews.map((viewName) => (
+                <option key={viewName} value={viewName}>{viewTitles[viewName]}</option>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+        <Flex justify="space-between" align="center" gap={4} wrap="wrap" mt={4}>
+          <Text color="gray.600" fontSize="sm">
+            New users sign in with the prototype password: {defaultPassword}
+          </Text>
+          <Button colorScheme="green" type="submit" isLoading={busy}>
+            Create User
+          </Button>
+        </Flex>
+      </Box>
+
+      <TableContainer>
+        <Table size="sm">
+          <Thead>
+            <Tr>
+              <Th>User</Th>
+              <Th>Role</Th>
+              <Th>Default Screen</Th>
+              <Th>Status</Th>
+              <Th></Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {users.map((item) => {
+              const draft = drafts[item.username] || item;
+              const draftViews = roles.find((role) => role.name === draft.role)?.defaultViews || [];
+
+              return (
+                <Tr key={item.username}>
+                  <Td>
+                    <Text fontWeight="semibold">{item.name}</Text>
+                    <Text color="gray.500" fontSize="sm">@{item.username}</Text>
+                  </Td>
+                  <Td minW="220px">
+                    <Select size="sm" value={draft.role} onChange={(event) => updateDraft(item.username, { role: event.target.value })}>
+                      {roleOptions.map((role) => (
+                        <option key={role} value={role}>{role}</option>
+                      ))}
+                    </Select>
+                  </Td>
+                  <Td minW="150px">
+                    <Select
+                      size="sm"
+                      value={draft.defaultView}
+                      onChange={(event) => updateDraft(item.username, { defaultView: event.target.value })}
+                    >
+                      {draftViews.map((viewName) => (
+                        <option key={viewName} value={viewName}>{viewTitles[viewName]}</option>
+                      ))}
+                    </Select>
+                  </Td>
+                  <Td minW="120px">
+                    <Select
+                      size="sm"
+                      value={draft.status}
+                      onChange={(event) => updateDraft(item.username, { status: event.target.value })}
+                      isDisabled={item.username === "admin"}
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </Select>
+                  </Td>
+                  <Td textAlign="right">
+                    <Button size="sm" onClick={() => saveUser(item.username)} isLoading={busy}>
+                      Save
+                    </Button>
+                  </Td>
+                </Tr>
+              );
+            })}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+}
+
 function AdminDemoMaintenance({ user }) {
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState("");
@@ -2872,7 +3132,12 @@ function Shell({ user, onLogout }) {
     }
 
     if (view === "users") {
-      return <AdminDemoMaintenance user={user} />;
+      return (
+        <VStack align="stretch" spacing={5}>
+          <AdminUserManagement user={user} />
+          <AdminDemoMaintenance user={user} />
+        </VStack>
+      );
     }
 
     return <Placeholder view={view} />;

@@ -174,6 +174,93 @@ async function run() {
       throw new Error("Admin should have member application approval permission.");
     }
 
+    const forbiddenUsers = await fetch(`${baseUrl}/api/admin/users`, {
+      headers: { Cookie: managerCookie }
+    });
+
+    if (forbiddenUsers.status !== 403) {
+      throw new Error("User management should be restricted to admin users.");
+    }
+
+    const adminUsers = await fetch(`${baseUrl}/api/admin/users`, {
+      headers: { Cookie: adminCookie }
+    });
+    const adminUsersBody = await adminUsers.json();
+
+    if (!adminUsers.ok || !adminUsersBody.users.some((item) => item.username === "admin")) {
+      throw new Error("Admin should be able to list system users.");
+    }
+
+    const smokeUsername = `smokeuser${Date.now().toString().slice(-6)}`;
+    const createSystemUser = await fetch(`${baseUrl}/api/admin/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify({
+        name: "Smoke Test Staff",
+        username: smokeUsername,
+        role: "Membership Officer",
+        defaultView: "members"
+      })
+    });
+    const createSystemUserBody = await createSystemUser.json();
+
+    if (
+      !createSystemUser.ok ||
+      createSystemUserBody.user.username !== smokeUsername ||
+      createSystemUserBody.user.status !== "Active"
+    ) {
+      throw new Error("Admin should be able to create a system user.");
+    }
+
+    const duplicateSystemUser = await fetch(`${baseUrl}/api/admin/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify({
+        name: "Smoke Test Staff",
+        username: smokeUsername,
+        role: "Membership Officer",
+        defaultView: "members"
+      })
+    });
+
+    if (duplicateSystemUser.status !== 409) {
+      throw new Error("Duplicate system usernames should be rejected.");
+    }
+
+    const deactivateSystemUser = await fetch(`${baseUrl}/api/admin/users/${smokeUsername}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify({
+        role: "Membership Officer",
+        status: "Inactive",
+        defaultView: "members"
+      })
+    });
+    const deactivateSystemUserBody = await deactivateSystemUser.json();
+
+    if (!deactivateSystemUser.ok || deactivateSystemUserBody.user.status !== "Inactive") {
+      throw new Error("Admin should be able to deactivate a non-admin system user.");
+    }
+
+    const inactiveLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: smokeUsername, password: "p@55@LL" })
+    });
+
+    if (inactiveLogin.status !== 401) {
+      throw new Error("Inactive users should not be able to log in.");
+    }
+
     const forbiddenMaintenance = await fetch(`${baseUrl}/api/admin/demo-maintenance`, {
       headers: { Cookie: managerCookie }
     });

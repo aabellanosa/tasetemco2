@@ -14,6 +14,7 @@ import {
   members,
   publicUser,
   roles,
+  roleViews,
   savingsDeposits,
   savingsWithdrawals,
   shareCapitalContributions,
@@ -197,7 +198,7 @@ async function findUser(username) {
   const db = await getPool();
 
   if (!db) {
-    return users.find((user) => user.username === username) || null;
+    return users.find((user) => user.username === username && (user.status || "Active") === "Active") || null;
   }
 
   const [rows] = await db.execute(
@@ -209,6 +210,184 @@ async function findUser(username) {
   );
 
   return rows[0] || null;
+}
+
+async function listSystemUsers() {
+  const db = await getPool();
+
+  if (!db) {
+    return users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      status: user.status || "Active",
+      defaultView: user.defaultView
+    }));
+  }
+
+  const [rows] = await db.execute(
+    `SELECT id, full_name AS name, username, role_name AS role, status,
+            default_view AS defaultView, created_at AS createdAt
+     FROM users
+     ORDER BY username`
+  );
+
+  return rows;
+}
+
+function validateSystemUserInput(body) {
+  const name = String(body.name || "").trim();
+  const username = String(body.username || "").trim().toLowerCase();
+  const role = String(body.role || "").trim();
+  const allowedViews = roleViews[role] || [];
+  const requestedDefaultView = String(body.defaultView || "").trim();
+  const defaultView = allowedViews.includes(requestedDefaultView) ? requestedDefaultView : allowedViews[0];
+
+  if (name.length < 3) {
+    return { error: "Full name is required." };
+  }
+
+  if (!/^[a-z][a-z0-9._-]{2,39}$/.test(username)) {
+    return { error: "Username must start with a letter and use 3-40 lowercase letters, numbers, dots, dashes, or underscores." };
+  }
+
+  if (!roles.includes(role)) {
+    return { error: "Valid role is required." };
+  }
+
+  if (!defaultView) {
+    return { error: "Selected role does not have a valid default screen." };
+  }
+
+  return {
+    value: {
+      name,
+      username,
+      role,
+      defaultView
+    }
+  };
+}
+
+async function createSystemUser(input) {
+  const db = await getPool();
+
+  if (!db) {
+    if (users.some((user) => user.username === input.username)) {
+      return { error: "Username already exists.", statusCode: 409 };
+    }
+
+    const nextId = Math.max(...users.map((user) => Number(user.id) || 0), 0) + 1;
+    const user = {
+      id: nextId,
+      name: input.name,
+      username: input.username,
+      role: input.role,
+      defaultView: input.defaultView,
+      status: "Active"
+    };
+    users.push(user);
+    return { user };
+  }
+
+  try {
+    await db.execute(
+      `INSERT INTO users (full_name, username, role_name, status, default_view)
+       VALUES (?, ?, ?, 'Active', ?)`,
+      [input.name, input.username, input.role, input.defaultView]
+    );
+  } catch (error) {
+    if (error.code === "23505") {
+      return { error: "Username already exists.", statusCode: 409 };
+    }
+
+    throw error;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT id, full_name AS name, username, role_name AS role, status,
+            default_view AS defaultView, created_at AS createdAt
+     FROM users
+     WHERE username = ?`,
+    [input.username]
+  );
+
+  return { user: rows[0] };
+}
+
+async function updateSystemUser(username, input) {
+  const db = await getPool();
+
+  if (username === "admin" && input.status !== "Active") {
+    return { error: "The built-in admin account cannot be deactivated.", statusCode: 409 };
+  }
+
+  if (!["Active", "Inactive"].includes(input.status)) {
+    return { error: "Status must be Active or Inactive.", statusCode: 400 };
+  }
+
+  if (!roles.includes(input.role)) {
+    return { error: "Valid role is required.", statusCode: 400 };
+  }
+
+  const allowedViews = roleViews[input.role] || [];
+  const defaultView = allowedViews.includes(input.defaultView) ? input.defaultView : allowedViews[0];
+
+  if (!defaultView) {
+    return { error: "Selected role does not have a valid default screen.", statusCode: 400 };
+  }
+
+  if (!db) {
+    const user = users.find((item) => item.username === username);
+
+    if (!user) {
+      return { error: "User was not found.", statusCode: 404 };
+    }
+
+    user.role = input.role;
+    user.defaultView = defaultView;
+    user.status = input.status;
+
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        status: user.status,
+        defaultView: user.defaultView
+      }
+    };
+  }
+
+  const [existingRows] = await db.execute(
+    `SELECT username
+     FROM users
+     WHERE username = ?`,
+    [username]
+  );
+
+  if (existingRows.length === 0) {
+    return { error: "User was not found.", statusCode: 404 };
+  }
+
+  await db.execute(
+    `UPDATE users
+     SET role_name = ?, status = ?, default_view = ?
+     WHERE username = ?`,
+    [input.role, input.status, defaultView, username]
+  );
+
+  const [rows] = await db.execute(
+    `SELECT id, full_name AS name, username, role_name AS role, status,
+            default_view AS defaultView, created_at AS createdAt
+     FROM users
+     WHERE username = ?`,
+    [username]
+  );
+
+  return { user: rows[0] };
 }
 
 async function listMembers() {
@@ -3277,6 +3456,86 @@ app.get("/api/dashboard", (request, response) => {
   }
 
   response.json(dashboard);
+});
+
+app.get("/api/admin/users", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user)) {
+    response.status(403).json({ error: "Admin access required" });
+    return;
+  }
+
+  response.json({
+    users: await listSystemUsers(),
+    roles: roles.map((role) => ({
+      name: role,
+      defaultViews: roleViews[role] || []
+    })),
+    defaultPassword
+  });
+});
+
+app.post("/api/admin/users", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user)) {
+    response.status(403).json({ error: "Admin access required" });
+    return;
+  }
+
+  const validation = validateSystemUserInput(request.body);
+
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await createSystemUser(validation.value);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.status(201).json(result);
+});
+
+app.patch("/api/admin/users/:username", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user)) {
+    response.status(403).json({ error: "Admin access required" });
+    return;
+  }
+
+  const result = await updateSystemUser(request.params.username, {
+    role: String(request.body.role || "").trim(),
+    status: String(request.body.status || "").trim(),
+    defaultView: String(request.body.defaultView || "").trim()
+  });
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
 });
 
 app.get("/api/admin/demo-maintenance", async (request, response) => {
