@@ -82,6 +82,8 @@ npm run render:seed
 
 Do not use `pg:reset-demo` on the hosted demo unless you intentionally want to wipe tester input and restore the seed.
 
+The `admin` user also has a Demo Maintenance panel under Users. It can download a JSON backup of hosted demo data and reset the Postgres database to the seed rows. Reset requires typing `RESET TASETEMCO` and automatically downloads a pre-reset backup.
+
 ## Spike Checks
 
 ```powershell
@@ -140,6 +142,8 @@ The React/Postgres pivot uses action-level permissions, not just screen access. 
 | Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No |
 
 The Members workflow auto-refreshes every 5 seconds for demo testing across browser profiles. Users can also click Refresh to pull the latest member applications, active members, and initial payment history.
+
+Only the `admin` user can access Demo Maintenance controls. Other roles are blocked by the API even if they attempt to call the maintenance endpoints directly.
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 

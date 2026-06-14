@@ -36,8 +36,31 @@ const frontendDistCandidates = [
 const frontendDistPath = frontendDistCandidates.find((candidate) =>
   fs.existsSync(path.join(candidate, "index.html"))
 );
+const databaseDirCandidates = [
+  path.resolve(process.cwd(), "backend", "database"),
+  path.resolve(process.cwd(), "database")
+];
+const databaseDirPath = databaseDirCandidates.find((candidate) =>
+  fs.existsSync(path.join(candidate, "seed.postgres.sql"))
+);
+const schemaSqlPath = databaseDirPath ? path.join(databaseDirPath, "schema.postgres.sql") : "";
+const seedSqlPath = databaseDirPath ? path.join(databaseDirPath, "seed.postgres.sql") : "";
 const sessions = new Map();
 let pool = null;
+
+const persistedTables = [
+  "journal_entry_lines",
+  "journal_entries",
+  "teller_cash_counts",
+  "initial_member_payments",
+  "savings_deposits",
+  "share_capital_contributions",
+  "savings_withdrawals",
+  "teller_batches",
+  "member_applications",
+  "members",
+  "users"
+];
 
 app.use(express.json());
 
@@ -3127,6 +3150,88 @@ function hasPermission(user, permission) {
   return Array.isArray(user?.permissions) && user.permissions.includes(permission);
 }
 
+function isAdminUser(user) {
+  return user?.username === "admin" && user?.role === "System Administrator";
+}
+
+async function requireAdminDatabase(user) {
+  if (!user) {
+    return { error: "Login required", statusCode: 401 };
+  }
+
+  if (!isAdminUser(user)) {
+    return { error: "Admin access required", statusCode: 403 };
+  }
+
+  const db = await getPool();
+
+  if (!db) {
+    return { error: "Demo maintenance requires Postgres mode.", statusCode: 409 };
+  }
+
+  return { db };
+}
+
+async function getDemoMaintenanceStatus() {
+  const db = await getPool();
+
+  if (!db) {
+    return {
+      database: "seed-memory",
+      resetAvailable: false,
+      tables: []
+    };
+  }
+
+  const tables = [];
+
+  for (const table of persistedTables) {
+    const [rows] = await db.execute(`SELECT COUNT(*) AS countValue FROM ${table}`);
+    tables.push({ name: table, count: rows[0]?.countValue || 0 });
+  }
+
+  return {
+    database: "postgres",
+    resetAvailable: true,
+    tables
+  };
+}
+
+async function buildDemoBackup() {
+  const db = await getPool();
+  const backup = {
+    app: "TASETEMCO",
+    engine: db ? "postgres" : "seed-memory",
+    backedUpAt: new Date().toISOString(),
+    tables: {}
+  };
+
+  if (!db) {
+    return backup;
+  }
+
+  for (const table of persistedTables) {
+    const [rows] = await db.execute(`SELECT * FROM ${table}`);
+    backup.tables[table] = rows;
+  }
+
+  return backup;
+}
+
+async function resetDemoDatabase() {
+  const db = await getPool();
+
+  if (!db || !schemaSqlPath || !seedSqlPath) {
+    return { error: "Demo reset is not available in this environment.", statusCode: 409 };
+  }
+
+  await db.query(fs.readFileSync(schemaSqlPath, "utf8"));
+  await db.query(`TRUNCATE TABLE ${persistedTables.join(", ")} RESTART IDENTITY CASCADE`);
+  await db.query(fs.readFileSync(seedSqlPath, "utf8"));
+
+  return { ok: true, resetAt: new Date().toISOString() };
+}
+
 app.get("/api/health", async (request, response) => {
   const db = await getPool();
   let database = "seed-memory";
@@ -3172,6 +3277,56 @@ app.get("/api/dashboard", (request, response) => {
   }
 
   response.json(dashboard);
+});
+
+app.get("/api/admin/demo-maintenance", async (request, response) => {
+  const user = parseSession(request);
+  const access = await requireAdminDatabase(user);
+
+  if (access.error) {
+    response.status(access.statusCode).json({ error: access.error });
+    return;
+  }
+
+  response.json(await getDemoMaintenanceStatus());
+});
+
+app.post("/api/admin/demo-maintenance/backup", async (request, response) => {
+  const user = parseSession(request);
+  const access = await requireAdminDatabase(user);
+
+  if (access.error) {
+    response.status(access.statusCode).json({ error: access.error });
+    return;
+  }
+
+  response.json(await buildDemoBackup());
+});
+
+app.post("/api/admin/demo-maintenance/reset", async (request, response) => {
+  const user = parseSession(request);
+  const access = await requireAdminDatabase(user);
+  const confirmation = String(request.body.confirmation || "").trim();
+
+  if (access.error) {
+    response.status(access.statusCode).json({ error: access.error });
+    return;
+  }
+
+  if (confirmation !== "RESET TASETEMCO") {
+    response.status(400).json({ error: "Type RESET TASETEMCO to confirm demo reset." });
+    return;
+  }
+
+  const backup = await buildDemoBackup();
+  const result = await resetDemoDatabase();
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json({ ...result, backup });
 });
 
 app.get("/api/members", async (request, response) => {

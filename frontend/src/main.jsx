@@ -2642,6 +2642,202 @@ function Reports() {
   );
 }
 
+function AdminDemoMaintenance({ user }) {
+  const [status, setStatus] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const canReset = confirmation.trim() === "RESET TASETEMCO";
+
+  const loadStatus = useCallback(async () => {
+    setError("");
+
+    try {
+      const data = await api("/api/admin/demo-maintenance");
+      setStatus(data);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
+
+  function downloadJson(data, fileName) {
+    const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function backupDemoData() {
+    setBusy(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await api("/api/admin/demo-maintenance/backup", { method: "POST" });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadJson(data, `tasetemco-demo-backup-${stamp}.json`);
+      setMessage("Backup JSON downloaded.");
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetDemoData() {
+    setBusy(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await api("/api/admin/demo-maintenance/reset", {
+        method: "POST",
+        body: JSON.stringify({ confirmation })
+      });
+      const stamp = new Date(data.resetAt).toISOString().replace(/[:.]/g, "-");
+      downloadJson(data.backup, `tasetemco-pre-reset-backup-${stamp}.json`);
+      setConfirmation("");
+      setMessage("Demo data reset to seed. A pre-reset backup JSON was downloaded.");
+      await loadStatus();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (user.username !== "admin") {
+    return <Placeholder view="users" />;
+  }
+
+  return (
+    <VStack align="stretch" spacing={5}>
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" align="flex-start" gap={4} wrap="wrap">
+          <Box>
+            <Heading size="md">Demo Maintenance</Heading>
+            <Text color="gray.600" mt={1}>
+              Admin-only controls for the hosted prototype data.
+            </Text>
+          </Box>
+          <Badge colorScheme={status?.database === "postgres" ? "green" : "gray"}>
+            {status?.database || "Checking"}
+          </Badge>
+        </Flex>
+
+        {message ? (
+          <Box mt={4} borderWidth="1px" borderColor="green.200" bg="green.50" borderRadius="md" p={3}>
+            <Text color="green.800">{message}</Text>
+          </Box>
+        ) : null}
+
+        {error ? (
+          <Box mt={4} borderWidth="1px" borderColor="red.200" bg="red.50" borderRadius="md" p={3}>
+            <Text color="red.800">{error}</Text>
+          </Box>
+        ) : null}
+
+        <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={4} mt={5}>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">Database Mode</Text>
+            <Text fontWeight="bold">{status?.database || "-"}</Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">Reset Available</Text>
+            <Text fontWeight="bold">{status?.resetAvailable ? "Yes" : "No"}</Text>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Text color="gray.500" fontSize="sm">Tracked Tables</Text>
+            <Text fontWeight="bold">{status?.tables?.length || 0}</Text>
+          </Box>
+        </Grid>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" align="center" gap={4} wrap="wrap" mb={4}>
+          <Box>
+            <Heading size="sm">Current Table Counts</Heading>
+            <Text color="gray.600" mt={1}>
+              Snapshot of persisted demo tables before any maintenance action.
+            </Text>
+          </Box>
+          <Button onClick={loadStatus} isLoading={busy}>Refresh</Button>
+        </Flex>
+
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Table</Th>
+                <Th isNumeric>Rows</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {(status?.tables || []).map((table) => (
+                <Tr key={table.name}>
+                  <Td>{table.name}</Td>
+                  <Td isNumeric>{table.count}</Td>
+                </Tr>
+              ))}
+              {status?.tables?.length === 0 ? (
+                <Tr>
+                  <Td colSpan={2} color="gray.500">No persisted table status available.</Td>
+                </Tr>
+              ) : null}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="sm">Backup Demo Data</Heading>
+        <Text color="gray.600" mt={1}>
+          Download a JSON snapshot before a demo, client review, or reset.
+        </Text>
+        <Button mt={4} colorScheme="green" onClick={backupDemoData} isLoading={busy}>
+          Download Backup JSON
+        </Button>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderColor="red.200" borderRadius="lg" p={5}>
+        <Heading size="sm">Reset To Demo Seed</Heading>
+        <Text color="gray.600" mt={1}>
+          This clears hosted tester input and restores the original seeded prototype rows.
+          A pre-reset backup downloads automatically.
+        </Text>
+        <FormControl mt={4}>
+          <FormLabel>Confirmation</FormLabel>
+          <Input
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            placeholder="RESET TASETEMCO"
+          />
+        </FormControl>
+        <Button
+          mt={4}
+          colorScheme="red"
+          onClick={resetDemoData}
+          isDisabled={!canReset || !status?.resetAvailable}
+          isLoading={busy}
+        >
+          Reset Demo Data
+        </Button>
+      </Box>
+    </VStack>
+  );
+}
+
 function Placeholder({ view }) {
   return (
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={6}>
@@ -2673,6 +2869,10 @@ function Shell({ user, onLogout }) {
 
     if (view === "reports") {
       return <Reports />;
+    }
+
+    if (view === "users") {
+      return <AdminDemoMaintenance user={user} />;
     }
 
     return <Placeholder view={view} />;

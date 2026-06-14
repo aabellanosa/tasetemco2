@@ -575,6 +575,10 @@ npm run render:seed
 
 Do not run `pg:reset-demo` against the hosted demo unless the intent is to wipe organic tester input and restore the demo seed.
 
+The `admin` user has a Demo Maintenance panel under Users. This panel shows Postgres table counts, downloads a JSON backup, and can reset hosted demo data to the seed rows. Reset requires the typed confirmation `RESET TASETEMCO` and downloads a pre-reset backup automatically.
+
+Maintenance controls are intentionally limited to the System Administrator. Other users should not be able to access these actions through the UI or direct API calls.
+
 ## 7. Audit Trail Requirements
 
 The system should record who did what, when, and from where.

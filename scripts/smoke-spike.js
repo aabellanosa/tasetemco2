@@ -174,6 +174,37 @@ async function run() {
       throw new Error("Admin should have member application approval permission.");
     }
 
+    const forbiddenMaintenance = await fetch(`${baseUrl}/api/admin/demo-maintenance`, {
+      headers: { Cookie: managerCookie }
+    });
+
+    if (forbiddenMaintenance.status !== 403) {
+      throw new Error("Demo maintenance should be restricted to admin users.");
+    }
+
+    const demoMaintenance = await fetch(`${baseUrl}/api/admin/demo-maintenance`, {
+      headers: { Cookie: adminCookie }
+    });
+    const demoMaintenanceBody = await demoMaintenance.json();
+
+    if (smokeMode === "postgres") {
+      if (!demoMaintenance.ok || demoMaintenanceBody.database !== "postgres" || !demoMaintenanceBody.resetAvailable) {
+        throw new Error("Admin demo maintenance status should report postgres reset availability.");
+      }
+
+      const demoBackup = await fetch(`${baseUrl}/api/admin/demo-maintenance/backup`, {
+        method: "POST",
+        headers: { Cookie: adminCookie }
+      });
+      const demoBackupBody = await demoBackup.json();
+
+      if (!demoBackup.ok || demoBackupBody.engine !== "postgres" || !demoBackupBody.tables?.users?.length) {
+        throw new Error("Admin demo maintenance backup should include persisted user rows.");
+      }
+    } else if (demoMaintenance.status !== 409) {
+      throw new Error("Memory mode should not allow demo database maintenance.");
+    }
+
     const approval = await fetch(`${baseUrl}/api/member-applications/${createBody.application.id}/approve`, {
       method: "POST",
       headers: { Cookie: adminCookie }
