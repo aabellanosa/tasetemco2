@@ -29,7 +29,13 @@ pg.types.setTypeParser(20, (value) => Number(value));
 const app = express();
 const host = process.env.HOST || (process.env.RENDER ? "0.0.0.0" : "127.0.0.1");
 const port = Number(process.env.PORT || 4000);
-const frontendDistPath = path.resolve(process.cwd(), "frontend", "dist");
+const frontendDistCandidates = [
+  path.resolve(process.cwd(), "frontend", "dist"),
+  path.resolve(process.cwd(), "..", "frontend", "dist")
+];
+const frontendDistPath = frontendDistCandidates.find((candidate) =>
+  fs.existsSync(path.join(candidate, "index.html"))
+);
 const sessions = new Map();
 let pool = null;
 
@@ -3827,7 +3833,7 @@ app.get("/api/roles", (request, response) => {
   response.json(roles);
 });
 
-if (fs.existsSync(path.join(frontendDistPath, "index.html"))) {
+if (frontendDistPath) {
   app.use(express.static(frontendDistPath));
   app.get("*", (request, response, next) => {
     if (request.path.startsWith("/api")) {
