@@ -551,6 +551,30 @@ npm run smoke:postgres
 
 This resets the configured database to the demo seed, starts the backend in Postgres mode, verifies `/api/health`, and runs the core workflow against persistent tables.
 
+## 6.3 Render Deployment
+
+The working app can be deployed to Render as one Node Web Service. The backend serves the built React frontend from `frontend/dist`, while API routes remain under `/api`.
+
+Recommended Render settings:
+
+```text
+Runtime: Node
+Build Command: npm install && npm run build
+Pre-Deploy Command: npm run render:predeploy
+Start Command: npm start
+Health Check Path: /api/health
+```
+
+Use Render Postgres for hosted persistence and set `DATABASE_URL` on the web service. The included `render.yaml` can be used as a Blueprint starting point.
+
+After the first successful deploy, seed demo rows once from the Render Shell:
+
+```powershell
+npm run render:seed
+```
+
+Do not run `pg:reset-demo` against the hosted demo unless the intent is to wipe organic tester input and restore the demo seed.
+
 ## 7. Audit Trail Requirements
 
 The system should record who did what, when, and from where.

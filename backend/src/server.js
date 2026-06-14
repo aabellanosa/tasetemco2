@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import cookie from "cookie";
 import dotenv from "dotenv";
 import express from "express";
@@ -25,8 +27,9 @@ dotenv.config();
 pg.types.setTypeParser(20, (value) => Number(value));
 
 const app = express();
-const host = process.env.HOST || "127.0.0.1";
+const host = process.env.HOST || (process.env.RENDER ? "0.0.0.0" : "127.0.0.1");
 const port = Number(process.env.PORT || 4000);
+const frontendDistPath = path.resolve(process.cwd(), "frontend", "dist");
 const sessions = new Map();
 let pool = null;
 
@@ -3823,6 +3826,18 @@ app.post("/api/ledger/savings-withdrawals/:withdrawalId/post", async (request, r
 app.get("/api/roles", (request, response) => {
   response.json(roles);
 });
+
+if (fs.existsSync(path.join(frontendDistPath, "index.html"))) {
+  app.use(express.static(frontendDistPath));
+  app.get("*", (request, response, next) => {
+    if (request.path.startsWith("/api")) {
+      next();
+      return;
+    }
+
+    response.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+}
 
 app.listen(port, host, () => {
   console.log(`TASETEMCO spike API running at http://${host}:${port}`);

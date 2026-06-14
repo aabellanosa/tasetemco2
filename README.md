@@ -58,6 +58,30 @@ http://127.0.0.1:5173
 
 The Vite dev server proxies `/api` requests to `http://127.0.0.1:4000`.
 
+## Render Deployment
+
+This branch can run as a single Render Web Service. The backend serves the built React app from `frontend/dist`, so the deployed service handles both the UI and `/api` routes.
+
+Recommended manual Render settings:
+
+```text
+Runtime: Node
+Build Command: npm install && npm run build
+Pre-Deploy Command: npm run render:predeploy
+Start Command: npm start
+Health Check Path: /api/health
+```
+
+Create a Render Postgres database and set the web service `DATABASE_URL` from the database connection string. If using a Render Blueprint, `render.yaml` defines the web service and Postgres database together.
+
+After the first deploy, seed the demo data once from the Render Shell:
+
+```powershell
+npm run render:seed
+```
+
+Do not use `pg:reset-demo` on the hosted demo unless you intentionally want to wipe tester input and restore the seed.
+
 ## Spike Checks
 
 ```powershell
@@ -199,6 +223,7 @@ Example server directory:
 - Frontend: Vite, React, Chakra UI in `frontend/`
 - Backend: Node.js, Express in `backend/`
 - Database: in-memory seed mode by default; Postgres persistence is being introduced in mini-spikes
+- Deployment: single Render Web Service with Render Postgres
 - Auth: multi-user prototype login with role-based access control
 - Reporting: ledger-driven reports generated from posted transactions
 

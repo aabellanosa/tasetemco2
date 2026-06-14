@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: tasetemco-app
+    runtime: node
+    buildCommand: npm install && npm run build
+    preDeployCommand: npm run render:predeploy
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tasetemco-db
+          property: connectionString
+
+databases:
+  - name: tasetemco-db
+    databaseName: tasetemco
+    user: tasetemco
