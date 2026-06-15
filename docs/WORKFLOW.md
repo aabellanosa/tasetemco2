@@ -531,7 +531,7 @@ The React/Postgres prototype keeps in-memory seed mode when `DATABASE_URL` is bl
 When Postgres settings are configured, the backend reads and writes cooperative workflow data through the database. The demo database can be prepared with:
 
 ```powershell
-npm run pg:schema
+npm run pg:migrate
 npm run pg:seed
 ```
 
@@ -550,6 +550,18 @@ npm run smoke:postgres
 ```
 
 This resets the configured database to the demo seed, starts the backend in Postgres mode, verifies `/api/health`, and runs the core workflow against persistent tables.
+
+On Render free services, run schema migrations manually from a local terminal with the Render External Database URL before deploying code that changes database columns:
+
+```powershell
+$env:DATABASE_URL="paste_render_external_database_url_here"
+$env:PGSSLMODE="require"
+npm run pg:migrate
+Remove-Item Env:DATABASE_URL
+Remove-Item Env:PGSSLMODE
+```
+
+Run `pg:migrate` for schema changes only. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless the intent is to overwrite or reset hosted tester data. The health endpoint reports schema status so missing migration columns are visible before normal screens fail.
 
 The hosted Render demo includes admin-only Demo Maintenance controls under Users. The `admin` user can view table counts, download a JSON backup, and reset hosted demo data to the seed rows. Reset requires the typed confirmation `RESET TASETEMCO` and downloads a pre-reset backup automatically.
 

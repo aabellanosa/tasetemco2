@@ -14,7 +14,7 @@ The backend runs with in-memory seed data when `DATABASE_URL` is blank. Set `DAT
 To prepare a local Postgres database, copy `backend/.env.example` to `backend/.env`, set `DATABASE_URL`, then run:
 
 ```powershell
-npm run pg:schema
+npm run pg:migrate
 npm run pg:seed
 ```
 
@@ -31,6 +31,18 @@ npm run pg:backup
 ```
 
 The hosted Render demo uses Postgres. The `admin` user has a Demo Maintenance panel under Users to download a JSON backup and reset hosted demo data to seed rows. Reset requires typing `RESET TASETEMCO` and downloads a pre-reset backup automatically.
+
+On Render free services, run schema migrations manually from your local terminal with the Render External Database URL before deploying app code that changes database columns:
+
+```powershell
+$env:DATABASE_URL="paste_render_external_database_url_here"
+$env:PGSSLMODE="require"
+npm run pg:migrate
+Remove-Item Env:DATABASE_URL
+Remove-Item Env:PGSSLMODE
+```
+
+Run `pg:migrate` only for schema changes. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless the intent is to overwrite or reset tester data.
 
 ## Running The Spike
 
@@ -67,7 +79,7 @@ npm run check
 npm test
 ```
 
-`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test.
+`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test. In Postgres mode, `/api/health` also reports schema status so missing migration columns are visible before normal screens fail.
 
 After `backend/.env` points to a local Postgres database, run the persistence smoke test with:
 
