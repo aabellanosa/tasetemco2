@@ -14,7 +14,7 @@ The backend runs with in-memory seed data when `DATABASE_URL` is blank. Set `DAT
 To prepare a local Postgres database for the pivot, copy `backend/.env.example` to `backend/.env`, set `DATABASE_URL`, then run:
 
 ```powershell
-npm run pg:schema
+npm run pg:migrate
 npm run pg:seed
 ```
 
@@ -74,6 +74,18 @@ Health Check Path: /api/health
 
 Create a Render Postgres database and set the web service `DATABASE_URL` from the database connection string. If using a Render Blueprint, `render.yaml` defines the web service and Postgres database together.
 
+Render free services do not expose an editable Pre-Deploy Command. On the free tier, run migrations from your local terminal with the Render External Database URL before deploying code that changes the database shape:
+
+```powershell
+$env:DATABASE_URL="paste_render_external_database_url_here"
+$env:PGSSLMODE="require"
+npm run pg:migrate
+Remove-Item Env:DATABASE_URL
+Remove-Item Env:PGSSLMODE
+```
+
+Run `pg:migrate` for schema changes only. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless you intentionally want to overwrite or reset tester data.
+
 After the first deploy, seed the demo data once from the Render Shell:
 
 ```powershell
@@ -91,7 +103,7 @@ npm run check
 npm test
 ```
 
-`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test.
+`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test. In Postgres mode, `/api/health` also reports `schema: "ok"` or lists missing schema columns.
 
 After `backend/.env` points to a local Postgres database, run the persistence smoke test with:
 

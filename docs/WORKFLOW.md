@@ -531,7 +531,7 @@ The React/Postgres pivot keeps in-memory seed mode when `DATABASE_URL` is blank.
 When Postgres settings are configured, the demo database can be prepared with:
 
 ```powershell
-npm run pg:schema
+npm run pg:migrate
 npm run pg:seed
 ```
 
@@ -566,6 +566,18 @@ Health Check Path: /api/health
 ```
 
 Use Render Postgres for hosted persistence and set `DATABASE_URL` on the web service. The included `render.yaml` can be used as a Blueprint starting point.
+
+Render free services do not expose an editable Pre-Deploy Command. On the free tier, run schema migrations manually from a local terminal using the Render External Database URL before deploying code that changes database columns:
+
+```powershell
+$env:DATABASE_URL="paste_render_external_database_url_here"
+$env:PGSSLMODE="require"
+npm run pg:migrate
+Remove-Item Env:DATABASE_URL
+Remove-Item Env:PGSSLMODE
+```
+
+Run `pg:migrate` for schema changes only. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless the intent is to overwrite or reset hosted tester data. The health endpoint reports schema status so missing migration columns are visible before normal screens fail.
 
 After the first successful deploy, seed demo rows once from the Render Shell:
 

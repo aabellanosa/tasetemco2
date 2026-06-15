@@ -94,6 +94,10 @@ async function run() {
       throw new Error("Postgres smoke test expected the API to use postgres mode.");
     }
 
+    if (smokeMode === "postgres" && health.schema !== "ok") {
+      throw new Error(`Postgres smoke test expected schema ok, got ${health.schema}.`);
+    }
+
     const login = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

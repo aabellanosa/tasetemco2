@@ -14,6 +14,7 @@
     "start": "npm --prefix backend start",
     "render:predeploy": "npm run pg:schema",
     "render:seed": "npm run pg:seed",
+    "pg:migrate": "npm run pg:schema",
     "pg:schema": "node scripts/pg-maintenance.js schema",
     "pg:seed": "node scripts/pg-maintenance.js seed",
     "pg:backup": "node scripts/pg-maintenance.js backup",

@@ -63,6 +63,17 @@ const persistedTables = [
   "users"
 ];
 
+const requiredSchemaColumns = {
+  members: [
+    "contact_number",
+    "address",
+    "birthdate",
+    "civil_status",
+    "occupation",
+    "membership_date"
+  ]
+};
+
 app.use(express.json());
 
 function wantsPostgres() {
@@ -3541,16 +3552,55 @@ async function resetDemoDatabase() {
   return { ok: true, resetAt: new Date().toISOString() };
 }
 
+async function checkSchemaStatus(db) {
+  if (!db) {
+    return { status: "not-applicable", missing: [] };
+  }
+
+  const missing = [];
+
+  for (const [tableName, columns] of Object.entries(requiredSchemaColumns)) {
+    const [rows] = await db.execute(
+      `SELECT column_name AS columnName
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = ?`,
+      [tableName]
+    );
+    const existingColumns = new Set(rows.map((row) => row.columnName));
+
+    for (const column of columns) {
+      if (!existingColumns.has(column)) {
+        missing.push(`${tableName}.${column}`);
+      }
+    }
+  }
+
+  return {
+    status: missing.length === 0 ? "ok" : "missing-columns",
+    missing
+  };
+}
+
 app.get("/api/health", async (request, response) => {
   const db = await getPool();
   let database = "seed-memory";
+  let schema = { status: "not-applicable", missing: [] };
 
   if (db) {
     await db.query("SELECT 1 AS ok");
     database = "postgres";
+    schema = await checkSchemaStatus(db);
   }
 
-  response.json({ ok: true, app: "TASETEMCO", stack: "react-chakra-postgres-spike", database });
+  response.json({
+    ok: schema.status !== "missing-columns",
+    app: "TASETEMCO",
+    stack: "react-chakra-postgres-spike",
+    database,
+    schema: schema.status,
+    missingSchema: schema.missing
+  });
 });
 
 app.post("/api/login", async (request, response) => {
