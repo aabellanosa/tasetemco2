@@ -399,12 +399,125 @@ async function listMembers() {
 
   const [rows] = await db.execute(
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
-            share_capital AS share, savings_balance AS savings, status
+            share_capital AS share, savings_balance AS savings, status,
+            contact_number AS contactNumber, address, birthdate,
+            civil_status AS civilStatus, occupation, membership_date AS membershipDate
      FROM members
      ORDER BY member_no`
   );
 
   return rows;
+}
+
+function normalizeOptionalDate(value) {
+  const trimmed = String(value || "").trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+
+  return trimmed;
+}
+
+function validateMemberProfileInput(body) {
+  const name = String(body.name || "").trim();
+  const clusterName = String(body.group || body.clusterName || "").trim();
+  const contactNumber = String(body.contactNumber || "").trim();
+  const address = String(body.address || "").trim();
+  const birthdate = normalizeOptionalDate(body.birthdate);
+  const civilStatus = String(body.civilStatus || "").trim();
+  const occupation = String(body.occupation || "").trim();
+  const membershipDate = normalizeOptionalDate(body.membershipDate);
+  const status = String(body.status || "Active").trim();
+
+  if (name.length < 3) {
+    return { error: "Member full name is required." };
+  }
+
+  if (!clusterName) {
+    return { error: "Cluster or group is required." };
+  }
+
+  if (!["Active", "Inactive"].includes(status)) {
+    return { error: "Member status must be Active or Inactive." };
+  }
+
+  return {
+    value: {
+      name,
+      group: clusterName,
+      contactNumber,
+      address,
+      birthdate,
+      civilStatus,
+      occupation,
+      membershipDate,
+      status
+    }
+  };
+}
+
+async function updateMemberProfile(memberId, input) {
+  const db = await getPool();
+
+  if (!db) {
+    const member = members.find((item) => item.id === memberId);
+
+    if (!member) {
+      return { error: "Member was not found.", statusCode: 404 };
+    }
+
+    Object.assign(member, input);
+    return { member };
+  }
+
+  const [existingRows] = await db.execute(
+    `SELECT member_no AS id
+     FROM members
+     WHERE member_no = ?
+     LIMIT 1`,
+    [memberId]
+  );
+
+  if (existingRows.length === 0) {
+    return { error: "Member was not found.", statusCode: 404 };
+  }
+
+  await db.execute(
+    `UPDATE members
+     SET full_name = ?, cluster_name = ?, contact_number = ?, address = ?,
+         birthdate = ?, civil_status = ?, occupation = ?, membership_date = ?, status = ?
+     WHERE member_no = ?`,
+    [
+      input.name,
+      input.group,
+      input.contactNumber,
+      input.address,
+      input.birthdate,
+      input.civilStatus,
+      input.occupation,
+      input.membershipDate,
+      input.status,
+      memberId
+    ]
+  );
+
+  const [rows] = await db.execute(
+    `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
+            share_capital AS share, savings_balance AS savings, status,
+            contact_number AS contactNumber, address, birthdate,
+            civil_status AS civilStatus, occupation, membership_date AS membershipDate
+     FROM members
+     WHERE member_no = ?
+     LIMIT 1`,
+    [memberId]
+  );
+
+  return { member: rows[0] };
 }
 
 async function listMemberApplications() {
@@ -686,7 +799,13 @@ async function approveMemberApplication(applicationId, user) {
       group: application.clusterName,
       share: 0,
       savings: 0,
-      status: "Active"
+      status: "Active",
+      contactNumber: application.contactNumber || "",
+      address: "",
+      birthdate: "",
+      civilStatus: "",
+      occupation: "",
+      membershipDate: new Date().toISOString().slice(0, 10)
     };
 
     application.status = "Approved";
@@ -734,9 +853,12 @@ async function approveMemberApplication(applicationId, user) {
     const memberNo = `M-${String(lastNumber + 1).padStart(6, "0")}`;
 
     await connection.execute(
-      `INSERT INTO members (member_no, full_name, cluster_name, status, share_capital, savings_balance)
-       VALUES (?, ?, ?, 'Active', ?, 0)`,
-      [memberNo, application.fullName, application.clusterName, 0]
+      `INSERT INTO members (
+         member_no, full_name, cluster_name, status, share_capital, savings_balance,
+         contact_number, membership_date
+       )
+       VALUES (?, ?, ?, 'Active', ?, 0, ?, CURRENT_DATE)`,
+      [memberNo, application.fullName, application.clusterName, 0, application.contactNumber || ""]
     );
 
     await connection.execute(
@@ -761,7 +883,13 @@ async function approveMemberApplication(applicationId, user) {
         group: application.clusterName,
         share: 0,
         savings: 0,
-        status: "Active"
+        status: "Active",
+        contactNumber: application.contactNumber || "",
+        address: "",
+        birthdate: "",
+        civilStatus: "",
+        occupation: "",
+        membershipDate: new Date().toISOString().slice(0, 10)
       }
     };
   } catch (error) {
@@ -1628,7 +1756,9 @@ async function getMemberStatement(memberId) {
 
   const [memberRows] = await db.execute(
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
-            share_capital AS share, savings_balance AS savings, status
+            share_capital AS share, savings_balance AS savings, status,
+            contact_number AS contactNumber, address, birthdate,
+            civil_status AS civilStatus, occupation, membership_date AS membershipDate
      FROM members
      WHERE member_no = ?
      LIMIT 1`,
@@ -3618,6 +3748,36 @@ app.get("/api/members/:memberId/statement", async (request, response) => {
   }
 
   const result = await getMemberStatement(request.params.memberId);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.patch("/api/members/:memberId/profile", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:profile:edit")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const validation = validateMemberProfileInput(request.body);
+
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await updateMemberProfile(request.params.memberId, validation.value);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

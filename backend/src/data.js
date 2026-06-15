@@ -93,6 +93,7 @@ export const roleViews = {
 export const rolePermissions = {
   "System Administrator": [
     "members:view",
+    "members:profile:edit",
     "members:applications:view",
     "members:applications:create",
     "members:applications:approve",
@@ -142,7 +143,12 @@ export const rolePermissions = {
     "teller-cash-counts:create",
     "teller-batches:view"
   ],
-  "Membership Officer": ["members:view", "members:applications:view", "members:applications:create"],
+  "Membership Officer": [
+    "members:view",
+    "members:profile:edit",
+    "members:applications:view",
+    "members:applications:create"
+  ],
   "Auditor / Compliance Officer": [
     "members:view",
     "members:applications:view",
@@ -165,7 +171,13 @@ export const members = [
     group: "Market Vendors Cluster",
     share: 62000,
     savings: 184500,
-    status: "Active"
+    status: "Active",
+    contactNumber: "0917-555-0101",
+    address: "Poblacion Public Market, Tarlac City",
+    birthdate: "1981-04-12",
+    civilStatus: "Married",
+    occupation: "Market vendor",
+    membershipDate: "2019-03-18"
   },
   {
     id: "M-000517",
@@ -173,7 +185,13 @@ export const members = [
     group: "Rice Farmers Cluster",
     share: 44000,
     savings: 76800,
-    status: "Active"
+    status: "Active",
+    contactNumber: "0918-555-0102",
+    address: "Brgy. San Isidro, Tarlac City",
+    birthdate: "1976-09-24",
+    civilStatus: "Married",
+    occupation: "Rice farmer",
+    membershipDate: "2020-07-06"
   },
   {
     id: "M-000621",
@@ -181,7 +199,13 @@ export const members = [
     group: "Teachers Cluster",
     share: 83000,
     savings: 221400,
-    status: "Active"
+    status: "Active",
+    contactNumber: "0919-555-0103",
+    address: "Brgy. Maliwalo, Tarlac City",
+    birthdate: "1988-11-02",
+    civilStatus: "Single",
+    occupation: "Public school teacher",
+    membershipDate: "2021-01-15"
   }
 ];
 

@@ -143,6 +143,18 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
 function buildTellerBatchSummary(rows) {
   return rows.reduce(
     (summary, row) => {
@@ -328,6 +340,17 @@ function Members({ user }) {
   const [cashCountForm, setCashCountForm] = useState({
     actualCash: 0
   });
+  const [memberProfileForm, setMemberProfileForm] = useState({
+    name: "",
+    group: "",
+    contactNumber: "",
+    address: "",
+    birthdate: "",
+    civilStatus: "",
+    occupation: "",
+    membershipDate: "",
+    status: "Active"
+  });
   const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
   const [tellerTransactionType, setTellerTransactionType] = useState("initial-payment");
   const [approvedMemberName, setApprovedMemberName] = useState("");
@@ -337,6 +360,7 @@ function Members({ user }) {
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const approvalNotice = useDisclosure();
   const canCreateApplication = user.permissions.includes("members:applications:create");
+  const canEditMemberProfile = user.permissions.includes("members:profile:edit");
   const canViewApplications = user.permissions.includes("members:applications:view");
   const canApproveApplication = user.permissions.includes("members:applications:approve");
   const canViewInitialPayments = user.permissions.includes("members:initial-payments:view");
@@ -672,8 +696,46 @@ function Members({ user }) {
     try {
       const data = await api(`/api/members/${memberId}/statement`);
       setStatement(data);
+      setMemberProfileForm({
+        name: data.member.name || "",
+        group: data.member.group || "",
+        contactNumber: data.member.contactNumber || "",
+        address: data.member.address || "",
+        birthdate: data.member.birthdate ? String(data.member.birthdate).slice(0, 10) : "",
+        civilStatus: data.member.civilStatus || "",
+        occupation: data.member.occupation || "",
+        membershipDate: data.member.membershipDate ? String(data.member.membershipDate).slice(0, 10) : "",
+        status: data.member.status || "Active"
+      });
     } catch (statementError) {
       setError(statementError.message);
+    }
+  }
+
+  function updateMemberProfileForm(field, value) {
+    setMemberProfileForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitMemberProfile(event) {
+    event.preventDefault();
+
+    if (!statement) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api(`/api/members/${statement.member.id}/profile`, {
+        method: "PATCH",
+        body: JSON.stringify(memberProfileForm)
+      });
+      setStatement((current) => ({ ...current, member: data.member }));
+      setMessage(`${data.member.id} profile updated.`);
+      await loadMembersWorkflow();
+    } catch (profileError) {
+      setError(profileError.message);
     }
   }
 
@@ -1164,6 +1226,8 @@ function Members({ user }) {
                 <Th>Member No.</Th>
                 <Th>Name</Th>
                 <Th>Cluster</Th>
+                <Th>Contact</Th>
+                <Th>Membership Date</Th>
                 <Th isNumeric>Share Capital</Th>
                 <Th isNumeric>Savings</Th>
                 <Th>Status</Th>
@@ -1176,6 +1240,8 @@ function Members({ user }) {
                   <Td>{member.id}</Td>
                   <Td>{member.name}</Td>
                   <Td>{member.group}</Td>
+                  <Td>{member.contactNumber || "-"}</Td>
+                  <Td>{formatDate(member.membershipDate)}</Td>
                   <Td isNumeric>{formatMoney(member.share)}</Td>
                   <Td isNumeric>{formatMoney(member.savings)}</Td>
                   <Td>
@@ -1226,6 +1292,111 @@ function Members({ user }) {
               <Text fontWeight="bold">{formatMoney(statement.member.savings)}</Text>
             </Box>
           </Grid>
+
+          <Box as={canEditMemberProfile ? "form" : "div"} onSubmit={canEditMemberProfile ? submitMemberProfile : undefined} borderWidth="1px" borderRadius="md" p={4} mb={5}>
+            <Flex justify="space-between" align="center" gap={4} wrap="wrap" mb={4}>
+              <Box>
+                <Heading size="sm">Member Profile</Heading>
+                <Text color="gray.600" mt={1}>
+                  Master data only. Share capital and savings balances remain transaction-derived.
+                </Text>
+              </Box>
+              {canEditMemberProfile ? (
+                <Button type="submit" size="sm" colorScheme="green">
+                  Save Profile
+                </Button>
+              ) : (
+                <Badge colorScheme="gray">Read only</Badge>
+              )}
+            </Flex>
+
+            <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={4}>
+              <FormControl>
+                <FormLabel>Full Name</FormLabel>
+                <Input
+                  value={memberProfileForm.name}
+                  onChange={(event) => updateMemberProfileForm("name", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Cluster / Group</FormLabel>
+                <Input
+                  value={memberProfileForm.group}
+                  onChange={(event) => updateMemberProfileForm("group", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Contact Number</FormLabel>
+                <Input
+                  value={memberProfileForm.contactNumber}
+                  onChange={(event) => updateMemberProfileForm("contactNumber", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Address</FormLabel>
+                <Input
+                  value={memberProfileForm.address}
+                  onChange={(event) => updateMemberProfileForm("address", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Birthdate</FormLabel>
+                <Input
+                  type="date"
+                  value={memberProfileForm.birthdate}
+                  onChange={(event) => updateMemberProfileForm("birthdate", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Civil Status</FormLabel>
+                <Select
+                  value={memberProfileForm.civilStatus}
+                  onChange={(event) => updateMemberProfileForm("civilStatus", event.target.value)}
+                  isDisabled={!canEditMemberProfile}
+                >
+                  <option value="">Unspecified</option>
+                  <option value="Single">Single</option>
+                  <option value="Married">Married</option>
+                  <option value="Widowed">Widowed</option>
+                  <option value="Separated">Separated</option>
+                </Select>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Occupation / Source of Income</FormLabel>
+                <Input
+                  value={memberProfileForm.occupation}
+                  onChange={(event) => updateMemberProfileForm("occupation", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Membership Date</FormLabel>
+                <Input
+                  type="date"
+                  value={memberProfileForm.membershipDate}
+                  onChange={(event) => updateMemberProfileForm("membershipDate", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Status</FormLabel>
+                <Select
+                  value={memberProfileForm.status}
+                  onChange={(event) => updateMemberProfileForm("status", event.target.value)}
+                  isDisabled={!canEditMemberProfile}
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Box>
+
           <TableContainer>
             <Table size="sm">
               <Thead>

@@ -317,6 +317,61 @@ async function run() {
       throw new Error("Approved member should not have paid share capital until Teller records payment.");
     }
 
+    const managerProfileUpdate = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/profile`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: managerCookie
+      },
+      body: JSON.stringify({
+        name: approvalBody.member.name,
+        group: approvalBody.member.group,
+        contactNumber: "0999-111-2222",
+        address: "Manager should not update",
+        birthdate: "1990-01-01",
+        civilStatus: "Single",
+        occupation: "Blocked update",
+        membershipDate: "2026-01-01",
+        status: "Active"
+      })
+    });
+
+    if (managerProfileUpdate.status !== 403) {
+      throw new Error("Manager should not be allowed to update member profile.");
+    }
+
+    const memberProfileUpdate = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/profile`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie
+      },
+      body: JSON.stringify({
+        name: approvalBody.member.name,
+        group: "Updated Smoke Cluster",
+        contactNumber: "0999-111-2222",
+        address: "Smoke Test Address",
+        birthdate: "1990-01-01",
+        civilStatus: "Single",
+        occupation: "Prototype tester",
+        membershipDate: "2026-06-14",
+        status: "Active",
+        share: 999999,
+        savings: 999999
+      })
+    });
+    const memberProfileUpdateBody = await memberProfileUpdate.json();
+
+    if (
+      !memberProfileUpdate.ok ||
+      memberProfileUpdateBody.member.group !== "Updated Smoke Cluster" ||
+      memberProfileUpdateBody.member.contactNumber !== "0999-111-2222" ||
+      memberProfileUpdateBody.member.share !== 0 ||
+      memberProfileUpdateBody.member.savings !== 0
+    ) {
+      throw new Error("Membership should update profile fields without changing balances.");
+    }
+
     const tellerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
