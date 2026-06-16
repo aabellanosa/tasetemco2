@@ -206,6 +206,8 @@ Member Import Preview v0 is available only to the System Administrator and Membe
 
 Member Import Staging v1 lets the System Administrator and Membership Officer save the mapped preview as a staged import batch. The system stores batch totals, ready rows, issue rows, creator, timestamp, and row-level validation issues. Staged rows are not active member records yet; a later finalization step should decide which ready rows become members.
 
+Member Import Finalize v1 lets the System Administrator finalize a staged import batch. Ready rows are inserted into active members with zero share capital and zero savings. Rows with issues remain in the import batch for correction or later review. Membership Officer can still preview and stage imports but cannot finalize them.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -580,6 +582,8 @@ Member Profile v1 adds editable master-data fields for contact number, address, 
 Member Import Preview v0 supports client discovery of existing Excel columns before a write-enabled importer is built. Admin and Membership Officer can paste CSV text, map fields, and review validation results. The preview does not create or update member records.
 
 Member Import Staging v1 persists the preview into `member_import_batches` and `member_import_rows`. It is still a review queue, not a final import. Because this spike adds Postgres tables, run `npm run pg:migrate` against the local or hosted target database before deploying the app code.
+
+Member Import Finalize v1 adds finalization fields to import batches and keeps the accounting boundary intact: imported profile rows do not carry share capital or savings balances. Run `npm run pg:migrate` before deploying this app build to any Postgres target.
 
 ## 7. Audit Trail Requirements
 

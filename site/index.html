@@ -171,6 +171,8 @@
           validated before any active member write is implemented.
           Member Import Staging saves mapped rows into an import batch review queue with
           ready and issue counts, but staged rows are not active member records yet.
+          Member Import Finalize lets the System Administrator convert ready rows into
+          active member profiles with zero share capital and zero savings.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -288,6 +290,8 @@
             schema status so missing columns can be caught early.
             Member Import Staging adds Postgres tables for import batches and import rows,
             so run the migration before deploying that app build.
+            Member Import Finalize adds finalization columns to import batches, so run the
+            migration before deploying that app build as well.
           </p>
           <p>
             The System Administrator can create prototype staff users, assign roles and
