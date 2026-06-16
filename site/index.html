@@ -168,7 +168,9 @@
           Teller / Cashier records the initial member payment, and Accountant / Bookkeeper
           posts teller batch payments to the general ledger.
           Member Import Preview is discovery-only: pasted Excel/CSV rows are mapped and
-          validated before any database write is implemented.
+          validated before any active member write is implemented.
+          Member Import Staging saves mapped rows into an import batch review queue with
+          ready and issue counts, but staged rows are not active member records yet.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -212,6 +214,7 @@
               <li>Teller collects initial share capital, membership fee, and savings.</li>
               <li>Admin or Membership Officer maintains member profile master data.</li>
               <li>Admin or Membership Officer can preview mapped Excel/CSV member imports.</li>
+              <li>Admin or Membership Officer can stage mapped import rows for review.</li>
               <li>System blocks duplicate initial member payments for the same member.</li>
               <li>System blocks reused cash-in OR/reference numbers.</li>
               <li>Transaction remains in teller batch until accounting posting.</li>
@@ -281,6 +284,8 @@
             Render free deployments require manual schema migration from a local terminal
             before code with new database columns is deployed. The health endpoint reports
             schema status so missing columns can be caught early.
+            Member Import Staging adds Postgres tables for import batches and import rows,
+            so run the migration before deploying that app build.
           </p>
           <p>
             The System Administrator can create prototype staff users, assign roles and

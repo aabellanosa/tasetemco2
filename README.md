@@ -139,6 +139,8 @@ Member Profile v1 expands member master data with contact number, address, birth
 
 Member Import Preview v0 lets `admin` and `membership` paste a CSV export from Excel, map source columns to member profile fields, and review validation issues before any database write exists. It checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses. This is intentionally preview-only while client Excel formats are still being discovered.
 
+Member Import Staging v1 adds a controlled save step after preview. `admin` and `membership` can create a staged import batch from the mapped rows, review batch history, and inspect row-level validation results. Staged rows do not create or update active members yet; final import remains a later approval/finalization spike. This spike adds Postgres tables, so run `npm run pg:migrate` against the target database before deploying the app code.
+
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.

@@ -202,6 +202,8 @@ Membership applications capture `Required Initial Share Capital` as the expected
 
 Member Import Preview v0 is available only to the System Administrator and Membership Officer. It accepts pasted CSV text exported from Excel, detects columns, lets the user map columns to member profile fields, and shows validation issues before any import write is implemented. The current preview checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses.
 
+Member Import Staging v1 lets the System Administrator and Membership Officer save the mapped preview as a staged import batch. The system stores batch totals, ready rows, issue rows, creator, timestamp, and row-level validation issues. Staged rows are not active member records yet; a later finalization step should decide which ready rows become members.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -574,6 +576,8 @@ The System Administrator also manages prototype staff users under Users. Admin c
 Member Profile v1 adds editable master-data fields for contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. The System Administrator and Membership Officer can update these fields. Manager, Auditor, and other member-view roles can review the profile read-only. Financial balances remain transaction-derived and cannot be edited from the profile panel.
 
 Member Import Preview v0 supports client discovery of existing Excel columns before a write-enabled importer is built. Admin and Membership Officer can paste CSV text, map fields, and review validation results. The preview does not create or update member records.
+
+Member Import Staging v1 persists the preview into `member_import_batches` and `member_import_rows`. It is still a review queue, not a final import. Because this spike adds Postgres tables, run `npm run pg:migrate` against the local or hosted target database before deploying the app code.
 
 ## 7. Audit Trail Requirements
 
