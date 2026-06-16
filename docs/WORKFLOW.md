@@ -184,21 +184,23 @@ Restrictions:
 
 The React/Postgres pivot separates screen access from action access. A role may view member records without being allowed to encode a new member application.
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
-| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
-| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Member Import Preview | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
+| General Manager | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
+| Membership Officer | Yes | Yes | Yes | No | Yes | No | No | No | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No | No |
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
+
+Member Import Preview v0 is available only to the System Administrator and Membership Officer. It accepts pasted CSV text exported from Excel, detects columns, lets the user map columns to member profile fields, and shows validation issues before any import write is implemented. The current preview checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
@@ -594,6 +596,8 @@ Maintenance controls are intentionally limited to the System Administrator. Othe
 The System Administrator also manages prototype staff users under Users. Admin can create a staff user, assign role and default screen, and activate or deactivate non-admin accounts. All users continue to share the prototype password `p@55@LL` until a later authentication security spike introduces per-user password storage and reset flows.
 
 Member Profile v1 adds editable master-data fields for contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. The System Administrator and Membership Officer can update these fields. Manager, Auditor, and other member-view roles can review the profile read-only. Financial balances remain transaction-derived and cannot be edited from the profile panel.
+
+Member Import Preview v0 supports client discovery of existing Excel columns before a write-enabled importer is built. Admin and Membership Officer can paste CSV text, map fields, and review validation results. The preview does not create or update member records.
 
 ## 7. Audit Trail Requirements
 

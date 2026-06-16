@@ -155,6 +155,183 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+const memberImportFields = [
+  { key: "memberNo", label: "Member No.", aliases: ["member no", "member number", "member id", "account no", "account number"] },
+  { key: "name", label: "Full Name", aliases: ["full name", "name", "member name"] },
+  { key: "group", label: "Cluster / Group", aliases: ["cluster", "group", "area", "chapter"] },
+  { key: "contactNumber", label: "Contact Number", aliases: ["contact", "contact number", "mobile", "phone", "cellphone"] },
+  { key: "address", label: "Address", aliases: ["address", "home address"] },
+  { key: "birthdate", label: "Birthdate", aliases: ["birthdate", "birth date", "date of birth", "dob"] },
+  { key: "civilStatus", label: "Civil Status", aliases: ["civil status", "status civil", "marital status"] },
+  { key: "occupation", label: "Occupation / Source of Income", aliases: ["occupation", "source of income", "income source", "work"] },
+  { key: "membershipDate", label: "Membership Date", aliases: ["membership date", "date joined", "join date", "member since"] },
+  { key: "status", label: "Status", aliases: ["status", "member status"] }
+];
+
+const sampleMemberImportCsv = `Member No.,Full Name,Cluster,Contact Number,Address,Birthdate,Civil Status,Occupation,Membership Date,Status
+M-2026-004,Julieta M. Navarro,General Membership,09171234567,"Poblacion, Talisay",1985-02-14,Married,Sari-sari store owner,2026-06-15,Active
+M-2026-005,Roberto P. Dizon,Water Station Group,09181234567,"San Isidro, Talisay",1979-09-30,Married,Tricycle operator,2026-06-15,Active`;
+
+function normalizeImportHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let cell = "";
+  let isQuoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    const nextCharacter = line[index + 1];
+
+    if (character === '"' && isQuoted && nextCharacter === '"') {
+      cell += '"';
+      index += 1;
+    } else if (character === '"') {
+      isQuoted = !isQuoted;
+    } else if (character === "," && !isQuoted) {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+
+  cells.push(cell.trim());
+  return cells;
+}
+
+function parseMemberImportCsv(csvText) {
+  const lines = String(csvText || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length === 0) {
+    return { headers: [], rows: [], errors: [] };
+  }
+
+  const headers = parseCsvLine(lines[0]).map((header) => header.trim());
+  const errors = [];
+
+  if (headers.some((header) => !header)) {
+    errors.push("Header row has a blank column name.");
+  }
+
+  const rows = lines.slice(1).map((line, rowIndex) => {
+    const values = parseCsvLine(line);
+    const row = {};
+
+    headers.forEach((header, columnIndex) => {
+      row[header] = values[columnIndex] || "";
+    });
+
+    if (values.length !== headers.length) {
+      errors.push(`Row ${rowIndex + 2} has ${values.length} cells but the header has ${headers.length}.`);
+    }
+
+    return row;
+  });
+
+  return { headers, rows, errors };
+}
+
+function suggestMemberImportMapping(headers) {
+  return memberImportFields.reduce((mapping, field) => {
+    const matchedHeader = headers.find((header) => field.aliases.includes(normalizeImportHeader(header)));
+    return {
+      ...mapping,
+      [field.key]: matchedHeader || ""
+    };
+  }, {});
+}
+
+function isValidImportDate(value) {
+  if (!value) {
+    return true;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day;
+}
+
+function buildMemberImportPreview(rows, mapping, existingMembers = []) {
+  const duplicateUploadMemberNos = new Set();
+  const seenMemberNos = new Set();
+  const existingMemberNos = new Set(existingMembers.map((member) => member.id));
+  const mappedRows = rows.map((row, rowIndex) => {
+    const mapped = memberImportFields.reduce((values, field) => {
+      const sourceColumn = mapping[field.key];
+      return {
+        ...values,
+        [field.key]: sourceColumn ? String(row[sourceColumn] || "").trim() : ""
+      };
+    }, {});
+
+    if (mapped.memberNo) {
+      if (seenMemberNos.has(mapped.memberNo)) {
+        duplicateUploadMemberNos.add(mapped.memberNo);
+      }
+      seenMemberNos.add(mapped.memberNo);
+    }
+
+    return {
+      rowNumber: rowIndex + 2,
+      ...mapped
+    };
+  });
+
+  return mappedRows.map((row) => {
+    const issues = [];
+    const normalizedStatus = row.status.toLowerCase();
+
+    if (!row.name) {
+      issues.push("Missing full name");
+    }
+
+    if (row.memberNo && duplicateUploadMemberNos.has(row.memberNo)) {
+      issues.push("Duplicate member no. in upload");
+    }
+
+    if (row.memberNo && existingMemberNos.has(row.memberNo)) {
+      issues.push("Member no. already exists");
+    }
+
+    if (!isValidImportDate(row.birthdate)) {
+      issues.push("Invalid birthdate");
+    }
+
+    if (!isValidImportDate(row.membershipDate)) {
+      issues.push("Invalid membership date");
+    }
+
+    if (row.status && !["active", "inactive"].includes(normalizedStatus)) {
+      issues.push("Unknown status");
+    }
+
+    return {
+      ...row,
+      status: row.status || "Active",
+      issues
+    };
+  });
+}
+
 function buildTellerBatchSummary(rows) {
   return rows.reduce(
     (summary, row) => {
@@ -252,6 +429,193 @@ function Login({ onLogin }) {
         </Grid>
       </Container>
     </Flex>
+  );
+}
+
+function MemberImportPreview({ existingMembers }) {
+  const [csvText, setCsvText] = useState(sampleMemberImportCsv);
+  const parsedImport = useMemo(() => parseMemberImportCsv(csvText), [csvText]);
+  const [mapping, setMapping] = useState(() => suggestMemberImportMapping(parsedImport.headers));
+
+  useEffect(() => {
+    setMapping((currentMapping) => {
+      const nextMapping = suggestMemberImportMapping(parsedImport.headers);
+      const preservedMapping = memberImportFields.reduce((values, field) => {
+        const currentSource = currentMapping[field.key];
+        return {
+          ...values,
+          [field.key]: parsedImport.headers.includes(currentSource) ? currentSource : nextMapping[field.key]
+        };
+      }, {});
+
+      return preservedMapping;
+    });
+  }, [parsedImport.headers.join("|")]);
+
+  const previewRows = useMemo(
+    () => buildMemberImportPreview(parsedImport.rows, mapping, existingMembers),
+    [parsedImport.rows, mapping, existingMembers]
+  );
+  const issueCount = previewRows.reduce((total, row) => total + row.issues.length, parsedImport.errors.length);
+  const validRowCount = previewRows.filter((row) => row.issues.length === 0).length;
+
+  function updateMapping(fieldKey, sourceColumn) {
+    setMapping((current) => ({
+      ...current,
+      [fieldKey]: sourceColumn
+    }));
+  }
+
+  function resetToSampleCsv() {
+    setCsvText(sampleMemberImportCsv);
+    setMapping(suggestMemberImportMapping(parseMemberImportCsv(sampleMemberImportCsv).headers));
+  }
+
+  function autoMapColumns() {
+    setMapping(suggestMemberImportMapping(parsedImport.headers));
+  }
+
+  return (
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+        <Box>
+          <Heading size="md">Member Import Preview</Heading>
+          <Text color="gray.600" mt={1}>
+            Preview only. No database records are created from this panel.
+          </Text>
+        </Box>
+        <HStack spacing={3} flexWrap="wrap">
+          <Button size="sm" variant="outline" onClick={resetToSampleCsv}>
+            Load sample CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={autoMapColumns}>
+            Auto-map columns
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCsvText("")}>
+            Clear
+          </Button>
+        </HStack>
+      </Flex>
+
+      <FormControl mb={4}>
+        <FormLabel>CSV Paste Area</FormLabel>
+        <Textarea
+          value={csvText}
+          onChange={(event) => setCsvText(event.target.value)}
+          minH="150px"
+          fontFamily="mono"
+          fontSize="sm"
+        />
+      </FormControl>
+
+      <Box borderWidth="1px" borderRadius="md" p={4} mb={4}>
+        <Text fontWeight="bold" mb={3}>
+          Detected Columns
+        </Text>
+        <HStack spacing={2} flexWrap="wrap">
+          {parsedImport.headers.length > 0 ? (
+            parsedImport.headers.map((header) => (
+              <Badge key={header} colorScheme="blue" variant="subtle">
+                {header}
+              </Badge>
+            ))
+          ) : (
+            <Text color="gray.500">No header row detected.</Text>
+          )}
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderRadius="md" p={4} mb={4}>
+        <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+          <Text fontWeight="bold">Column Mapping</Text>
+          <Text color={issueCount > 0 ? "orange.600" : "green.600"} fontSize="sm">
+            {validRowCount} valid rows / {previewRows.length} preview rows / {issueCount} issues
+          </Text>
+        </Flex>
+        <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={4}>
+          {memberImportFields.map((field) => (
+            <FormControl key={field.key}>
+              <FormLabel>{field.label}</FormLabel>
+              <Select value={mapping[field.key] || ""} onChange={(event) => updateMapping(field.key, event.target.value)}>
+                <option value="">Do not import</option>
+                {parsedImport.headers.map((header) => (
+                  <option key={header} value={header}>
+                    {header}
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+          ))}
+        </Grid>
+      </Box>
+
+      {parsedImport.errors.length > 0 ? (
+        <Box borderWidth="1px" borderRadius="md" p={4} mb={4} borderColor="orange.200" bg="orange.50">
+          <Text fontWeight="bold" mb={2}>
+            CSV Structure Issues
+          </Text>
+          <VStack align="stretch" spacing={1}>
+            {parsedImport.errors.map((importError) => (
+              <Text key={importError} color="orange.700" fontSize="sm">
+                {importError}
+              </Text>
+            ))}
+          </VStack>
+        </Box>
+      ) : null}
+
+      <TableContainer>
+        <Table size="sm">
+          <Thead>
+            <Tr>
+              <Th>Row</Th>
+              <Th>Member No.</Th>
+              <Th>Name</Th>
+              <Th>Cluster</Th>
+              <Th>Contact</Th>
+              <Th>Membership Date</Th>
+              <Th>Status</Th>
+              <Th>Issues</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {previewRows.map((row) => (
+              <Tr key={row.rowNumber}>
+                <Td>{row.rowNumber}</Td>
+                <Td>{row.memberNo || "-"}</Td>
+                <Td>{row.name || "-"}</Td>
+                <Td>{row.group || "-"}</Td>
+                <Td>{row.contactNumber || "-"}</Td>
+                <Td>{row.membershipDate || "-"}</Td>
+                <Td>
+                  <Badge colorScheme={row.status === "Active" ? "green" : "gray"}>{row.status}</Badge>
+                </Td>
+                <Td>
+                  {row.issues.length > 0 ? (
+                    <VStack align="stretch" spacing={1}>
+                      {row.issues.map((issue) => (
+                        <Badge key={issue} colorScheme="orange" width="fit-content">
+                          {issue}
+                        </Badge>
+                      ))}
+                    </VStack>
+                  ) : (
+                    <Badge colorScheme="green">Ready</Badge>
+                  )}
+                </Td>
+              </Tr>
+            ))}
+            {previewRows.length === 0 ? (
+              <Tr>
+                <Td colSpan={8} color="gray.500">
+                  No rows to preview.
+                </Td>
+              </Tr>
+            ) : null}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    </Box>
   );
 }
 
@@ -850,6 +1214,8 @@ function Members({ user }) {
           </TableContainer>
         </Box>
       ) : null}
+
+      {canEditMemberProfile ? <MemberImportPreview existingMembers={members} /> : null}
 
       {canUseTellerWorkspace ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>

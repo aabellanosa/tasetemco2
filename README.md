@@ -141,17 +141,17 @@ The current spike uses one shared prototype password in code. Production behavio
 
 The React/Postgres pivot uses action-level permissions, not just screen access. For membership workflows:
 
-| Role | View Members | View Applications | Create Applications | Approve Applications | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
-| General Manager | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
-| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No |
-| Teller / Cashier | Yes | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
-| Membership Officer | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No |
-| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | Yes | No | No | No |
-| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No |
+| Role | View Members | View Applications | Create Applications | Approve Applications | Member Import Preview | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
+| General Manager | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
+| Accountant / Bookkeeper | No | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
+| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
+| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No |
+| Teller / Cashier | Yes | No | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
+| Membership Officer | Yes | Yes | Yes | No | Yes | No | No | No | No | No | No | No | No |
+| Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
+| Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No | No |
 
 The Members workflow auto-refreshes every 5 seconds for demo testing across browser profiles. Users can also click Refresh to pull the latest member applications, active members, and initial payment history.
 
@@ -160,6 +160,8 @@ Only the `admin` user can access Demo Maintenance controls. Other roles are bloc
 The `admin` user can also manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; production password storage is intentionally left for a later security spike.
 
 Member Profile v1 expands member master data with contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. `admin` and `membership` can update profile fields; other member-view roles can inspect them read-only. Share capital and savings balances stay read-only because they are derived from transactions.
+
+Member Import Preview v0 lets `admin` and `membership` paste a CSV export from Excel, map source columns to member profile fields, and review validation issues before any database write exists. It checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses. This is intentionally preview-only while client Excel formats are still being discovered.
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
