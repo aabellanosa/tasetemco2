@@ -450,6 +450,53 @@ async function run() {
       throw new Error("Staged import details should return validated row issues.");
     }
 
+    const membershipFinalizeImport = await fetch(
+      `${baseUrl}/api/member-import-batches/${memberImportCreateBody.batch.importNo}/finalize`,
+      {
+        method: "POST",
+        headers: { Cookie: cookie }
+      }
+    );
+
+    if (membershipFinalizeImport.status !== 403) {
+      throw new Error("Membership Officer should not finalize member import batches.");
+    }
+
+    const adminFinalizeImport = await fetch(
+      `${baseUrl}/api/member-import-batches/${memberImportCreateBody.batch.importNo}/finalize`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie }
+      }
+    );
+    const adminFinalizeImportBody = await adminFinalizeImport.json();
+
+    if (
+      !adminFinalizeImport.ok ||
+      adminFinalizeImportBody.batch.status !== "Finalized" ||
+      adminFinalizeImportBody.batch.importedRows !== 1 ||
+      adminFinalizeImportBody.batch.skippedRows !== 1 ||
+      !adminFinalizeImportBody.rows.some((row) => row.rowStatus === "Imported") ||
+      !adminFinalizeImportBody.rows.some((row) => row.rowStatus === "Has Issues")
+    ) {
+      throw new Error("Admin should finalize ready import rows while leaving issue rows unresolved.");
+    }
+
+    const membersAfterImport = await fetch(`${baseUrl}/api/members`, {
+      headers: { Cookie: adminCookie }
+    });
+    const membersAfterImportBody = await membersAfterImport.json();
+    const importedMember = membersAfterImportBody.find((member) => member.id === "M-SMOKE-IMPORT-001");
+
+    if (
+      !importedMember ||
+      importedMember.share !== 0 ||
+      importedMember.savings !== 0 ||
+      importedMember.name !== "Import Ready Member"
+    ) {
+      throw new Error("Finalized import should create active member profile with zero financial balances.");
+    }
+
     const tellerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

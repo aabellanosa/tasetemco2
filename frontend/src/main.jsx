@@ -437,7 +437,7 @@ function Login({ onLogin }) {
   );
 }
 
-function MemberImportPreview({ existingMembers }) {
+function MemberImportPreview({ existingMembers, user }) {
   const [csvText, setCsvText] = useState(sampleMemberImportCsv);
   const [sourceLabel, setSourceLabel] = useState("CSV Paste");
   const [importBatches, setImportBatches] = useState([]);
@@ -445,8 +445,10 @@ function MemberImportPreview({ existingMembers }) {
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
   const [isSavingImportBatch, setIsSavingImportBatch] = useState(false);
+  const [isFinalizingImportBatch, setIsFinalizingImportBatch] = useState(false);
   const parsedImport = useMemo(() => parseMemberImportCsv(csvText), [csvText]);
   const [mapping, setMapping] = useState(() => suggestMemberImportMapping(parsedImport.headers));
+  const canFinalizeImport = user.username === "admin";
 
   const loadImportBatches = useCallback(async () => {
     try {
@@ -532,6 +534,27 @@ function MemberImportPreview({ existingMembers }) {
       setSelectedImportBatch(data);
     } catch (batchError) {
       setImportError(batchError.message);
+    }
+  }
+
+  async function finalizeImportBatch(importNo) {
+    setImportMessage("");
+    setImportError("");
+    setIsFinalizingImportBatch(true);
+
+    try {
+      const data = await api(`/api/member-import-batches/${importNo}/finalize`, {
+        method: "POST"
+      });
+      setSelectedImportBatch(data);
+      setImportMessage(
+        `${data.batch.importNo} finalized: ${data.batch.importedRows} imported, ${data.batch.skippedRows} skipped.`
+      );
+      await loadImportBatches();
+    } catch (batchError) {
+      setImportError(batchError.message);
+    } finally {
+      setIsFinalizingImportBatch(false);
     }
   }
 
@@ -730,7 +753,7 @@ function MemberImportPreview({ existingMembers }) {
                   <Td>{batch.importNo}</Td>
                   <Td>{batch.sourceLabel}</Td>
                   <Td>
-                    <Badge colorScheme="blue">{batch.status}</Badge>
+                    <Badge colorScheme={batch.status === "Finalized" ? "green" : "blue"}>{batch.status}</Badge>
                   </Td>
                   <Td isNumeric>{batch.totalRows}</Td>
                   <Td isNumeric>{batch.readyRows}</Td>
@@ -762,13 +785,35 @@ function MemberImportPreview({ existingMembers }) {
             <Box>
               <Text fontWeight="bold">{selectedImportBatch.batch.importNo} Details</Text>
               <Text color="gray.600" fontSize="sm">
-                Staged only. Ready rows are not yet written to active members.
+                Ready rows become active members only after Admin finalization.
               </Text>
             </Box>
-            <Button size="sm" variant="ghost" onClick={() => setSelectedImportBatch(null)}>
-              Close
-            </Button>
+            <HStack spacing={3} flexWrap="wrap">
+              {canFinalizeImport && selectedImportBatch.batch.status !== "Finalized" ? (
+                <Button
+                  size="sm"
+                  colorScheme="green"
+                  onClick={() => finalizeImportBatch(selectedImportBatch.batch.importNo)}
+                  isLoading={isFinalizingImportBatch}
+                  isDisabled={selectedImportBatch.batch.readyRows === 0}
+                >
+                  Finalize Import
+                </Button>
+              ) : null}
+              <Button size="sm" variant="ghost" onClick={() => setSelectedImportBatch(null)}>
+                Close
+              </Button>
+            </HStack>
           </Flex>
+          {selectedImportBatch.batch.status === "Finalized" ? (
+            <HStack spacing={3} flexWrap="wrap" mb={3}>
+              <Badge colorScheme="green">{selectedImportBatch.batch.importedRows} imported</Badge>
+              <Badge colorScheme="gray">{selectedImportBatch.batch.skippedRows} skipped</Badge>
+              <Text color="gray.600" fontSize="sm">
+                Finalized by {selectedImportBatch.batch.finalizedBy || "-"} {formatDateTime(selectedImportBatch.batch.finalizedAt)}
+              </Text>
+            </HStack>
+          ) : null}
           <TableContainer>
             <Table size="sm">
               <Thead>
@@ -793,7 +838,19 @@ function MemberImportPreview({ existingMembers }) {
                     <Td>{row.contactNumber || "-"}</Td>
                     <Td>{row.status}</Td>
                     <Td>
-                      <Badge colorScheme={row.rowStatus === "Ready" ? "green" : "orange"}>{row.rowStatus}</Badge>
+                      <Badge
+                        colorScheme={
+                          row.rowStatus === "Imported"
+                            ? "green"
+                            : row.rowStatus === "Skipped"
+                              ? "gray"
+                              : row.rowStatus === "Ready"
+                                ? "blue"
+                                : "orange"
+                        }
+                      >
+                        {row.rowStatus}
+                      </Badge>
                     </Td>
                     <Td>
                       {row.issues.length > 0 ? row.issues.join(", ") : "Ready"}
@@ -1428,7 +1485,7 @@ function Members({ user }) {
 
           {canEditMemberProfile ? (
             <TabPanel px={0}>
-              <MemberImportPreview existingMembers={members} />
+              <MemberImportPreview existingMembers={members} user={user} />
             </TabPanel>
           ) : null}
 

@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS member_import_batches (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE member_import_batches ADD COLUMN IF NOT EXISTS finalized_by VARCHAR(80);
+ALTER TABLE member_import_batches ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMP NULL;
+ALTER TABLE member_import_batches ADD COLUMN IF NOT EXISTS imported_rows INT NOT NULL DEFAULT 0;
+ALTER TABLE member_import_batches ADD COLUMN IF NOT EXISTS skipped_rows INT NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS member_import_rows (
   id INT AUTO_INCREMENT PRIMARY KEY,
   import_no VARCHAR(40) NOT NULL,

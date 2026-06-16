@@ -84,7 +84,11 @@ const requiredSchemaColumns = {
     "ready_rows",
     "issue_rows",
     "created_by",
-    "created_at"
+    "created_at",
+    "finalized_by",
+    "finalized_at",
+    "imported_rows",
+    "skipped_rows"
   ],
   member_import_rows: [
     "import_no",
@@ -710,7 +714,11 @@ function mapMemberImportBatch(row) {
     readyRows: row.readyRows,
     issueRows: row.issueRows,
     createdBy: row.createdBy,
-    createdAt: row.createdAt
+    createdAt: row.createdAt,
+    finalizedBy: row.finalizedBy || "",
+    finalizedAt: row.finalizedAt || "",
+    importedRows: row.importedRows || 0,
+    skippedRows: row.skippedRows || 0
   };
 }
 
@@ -846,7 +854,9 @@ async function listMemberImportBatches() {
   const [rows] = await db.execute(
     `SELECT import_no AS importNo, source_label AS sourceLabel, status,
             total_rows AS totalRows, ready_rows AS readyRows, issue_rows AS issueRows,
-            created_by AS createdBy, created_at AS createdAt
+            created_by AS createdBy, created_at AS createdAt,
+            finalized_by AS finalizedBy, finalized_at AS finalizedAt,
+            imported_rows AS importedRows, skipped_rows AS skippedRows
      FROM member_import_batches
      ORDER BY created_at DESC, id DESC`
   );
@@ -875,7 +885,9 @@ async function getMemberImportBatch(importNo) {
   const [batchRows] = await db.execute(
     `SELECT import_no AS importNo, source_label AS sourceLabel, status,
             total_rows AS totalRows, ready_rows AS readyRows, issue_rows AS issueRows,
-            created_by AS createdBy, created_at AS createdAt
+            created_by AS createdBy, created_at AS createdAt,
+            finalized_by AS finalizedBy, finalized_at AS finalizedAt,
+            imported_rows AS importedRows, skipped_rows AS skippedRows
      FROM member_import_batches
      WHERE import_no = ?
      LIMIT 1`,
@@ -902,6 +914,166 @@ async function getMemberImportBatch(importNo) {
     batch: mapMemberImportBatch(batchRows[0]),
     rows: rows.map(mapMemberImportRow)
   };
+}
+
+async function finalizeMemberImportBatch(importNo, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const batch = memberImportBatches.find((item) => item.importNo === importNo || item.id === importNo);
+
+    if (!batch) {
+      return { error: "Member import batch was not found.", statusCode: 404 };
+    }
+
+    if (batch.status === "Finalized") {
+      return { error: "Member import batch is already finalized.", statusCode: 409 };
+    }
+
+    const rows = memberImportRows.filter((row) => row.importNo === batch.importNo);
+    const readyRows = rows.filter((row) => row.rowStatus === "Ready");
+    let importedRows = 0;
+    let skippedRows = rows.length - readyRows.length;
+
+    for (const row of readyRows) {
+      if (!row.memberNo || members.some((member) => member.id === row.memberNo)) {
+        row.rowStatus = "Skipped";
+        row.issues = [...parseIssues(row.issues), "Member no. already exists"];
+        skippedRows += 1;
+        continue;
+      }
+
+      members.push({
+        id: row.memberNo,
+        name: row.name,
+        group: row.group || "General Membership",
+        share: 0,
+        savings: 0,
+        status: row.status || "Active",
+        contactNumber: row.contactNumber || "",
+        address: row.address || "",
+        birthdate: row.birthdate || "",
+        civilStatus: row.civilStatus || "",
+        occupation: row.occupation || "",
+        membershipDate: row.membershipDate || new Date().toISOString().slice(0, 10)
+      });
+      row.rowStatus = "Imported";
+      importedRows += 1;
+    }
+
+    batch.status = "Finalized";
+    batch.importedRows = importedRows;
+    batch.skippedRows = skippedRows;
+    batch.finalizedBy = user.username;
+    batch.finalizedAt = new Date().toISOString();
+
+    return await getMemberImportBatch(batch.importNo);
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [batchRows] = await connection.execute(
+      `SELECT import_no AS importNo, status
+       FROM member_import_batches
+       WHERE import_no = ?
+       LIMIT 1`,
+      [importNo]
+    );
+
+    if (batchRows.length === 0) {
+      await connection.rollback();
+      return { error: "Member import batch was not found.", statusCode: 404 };
+    }
+
+    if (batchRows[0].status === "Finalized") {
+      await connection.rollback();
+      return { error: "Member import batch is already finalized.", statusCode: 409 };
+    }
+
+    const [rows] = await connection.execute(
+      `SELECT id, row_no AS rowNumber, member_no AS memberNo, full_name AS name,
+              cluster_name AS \`group\`, contact_number AS contactNumber, address,
+              birthdate, civil_status AS civilStatus, occupation,
+              membership_date AS membershipDate, member_status AS status,
+              row_status AS rowStatus, issues
+       FROM member_import_rows
+       WHERE import_no = ?
+       ORDER BY row_no, id`,
+      [importNo]
+    );
+
+    let importedRows = 0;
+    let skippedRows = rows.filter((row) => row.rowStatus !== "Ready").length;
+
+    for (const row of rows.filter((item) => item.rowStatus === "Ready")) {
+      const [existingRows] = await connection.execute(
+        `SELECT member_no AS id
+         FROM members
+         WHERE member_no = ?
+         LIMIT 1`,
+        [row.memberNo]
+      );
+
+      if (!row.memberNo || existingRows.length > 0) {
+        const issues = [...parseIssues(row.issues), "Member no. already exists"];
+        await connection.execute(
+          `UPDATE member_import_rows
+           SET row_status = 'Skipped', issues = ?
+           WHERE id = ?`,
+          [JSON.stringify(issues), row.id]
+        );
+        skippedRows += 1;
+        continue;
+      }
+
+      await connection.execute(
+        `INSERT INTO members (
+           member_no, full_name, cluster_name, status, share_capital, savings_balance,
+           contact_number, address, birthdate, civil_status, occupation, membership_date
+         )
+         VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?)`,
+        [
+          row.memberNo,
+          row.name,
+          row.group || "General Membership",
+          row.status || "Active",
+          row.contactNumber || "",
+          row.address || "",
+          row.birthdate || null,
+          row.civilStatus || "",
+          row.occupation || "",
+          row.membershipDate || new Date().toISOString().slice(0, 10)
+        ]
+      );
+
+      await connection.execute(
+        `UPDATE member_import_rows
+         SET row_status = 'Imported'
+         WHERE id = ?`,
+        [row.id]
+      );
+      importedRows += 1;
+    }
+
+    await connection.execute(
+      `UPDATE member_import_batches
+       SET status = 'Finalized', imported_rows = ?, skipped_rows = ?,
+           finalized_by = ?, finalized_at = CURRENT_TIMESTAMP
+       WHERE import_no = ?`,
+      [importedRows, skippedRows, user.username, importNo]
+    );
+
+    await connection.commit();
+    return await getMemberImportBatch(importNo);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function listMemberApplications() {
@@ -4263,6 +4435,29 @@ app.get("/api/member-import-batches/:importNo", async (request, response) => {
   }
 
   const result = await getMemberImportBatch(request.params.importNo);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/member-import-batches/:importNo/finalize", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user)) {
+    response.status(403).json({ error: "Admin access required" });
+    return;
+  }
+
+  const result = await finalizeMemberImportBatch(request.params.importNo, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });
