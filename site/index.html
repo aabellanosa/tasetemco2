@@ -59,7 +59,7 @@
             <tbody>
               <tr>
                 <td>System Administrator</td>
-                <td>Process, Approve</td>
+                <td>Process, Approve, Import Preview</td>
                 <td>View</td>
                 <td>View</td>
                 <td>View</td>
@@ -125,7 +125,7 @@
               </tr>
               <tr>
                 <td>Membership Officer</td>
-                <td>Process</td>
+                <td>Process, Import Preview</td>
                 <td>None</td>
                 <td>None</td>
                 <td>None</td>
@@ -164,8 +164,11 @@
           Approve means the role can convert approved applications into active members.
           In the current spike, System Administrator and Membership Officer can create
           member applications, System Administrator is the only role that can approve them,
+          System Administrator and Membership Officer can preview mapped member CSV imports,
           Teller / Cashier records the initial member payment, and Accountant / Bookkeeper
           posts teller batch payments to the general ledger.
+          Member Import Preview is discovery-only: pasted Excel/CSV rows are mapped and
+          validated before any database write is implemented.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -208,6 +211,7 @@
               <li>System Administrator approves membership.</li>
               <li>Teller collects initial share capital, membership fee, and savings.</li>
               <li>Admin or Membership Officer maintains member profile master data.</li>
+              <li>Admin or Membership Officer can preview mapped Excel/CSV member imports.</li>
               <li>System blocks duplicate initial member payments for the same member.</li>
               <li>System blocks reused cash-in OR/reference numbers.</li>
               <li>Transaction remains in teller batch until accounting posting.</li>
