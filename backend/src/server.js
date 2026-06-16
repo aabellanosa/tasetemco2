@@ -11,6 +11,8 @@ import {
   initialPayments,
   journalEntries,
   memberApplications,
+  memberImportBatches,
+  memberImportRows,
   members,
   publicUser,
   roles,
@@ -58,6 +60,8 @@ const persistedTables = [
   "share_capital_contributions",
   "savings_withdrawals",
   "teller_batches",
+  "member_import_rows",
+  "member_import_batches",
   "member_applications",
   "members",
   "users"
@@ -71,6 +75,32 @@ const requiredSchemaColumns = {
     "civil_status",
     "occupation",
     "membership_date"
+  ],
+  member_import_batches: [
+    "import_no",
+    "source_label",
+    "status",
+    "total_rows",
+    "ready_rows",
+    "issue_rows",
+    "created_by",
+    "created_at"
+  ],
+  member_import_rows: [
+    "import_no",
+    "row_no",
+    "member_no",
+    "full_name",
+    "cluster_name",
+    "contact_number",
+    "address",
+    "birthdate",
+    "civil_status",
+    "occupation",
+    "membership_date",
+    "member_status",
+    "row_status",
+    "issues"
   ]
 };
 
@@ -434,6 +464,24 @@ function normalizeOptionalDate(value) {
   return trimmed;
 }
 
+function isValidIsoDate(value) {
+  if (!value) {
+    return true;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day;
+}
+
 function validateMemberProfileInput(body) {
   const name = String(body.name || "").trim();
   const clusterName = String(body.group || body.clusterName || "").trim();
@@ -529,6 +577,331 @@ async function updateMemberProfile(memberId, input) {
   );
 
   return { member: rows[0] };
+}
+
+function sanitizeMemberImportRow(row) {
+  const status = String(row.status || "Active").trim() || "Active";
+
+  return {
+    rowNumber: Number(row.rowNumber || row.rowNo || 0),
+    memberNo: String(row.memberNo || "").trim(),
+    name: String(row.name || row.fullName || "").trim(),
+    group: String(row.group || row.clusterName || "").trim(),
+    contactNumber: String(row.contactNumber || "").trim(),
+    address: String(row.address || "").trim(),
+    birthdate: String(row.birthdate || "").trim(),
+    civilStatus: String(row.civilStatus || "").trim(),
+    occupation: String(row.occupation || "").trim(),
+    membershipDate: String(row.membershipDate || "").trim(),
+    status
+  };
+}
+
+async function validateMemberImportRows(inputRows) {
+  if (!Array.isArray(inputRows) || inputRows.length === 0) {
+    return { error: "At least one import row is required." };
+  }
+
+  if (inputRows.length > 250) {
+    return { error: "Prototype import batches are limited to 250 rows." };
+  }
+
+  const db = await getPool();
+  const existingMemberNos = new Set();
+
+  if (!db) {
+    members.forEach((member) => existingMemberNos.add(member.id));
+  } else {
+    const [rows] = await db.execute(`SELECT member_no AS id FROM members`);
+    rows.forEach((member) => existingMemberNos.add(member.id));
+  }
+
+  const sanitizedRows = inputRows.map(sanitizeMemberImportRow);
+  const seenMemberNos = new Set();
+  const duplicateMemberNos = new Set();
+
+  sanitizedRows.forEach((row) => {
+    if (!row.memberNo) {
+      return;
+    }
+
+    if (seenMemberNos.has(row.memberNo)) {
+      duplicateMemberNos.add(row.memberNo);
+    }
+
+    seenMemberNos.add(row.memberNo);
+  });
+
+  return {
+    rows: sanitizedRows.map((row, index) => {
+      const issues = [];
+      const rowNumber = Number.isInteger(row.rowNumber) && row.rowNumber > 0 ? row.rowNumber : index + 2;
+      const normalizedStatus = row.status.toLowerCase();
+
+      if (!row.name) {
+        issues.push("Missing full name");
+      }
+
+      if (row.memberNo && duplicateMemberNos.has(row.memberNo)) {
+        issues.push("Duplicate member no. in upload");
+      }
+
+      if (row.memberNo && existingMemberNos.has(row.memberNo)) {
+        issues.push("Member no. already exists");
+      }
+
+      const validBirthdate = isValidIsoDate(row.birthdate);
+      const validMembershipDate = isValidIsoDate(row.membershipDate);
+
+      if (!validBirthdate) {
+        issues.push("Invalid birthdate");
+      }
+
+      if (!validMembershipDate) {
+        issues.push("Invalid membership date");
+      }
+
+      if (row.status && !["active", "inactive"].includes(normalizedStatus)) {
+        issues.push("Unknown status");
+      }
+
+      return {
+        ...row,
+        rowNumber,
+        birthdate: validBirthdate ? row.birthdate || null : null,
+        membershipDate: validMembershipDate ? row.membershipDate || null : null,
+        status: ["active", "inactive"].includes(normalizedStatus)
+          ? normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1)
+          : row.status,
+        rowStatus: issues.length > 0 ? "Has Issues" : "Ready",
+        issues
+      };
+    })
+  };
+}
+
+function summarizeMemberImportRows(rows) {
+  return {
+    totalRows: rows.length,
+    readyRows: rows.filter((row) => row.rowStatus === "Ready").length,
+    issueRows: rows.filter((row) => row.rowStatus !== "Ready").length
+  };
+}
+
+function parseIssues(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function mapMemberImportBatch(row) {
+  return {
+    id: row.importNo,
+    importNo: row.importNo,
+    sourceLabel: row.sourceLabel,
+    status: row.status,
+    totalRows: row.totalRows,
+    readyRows: row.readyRows,
+    issueRows: row.issueRows,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt
+  };
+}
+
+function mapMemberImportRow(row) {
+  return {
+    id: row.id,
+    rowNumber: row.rowNumber,
+    memberNo: row.memberNo,
+    name: row.name,
+    group: row.group,
+    contactNumber: row.contactNumber,
+    address: row.address,
+    birthdate: row.birthdate,
+    civilStatus: row.civilStatus,
+    occupation: row.occupation,
+    membershipDate: row.membershipDate,
+    status: row.status,
+    rowStatus: row.rowStatus,
+    issues: parseIssues(row.issues)
+  };
+}
+
+async function nextMemberImportNo(connection = null) {
+  const db = connection || (await getPool());
+
+  if (!db) {
+    return `MI-${new Date().getFullYear()}-${String(memberImportBatches.length + 1).padStart(4, "0")}`;
+  }
+
+  const [countRows] = await db.execute(
+    `SELECT COUNT(*) AS countValue
+     FROM member_import_batches
+     WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+  );
+
+  return `MI-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+}
+
+async function createMemberImportBatch(input, user) {
+  const validation = await validateMemberImportRows(input.rows);
+
+  if (validation.error) {
+    return { error: validation.error, statusCode: 400 };
+  }
+
+  const sourceLabel = String(input.sourceLabel || "CSV Paste").trim().slice(0, 160) || "CSV Paste";
+  const rows = validation.rows;
+  const summary = summarizeMemberImportRows(rows);
+  const db = await getPool();
+
+  if (!db) {
+    const importNo = await nextMemberImportNo();
+    const batch = {
+      id: importNo,
+      importNo,
+      sourceLabel,
+      status: "Staged",
+      ...summary,
+      createdBy: user.username,
+      createdAt: new Date().toISOString()
+    };
+
+    memberImportBatches.unshift(batch);
+    rows.forEach((row, index) => {
+      memberImportRows.push({
+        id: `${importNo}-${index + 1}`,
+        importNo,
+        ...row
+      });
+    });
+
+    return { batch, rows: memberImportRows.filter((row) => row.importNo === importNo) };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const importNo = await nextMemberImportNo(connection);
+
+    await connection.execute(
+      `INSERT INTO member_import_batches (
+         import_no, source_label, status, total_rows, ready_rows, issue_rows, created_by
+       )
+       VALUES (?, ?, 'Staged', ?, ?, ?, ?)`,
+      [importNo, sourceLabel, summary.totalRows, summary.readyRows, summary.issueRows, user.username]
+    );
+
+    for (const row of rows) {
+      await connection.execute(
+        `INSERT INTO member_import_rows (
+           import_no, row_no, member_no, full_name, cluster_name, contact_number,
+           address, birthdate, civil_status, occupation, membership_date, member_status,
+           row_status, issues
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          importNo,
+          row.rowNumber,
+          row.memberNo,
+          row.name,
+          row.group,
+          row.contactNumber,
+          row.address,
+          row.birthdate,
+          row.civilStatus,
+          row.occupation,
+          row.membershipDate,
+          row.status,
+          row.rowStatus,
+          JSON.stringify(row.issues)
+        ]
+      );
+    }
+
+    await connection.commit();
+    return await getMemberImportBatch(importNo);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function listMemberImportBatches() {
+  const db = await getPool();
+
+  if (!db) {
+    return memberImportBatches.map(mapMemberImportBatch);
+  }
+
+  const [rows] = await db.execute(
+    `SELECT import_no AS importNo, source_label AS sourceLabel, status,
+            total_rows AS totalRows, ready_rows AS readyRows, issue_rows AS issueRows,
+            created_by AS createdBy, created_at AS createdAt
+     FROM member_import_batches
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows.map(mapMemberImportBatch);
+}
+
+async function getMemberImportBatch(importNo) {
+  const db = await getPool();
+
+  if (!db) {
+    const batch = memberImportBatches.find((item) => item.importNo === importNo || item.id === importNo);
+
+    if (!batch) {
+      return { error: "Member import batch was not found.", statusCode: 404 };
+    }
+
+    return {
+      batch: mapMemberImportBatch(batch),
+      rows: memberImportRows
+        .filter((row) => row.importNo === batch.importNo)
+        .map(mapMemberImportRow)
+    };
+  }
+
+  const [batchRows] = await db.execute(
+    `SELECT import_no AS importNo, source_label AS sourceLabel, status,
+            total_rows AS totalRows, ready_rows AS readyRows, issue_rows AS issueRows,
+            created_by AS createdBy, created_at AS createdAt
+     FROM member_import_batches
+     WHERE import_no = ?
+     LIMIT 1`,
+    [importNo]
+  );
+
+  if (batchRows.length === 0) {
+    return { error: "Member import batch was not found.", statusCode: 404 };
+  }
+
+  const [rows] = await db.execute(
+    `SELECT id, row_no AS rowNumber, member_no AS memberNo, full_name AS name,
+            cluster_name AS \`group\`, contact_number AS contactNumber, address,
+            birthdate, civil_status AS civilStatus, occupation,
+            membership_date AS membershipDate, member_status AS status,
+            row_status AS rowStatus, issues
+     FROM member_import_rows
+     WHERE import_no = ?
+     ORDER BY row_no, id`,
+    [importNo]
+  );
+
+  return {
+    batch: mapMemberImportBatch(batchRows[0]),
+    rows: rows.map(mapMemberImportRow)
+  };
 }
 
 async function listMemberApplications() {
@@ -3828,6 +4201,68 @@ app.patch("/api/members/:memberId/profile", async (request, response) => {
   }
 
   const result = await updateMemberProfile(request.params.memberId, validation.value);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.get("/api/member-import-batches", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:profile:edit")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listMemberImportBatches());
+});
+
+app.post("/api/member-import-batches", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:profile:edit")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await createMemberImportBatch(request.body, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.status(201).json(result);
+});
+
+app.get("/api/member-import-batches/:importNo", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:profile:edit")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await getMemberImportBatch(request.params.importNo);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

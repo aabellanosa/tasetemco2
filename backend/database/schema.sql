@@ -34,6 +34,37 @@ CREATE TABLE IF NOT EXISTS member_applications (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS member_import_batches (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  import_no VARCHAR(40) NOT NULL UNIQUE,
+  source_label VARCHAR(160) NOT NULL DEFAULT 'CSV Paste',
+  status VARCHAR(40) NOT NULL DEFAULT 'Staged',
+  total_rows INT NOT NULL DEFAULT 0,
+  ready_rows INT NOT NULL DEFAULT 0,
+  issue_rows INT NOT NULL DEFAULT 0,
+  created_by VARCHAR(80) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS member_import_rows (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  import_no VARCHAR(40) NOT NULL,
+  row_no INT NOT NULL,
+  member_no VARCHAR(40) NOT NULL DEFAULT '',
+  full_name VARCHAR(180) NOT NULL DEFAULT '',
+  cluster_name VARCHAR(160) NOT NULL DEFAULT '',
+  contact_number VARCHAR(60) NOT NULL DEFAULT '',
+  address TEXT NOT NULL,
+  birthdate DATE,
+  civil_status VARCHAR(40) NOT NULL DEFAULT '',
+  occupation VARCHAR(120) NOT NULL DEFAULT '',
+  membership_date DATE,
+  member_status VARCHAR(30) NOT NULL DEFAULT 'Active',
+  row_status VARCHAR(40) NOT NULL DEFAULT 'Ready',
+  issues TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS initial_member_payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   payment_no VARCHAR(40) NOT NULL UNIQUE,

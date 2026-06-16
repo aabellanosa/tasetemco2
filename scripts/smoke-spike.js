@@ -376,6 +376,80 @@ async function run() {
       throw new Error("Membership should update profile fields without changing balances.");
     }
 
+    const managerImportCreate = await fetch(`${baseUrl}/api/member-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: managerCookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Forbidden manager import",
+        rows: [{ rowNumber: 2, memberNo: "M-SMOKE-IMPORT-001", name: "Blocked Import" }]
+      })
+    });
+
+    if (managerImportCreate.status !== 403) {
+      throw new Error("Manager should not be allowed to stage member imports.");
+    }
+
+    const memberImportCreate = await fetch(`${baseUrl}/api/member-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Smoke CSV Paste",
+        rows: [
+          {
+            rowNumber: 2,
+            memberNo: "M-SMOKE-IMPORT-001",
+            name: "Import Ready Member",
+            group: "General Membership",
+            contactNumber: "0999-222-3333",
+            address: "Smoke Import Address",
+            birthdate: "1991-02-03",
+            civilStatus: "Married",
+            occupation: "Tester",
+            membershipDate: "2026-06-15",
+            status: "Active"
+          },
+          {
+            rowNumber: 3,
+            memberNo: approvedMember.id,
+            name: "",
+            group: "General Membership",
+            membershipDate: "2026-99-99",
+            status: "Dormant"
+          }
+        ]
+      })
+    });
+    const memberImportCreateBody = await memberImportCreate.json();
+
+    if (
+      !memberImportCreate.ok ||
+      memberImportCreateBody.batch.status !== "Staged" ||
+      memberImportCreateBody.batch.readyRows !== 1 ||
+      memberImportCreateBody.batch.issueRows !== 1
+    ) {
+      throw new Error("Membership should stage import batches with ready and issue row counts.");
+    }
+
+    const memberImportDetail = await fetch(
+      `${baseUrl}/api/member-import-batches/${memberImportCreateBody.batch.importNo}`,
+      { headers: { Cookie: cookie } }
+    );
+    const memberImportDetailBody = await memberImportDetail.json();
+
+    if (
+      !memberImportDetail.ok ||
+      memberImportDetailBody.rows.length !== 2 ||
+      !memberImportDetailBody.rows.some((row) => row.rowStatus === "Has Issues" && row.issues.length >= 3)
+    ) {
+      throw new Error("Staged import details should return validated row issues.");
+    }
+
     const tellerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1250,6 +1324,9 @@ async function run() {
     }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
+  } catch (error) {
+    error.message = `${error.message}\n\nServer output:\n${output}`;
+    throw error;
   } finally {
     server.kill();
     await wait(200);
@@ -1261,6 +1338,6 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error(error.message);
+  console.error(error.stack || error.message);
   process.exit(1);
 });

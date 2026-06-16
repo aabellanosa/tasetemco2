@@ -434,8 +434,27 @@ function Login({ onLogin }) {
 
 function MemberImportPreview({ existingMembers }) {
   const [csvText, setCsvText] = useState(sampleMemberImportCsv);
+  const [sourceLabel, setSourceLabel] = useState("CSV Paste");
+  const [importBatches, setImportBatches] = useState([]);
+  const [selectedImportBatch, setSelectedImportBatch] = useState(null);
+  const [importMessage, setImportMessage] = useState("");
+  const [importError, setImportError] = useState("");
+  const [isSavingImportBatch, setIsSavingImportBatch] = useState(false);
   const parsedImport = useMemo(() => parseMemberImportCsv(csvText), [csvText]);
   const [mapping, setMapping] = useState(() => suggestMemberImportMapping(parsedImport.headers));
+
+  const loadImportBatches = useCallback(async () => {
+    try {
+      const batches = await api("/api/member-import-batches");
+      setImportBatches(batches);
+    } catch (batchError) {
+      setImportError(batchError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadImportBatches();
+  }, [loadImportBatches]);
 
   useEffect(() => {
     setMapping((currentMapping) => {
@@ -475,6 +494,42 @@ function MemberImportPreview({ existingMembers }) {
     setMapping(suggestMemberImportMapping(parsedImport.headers));
   }
 
+  async function createImportBatch() {
+    setImportMessage("");
+    setImportError("");
+    setIsSavingImportBatch(true);
+
+    try {
+      const data = await api("/api/member-import-batches", {
+        method: "POST",
+        body: JSON.stringify({
+          sourceLabel,
+          rows: previewRows
+        })
+      });
+
+      setSelectedImportBatch(data);
+      setImportMessage(`${data.batch.importNo} staged with ${data.batch.readyRows} ready rows and ${data.batch.issueRows} issue rows.`);
+      await loadImportBatches();
+    } catch (batchError) {
+      setImportError(batchError.message);
+    } finally {
+      setIsSavingImportBatch(false);
+    }
+  }
+
+  async function openImportBatch(importNo) {
+    setImportMessage("");
+    setImportError("");
+
+    try {
+      const data = await api(`/api/member-import-batches/${importNo}`);
+      setSelectedImportBatch(data);
+    } catch (batchError) {
+      setImportError(batchError.message);
+    }
+  }
+
   return (
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
@@ -507,6 +562,32 @@ function MemberImportPreview({ existingMembers }) {
           fontSize="sm"
         />
       </FormControl>
+
+      <Grid templateColumns={{ base: "1fr", md: "1fr auto" }} gap={4} alignItems="end" mb={4}>
+        <FormControl>
+          <FormLabel>Import Source Label</FormLabel>
+          <Input value={sourceLabel} onChange={(event) => setSourceLabel(event.target.value)} />
+        </FormControl>
+        <Button
+          colorScheme="green"
+          onClick={createImportBatch}
+          isLoading={isSavingImportBatch}
+          isDisabled={previewRows.length === 0}
+        >
+          Create Import Batch
+        </Button>
+      </Grid>
+
+      {importMessage ? (
+        <Text color="green.600" mb={4}>
+          {importMessage}
+        </Text>
+      ) : null}
+      {importError ? (
+        <Text color="red.500" mb={4}>
+          {importError}
+        </Text>
+      ) : null}
 
       <Box borderWidth="1px" borderRadius="md" p={4} mb={4}>
         <Text fontWeight="bold" mb={3}>
@@ -615,6 +696,110 @@ function MemberImportPreview({ existingMembers }) {
           </Tbody>
         </Table>
       </TableContainer>
+
+      <Box borderWidth="1px" borderRadius="md" p={4} mt={5}>
+        <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+          <Text fontWeight="bold">Import Batch History</Text>
+          <Button size="sm" variant="outline" onClick={loadImportBatches}>
+            Refresh batches
+          </Button>
+        </Flex>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Batch No.</Th>
+                <Th>Source</Th>
+                <Th>Status</Th>
+                <Th isNumeric>Total</Th>
+                <Th isNumeric>Ready</Th>
+                <Th isNumeric>Issues</Th>
+                <Th>Created By</Th>
+                <Th>Created</Th>
+                <Th>Action</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {importBatches.map((batch) => (
+                <Tr key={batch.importNo}>
+                  <Td>{batch.importNo}</Td>
+                  <Td>{batch.sourceLabel}</Td>
+                  <Td>
+                    <Badge colorScheme="blue">{batch.status}</Badge>
+                  </Td>
+                  <Td isNumeric>{batch.totalRows}</Td>
+                  <Td isNumeric>{batch.readyRows}</Td>
+                  <Td isNumeric>{batch.issueRows}</Td>
+                  <Td>{batch.createdBy}</Td>
+                  <Td>{formatDateTime(batch.createdAt)}</Td>
+                  <Td>
+                    <Button size="sm" onClick={() => openImportBatch(batch.importNo)}>
+                      View
+                    </Button>
+                  </Td>
+                </Tr>
+              ))}
+              {importBatches.length === 0 ? (
+                <Tr>
+                  <Td colSpan={9} color="gray.500">
+                    No staged import batches yet.
+                  </Td>
+                </Tr>
+              ) : null}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+
+      {selectedImportBatch ? (
+        <Box borderWidth="1px" borderRadius="md" p={4} mt={5}>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+            <Box>
+              <Text fontWeight="bold">{selectedImportBatch.batch.importNo} Details</Text>
+              <Text color="gray.600" fontSize="sm">
+                Staged only. Ready rows are not yet written to active members.
+              </Text>
+            </Box>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedImportBatch(null)}>
+              Close
+            </Button>
+          </Flex>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Row</Th>
+                  <Th>Member No.</Th>
+                  <Th>Name</Th>
+                  <Th>Cluster</Th>
+                  <Th>Contact</Th>
+                  <Th>Status</Th>
+                  <Th>Row Status</Th>
+                  <Th>Issues</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {selectedImportBatch.rows.map((row) => (
+                  <Tr key={`${selectedImportBatch.batch.importNo}-${row.rowNumber}`}>
+                    <Td>{row.rowNumber}</Td>
+                    <Td>{row.memberNo || "-"}</Td>
+                    <Td>{row.name || "-"}</Td>
+                    <Td>{row.group || "-"}</Td>
+                    <Td>{row.contactNumber || "-"}</Td>
+                    <Td>{row.status}</Td>
+                    <Td>
+                      <Badge colorScheme={row.rowStatus === "Ready" ? "green" : "orange"}>{row.rowStatus}</Badge>
+                    </Td>
+                    <Td>
+                      {row.issues.length > 0 ? row.issues.join(", ") : "Ready"}
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
     </Box>
   );
 }

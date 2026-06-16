@@ -221,6 +221,10 @@ export const memberApplications = [
   }
 ];
 
+export const memberImportBatches = [];
+
+export const memberImportRows = [];
+
 export const initialPayments = [
   {
     id: "IP-2026-0001",
