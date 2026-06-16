@@ -26,6 +26,11 @@ import {
   StatHelpText,
   StatLabel,
   StatNumber,
+  Tab,
+  TabList,
+  TabPanel,
+  TabPanels,
+  Tabs,
   Table,
   TableContainer as ChakraTableContainer,
   Tbody,
@@ -1299,6 +1304,24 @@ function Members({ user }) {
         </Button>
       </Flex>
 
+      <Tabs variant="enclosed" colorScheme="green" isLazy>
+        <TabList overflowX="auto" overflowY="hidden" maxW="100%">
+          {(canCreateApplication || canViewApplications) ? <Tab flexShrink={0}>Applications</Tab> : null}
+          {canEditMemberProfile ? <Tab flexShrink={0}>Imports</Tab> : null}
+          {canUseTellerWorkspace ? <Tab flexShrink={0}>Teller Transactions</Tab> : null}
+          <Tab flexShrink={0}>Member Directory</Tab>
+          {(canViewInitialPayments ||
+            canViewShareCapitalContributions ||
+            canViewSavingsDeposits ||
+            canViewSavingsWithdrawals) ? (
+            <Tab flexShrink={0}>Transaction History</Tab>
+          ) : null}
+        </TabList>
+
+        <TabPanels>
+          {(canCreateApplication || canViewApplications) ? (
+            <TabPanel px={0}>
+              <VStack align="stretch" spacing={5}>
       {canCreateApplication ? (
         <Box as="form" onSubmit={submitApplication} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Heading size="md" mb={1}>
@@ -1399,9 +1422,19 @@ function Members({ user }) {
           </TableContainer>
         </Box>
       ) : null}
+              </VStack>
+            </TabPanel>
+          ) : null}
 
-      {canEditMemberProfile ? <MemberImportPreview existingMembers={members} /> : null}
+          {canEditMemberProfile ? (
+            <TabPanel px={0}>
+              <MemberImportPreview existingMembers={members} />
+            </TabPanel>
+          ) : null}
 
+          {canUseTellerWorkspace ? (
+            <TabPanel px={0}>
+              <VStack align="stretch" spacing={5}>
       {canUseTellerWorkspace ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Heading size="md" mb={1}>
@@ -1765,7 +1798,12 @@ function Members({ user }) {
           </Box>
         </Box>
       ) : null}
+              </VStack>
+            </TabPanel>
+          ) : null}
 
+          <TabPanel px={0}>
+            <VStack align="stretch" spacing={5}>
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" mb={4}>
           <Heading size="md">Active Members</Heading>
@@ -1987,7 +2025,15 @@ function Members({ user }) {
           </TableContainer>
         </Box>
       ) : null}
+            </VStack>
+          </TabPanel>
 
+          {(canViewInitialPayments ||
+            canViewShareCapitalContributions ||
+            canViewSavingsDeposits ||
+            canViewSavingsWithdrawals) ? (
+            <TabPanel px={0}>
+              <VStack align="stretch" spacing={5}>
       {canViewInitialPayments ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Heading size="md" mb={4}>
@@ -2169,6 +2215,11 @@ function Members({ user }) {
           </TableContainer>
         </Box>
       ) : null}
+              </VStack>
+            </TabPanel>
+          ) : null}
+        </TabPanels>
+      </Tabs>
 
       <Modal isOpen={approvalNotice.isOpen} onClose={approvalNotice.onClose} isCentered>
         <ModalOverlay />
