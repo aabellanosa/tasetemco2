@@ -171,6 +171,10 @@ Member Import Finalize v1 lets the `admin` user finalize a staged import batch. 
 
 Opening Balance Import Planning v0 adds a preview-only Ledger panel for existing member financial balances at cutover. Admin and Bookkeeper can paste CSV rows, map member number/name, share capital opening balance, savings opening balance, cutover date, and source reference, then review validation issues before any balance write exists. Unknown columns remain visible but unmapped.
 
+The Ledger workspace uses role-aware tabs so users open one ledger work area at a time. Batch Review contains cash count, review/post/close actions, and unposted teller batch rows; Opening Balances contains the cutover balance preview; Batch History contains closed/submitted batch evidence; Posted Entries contains journal entries.
+
+Opening Balance Import Staging schema v1 adds Postgres tables for future staged cutover balance batches and rows. It does not yet save or finalize opening balances from the UI. Run `npm run pg:migrate` against the target database before deploying this app build.
+
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.

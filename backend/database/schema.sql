@@ -70,6 +70,41 @@ CREATE TABLE IF NOT EXISTS member_import_rows (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS opening_balance_import_batches (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  import_no VARCHAR(40) NOT NULL UNIQUE,
+  source_label VARCHAR(160) NOT NULL DEFAULT 'CSV Paste',
+  status VARCHAR(40) NOT NULL DEFAULT 'Staged',
+  total_rows INT NOT NULL DEFAULT 0,
+  ready_rows INT NOT NULL DEFAULT 0,
+  issue_rows INT NOT NULL DEFAULT 0,
+  total_share_capital INT NOT NULL DEFAULT 0,
+  total_savings INT NOT NULL DEFAULT 0,
+  created_by VARCHAR(80) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  finalized_by VARCHAR(80),
+  finalized_at TIMESTAMP NULL,
+  finalized_rows INT NOT NULL DEFAULT 0,
+  skipped_rows INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS opening_balance_import_rows (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  import_no VARCHAR(40) NOT NULL,
+  row_no INT NOT NULL,
+  member_no VARCHAR(40) NOT NULL DEFAULT '',
+  member_name VARCHAR(180) NOT NULL DEFAULT '',
+  share_capital_opening_balance INT NOT NULL DEFAULT 0,
+  savings_opening_balance INT NOT NULL DEFAULT 0,
+  cutover_date DATE,
+  source_reference VARCHAR(120) NOT NULL DEFAULT '',
+  row_status VARCHAR(40) NOT NULL DEFAULT 'Ready',
+  issues TEXT NOT NULL,
+  raw_data JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  finalized_at TIMESTAMP NULL
+);
+
 CREATE TABLE IF NOT EXISTS initial_member_payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   payment_no VARCHAR(40) NOT NULL UNIQUE,

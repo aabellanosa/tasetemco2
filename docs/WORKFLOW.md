@@ -210,6 +210,10 @@ Member Import Finalize v1 lets the System Administrator finalize a staged import
 
 Opening Balance Import Planning v0 adds a preview-only Ledger panel for cutover balances. The System Administrator and Accountant / Bookkeeper can paste CSV rows, map the current opening-balance fields, and review validation issues for member number, duplicate rows, non-negative share capital, non-negative savings, cutover date, and source reference. Unknown client Excel columns remain visible but unmapped until the cooperative confirms whether they should become system fields.
 
+The Ledger workspace uses role-aware tabs so users open one ledger work area at a time. Batch Review contains cash count, review/post/close actions, and unposted teller batch rows; Opening Balances contains the cutover balance preview; Batch History contains closed/submitted batch evidence; Posted Entries contains journal entries.
+
+Opening Balance Import Staging schema v1 adds Postgres tables for future staged cutover balance batches and rows. It does not yet save or finalize opening balances from the UI. Run `npm run pg:migrate` against the target database before deploying this app build.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -612,6 +616,8 @@ Member Import Staging v1 persists the preview into `member_import_batches` and `
 Member Import Finalize v1 adds finalization fields to import batches and keeps the accounting boundary intact: imported profile rows do not carry share capital or savings balances. Run `npm run pg:migrate` before deploying this app build to any Postgres target.
 
 Opening Balance Import Planning v0 is intentionally read-only. It prepares the future migration path for existing members' share capital and savings balances without asking Teller/Cashier to encode historical balances one by one. Later staging/finalization should reconcile subsidiary opening balances to general ledger opening balances.
+
+Opening Balance Import Staging schema v1 creates the future `opening_balance_import_batches` and `opening_balance_import_rows` tables. This is a schema-only foundation: it does not yet save UI previews or post opening balances. Run `npm run pg:migrate` before deploying this app build to any Postgres target.
 
 ## 7. Audit Trail Requirements
 

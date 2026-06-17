@@ -14,6 +14,8 @@ import {
   memberImportBatches,
   memberImportRows,
   members,
+  openingBalanceImportBatches,
+  openingBalanceImportRows,
   publicUser,
   roles,
   roleViews,
@@ -60,6 +62,8 @@ const persistedTables = [
   "share_capital_contributions",
   "savings_withdrawals",
   "teller_batches",
+  "opening_balance_import_rows",
+  "opening_balance_import_batches",
   "member_import_rows",
   "member_import_batches",
   "member_applications",
@@ -105,6 +109,36 @@ const requiredSchemaColumns = {
     "member_status",
     "row_status",
     "issues"
+  ],
+  opening_balance_import_batches: [
+    "import_no",
+    "source_label",
+    "status",
+    "total_rows",
+    "ready_rows",
+    "issue_rows",
+    "total_share_capital",
+    "total_savings",
+    "created_by",
+    "created_at",
+    "finalized_by",
+    "finalized_at",
+    "finalized_rows",
+    "skipped_rows"
+  ],
+  opening_balance_import_rows: [
+    "import_no",
+    "row_no",
+    "member_no",
+    "member_name",
+    "share_capital_opening_balance",
+    "savings_opening_balance",
+    "cutover_date",
+    "source_reference",
+    "row_status",
+    "issues",
+    "raw_data",
+    "finalized_at"
   ]
 };
 

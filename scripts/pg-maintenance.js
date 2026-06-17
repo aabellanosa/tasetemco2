@@ -22,6 +22,8 @@ const tables = [
   "share_capital_contributions",
   "savings_withdrawals",
   "teller_batches",
+  "opening_balance_import_rows",
+  "opening_balance_import_batches",
   "member_import_rows",
   "member_import_batches",
   "member_applications",

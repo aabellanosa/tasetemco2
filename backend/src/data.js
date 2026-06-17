@@ -225,6 +225,10 @@ export const memberImportBatches = [];
 
 export const memberImportRows = [];
 
+export const openingBalanceImportBatches = [];
+
+export const openingBalanceImportRows = [];
+
 export const initialPayments = [
   {
     id: "IP-2026-0001",
