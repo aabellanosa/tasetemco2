@@ -2658,7 +2658,11 @@ function Ledger({ user }) {
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
   const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
   const canCloseTellerBatch = user.permissions.includes("ledger:teller-batches:close");
-  const canPreviewOpeningBalances = user.username === "admin" || user.role === "Accountant / Bookkeeper";
+  const canPreviewOpeningBalances =
+    user.username === "admin" ||
+    user.role === "System Administrator" ||
+    canReviewTellerBatch ||
+    canPostTellerBatch;
   const needsVarianceNote = activeBatch?.status === "Submitted" && Number(activeBatch.variance || 0) !== 0;
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
   const activeBatchHistory = activeBatch ? tellerBatches.find((batch) => batch.id === activeBatch.id) : null;
