@@ -1174,6 +1174,53 @@ async function createOpeningBalanceImportBatch(input, user) {
   }
 }
 
+async function rejectOpeningBalanceImportBatch(importNo, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const batch = openingBalanceImportBatches.find((item) => item.importNo === importNo || item.id === importNo);
+
+    if (!batch) {
+      return { error: "Opening balance import batch was not found.", statusCode: 404 };
+    }
+
+    if (batch.status !== "Staged") {
+      return { error: "Only staged opening balance batches can be rejected.", statusCode: 409 };
+    }
+
+    batch.status = "Rejected";
+    batch.finalizedBy = user.username;
+    batch.finalizedAt = new Date().toISOString();
+    return { batch: mapOpeningBalanceImportBatch(batch) };
+  }
+
+  const [existingRows] = await db.execute(
+    `SELECT import_no AS importNo, status
+     FROM opening_balance_import_batches
+     WHERE import_no = ?
+     LIMIT 1`,
+    [importNo]
+  );
+
+  if (existingRows.length === 0) {
+    return { error: "Opening balance import batch was not found.", statusCode: 404 };
+  }
+
+  if (existingRows[0].status !== "Staged") {
+    return { error: "Only staged opening balance batches can be rejected.", statusCode: 409 };
+  }
+
+  await db.execute(
+    `UPDATE opening_balance_import_batches
+     SET status = 'Rejected', finalized_by = ?, finalized_at = CURRENT_TIMESTAMP
+     WHERE import_no = ?`,
+    [user.username, importNo]
+  );
+
+  const result = await getOpeningBalanceImportBatch(importNo);
+  return { batch: result.batch };
+}
+
 async function nextMemberImportNo(connection = null) {
   const db = connection || (await getPool());
 
@@ -5406,6 +5453,29 @@ app.get("/api/ledger/opening-balance-import-batches/:importNo", async (request, 
   }
 
   const result = await getOpeningBalanceImportBatch(request.params.importNo);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/ledger/opening-balance-import-batches/:importNo/reject", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user)) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await rejectOpeningBalanceImportBatch(request.params.importNo, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

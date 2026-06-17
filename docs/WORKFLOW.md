@@ -216,6 +216,8 @@ Opening Balance Import Staging schema v1 adds Postgres tables for future staged 
 
 Opening Balance Import Staging v1 lets the System Administrator and Accountant / Bookkeeper save the mapped opening-balance preview as a staged batch. Staged batches show ready rows, issue rows, share capital total, savings total, source label, creator, and timestamp. This still does not finalize balances, update member statements, or create journal entries.
 
+Opening Balance Import Details v1 lets the System Administrator and Accountant / Bookkeeper open staged batches to inspect row-level status, validation issues, and raw source values. The System Administrator can reject a staged batch when it should be excluded from future finalization; rejected batches remain visible as audit evidence.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -622,6 +624,8 @@ Opening Balance Import Planning v0 is intentionally read-only. It prepares the f
 Opening Balance Import Staging schema v1 creates the future `opening_balance_import_batches` and `opening_balance_import_rows` tables. This is a schema-only foundation: it does not yet save UI previews or post opening balances. Run `npm run pg:migrate` before deploying this app build to any Postgres target.
 
 Opening Balance Import Staging v1 stores the preview into the opening-balance staging tables and lists saved batches in Ledger. It remains a review queue only; a later finalization spike should apply approved opening balances and create the related accounting evidence.
+
+Opening Balance Import Details v1 adds row-level batch inspection and Admin-only rejection. Rejection changes the staged batch status to `Rejected` and keeps the batch in history for audit review.
 
 ## 7. Audit Trail Requirements
 

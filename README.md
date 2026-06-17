@@ -177,6 +177,8 @@ Opening Balance Import Staging schema v1 adds Postgres tables for future staged 
 
 Opening Balance Import Staging v1 lets Admin and Bookkeeper save the mapped opening-balance preview as a staged batch. Staged batches show ready rows, issue rows, share capital total, savings total, source label, creator, and timestamp. This still does not finalize balances, update member statements, or create journal entries.
 
+Opening Balance Import Details v1 lets Admin and Bookkeeper open staged batches to inspect row-level status, validation issues, and raw source values. Admin can reject a staged batch when it should be excluded from future finalization; rejected batches remain visible as audit evidence.
+
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.

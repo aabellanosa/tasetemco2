@@ -737,6 +737,47 @@ async function run() {
       throw new Error("Duplicate opening balance member numbers should be staged as issue rows.");
     }
 
+    const openingBalanceDetails = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-import-batches/${stagedOpeningBalanceBody.batch.importNo}`,
+      {
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const openingBalanceDetailsBody = await openingBalanceDetails.json();
+
+    if (
+      !openingBalanceDetails.ok ||
+      openingBalanceDetailsBody.batch.importNo !== stagedOpeningBalanceBody.batch.importNo ||
+      openingBalanceDetailsBody.rows.length !== 1
+    ) {
+      throw new Error("Bookkeeper should be able to view opening balance batch details.");
+    }
+
+    const forbiddenOpeningBalanceReject = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-import-batches/${stagedOpeningBalanceBody.batch.importNo}/reject`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+
+    if (forbiddenOpeningBalanceReject.status !== 403) {
+      throw new Error("Opening balance batch rejection should be restricted to admin.");
+    }
+
+    const adminOpeningBalanceReject = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-import-batches/${duplicateOpeningBalanceBody.batch.importNo}/reject`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie }
+      }
+    );
+    const adminOpeningBalanceRejectBody = await adminOpeningBalanceReject.json();
+
+    if (!adminOpeningBalanceReject.ok || adminOpeningBalanceRejectBody.batch.status !== "Rejected") {
+      throw new Error("Admin should be able to reject staged opening balance batches.");
+    }
+
     const ledgerBeforePosting = await fetch(`${baseUrl}/api/ledger`, {
       headers: { Cookie: bookkeeperCookie }
     });

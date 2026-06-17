@@ -1048,7 +1048,7 @@ function Dashboard() {
   );
 }
 
-function OpeningBalancePreview({ memberLookup }) {
+function OpeningBalancePreview({ memberLookup, user }) {
   const [csvText, setCsvText] = useState(sampleOpeningBalanceCsv);
   const parsedImport = useMemo(() => parseMemberImportCsv(csvText), [csvText]);
   const [mapping, setMapping] = useState(() => suggestOpeningBalanceMapping(parsedImport.headers));
@@ -1059,6 +1059,11 @@ function OpeningBalancePreview({ memberLookup }) {
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingBatches, setIsLoadingBatches] = useState(false);
+  const [selectedBatchDetails, setSelectedBatchDetails] = useState(null);
+  const [loadingDetailsId, setLoadingDetailsId] = useState("");
+  const [isRejectingBatch, setIsRejectingBatch] = useState(false);
+  const batchDetails = useDisclosure();
+  const canRejectOpeningBalanceBatch = user.username === "admin" || user.role === "System Administrator";
 
   useEffect(() => {
     setMapping((currentMapping) => {
@@ -1156,6 +1161,44 @@ function OpeningBalancePreview({ memberLookup }) {
       setError(saveError.message);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function openBatchDetails(importNo) {
+    setError("");
+    setLoadingDetailsId(importNo);
+
+    try {
+      const data = await api(`/api/ledger/opening-balance-import-batches/${importNo}`);
+      setSelectedBatchDetails(data);
+      batchDetails.onOpen();
+    } catch (detailsError) {
+      setError(detailsError.message);
+    } finally {
+      setLoadingDetailsId("");
+    }
+  }
+
+  async function rejectSelectedBatch() {
+    if (!selectedBatchDetails) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setIsRejectingBatch(true);
+
+    try {
+      const data = await api(`/api/ledger/opening-balance-import-batches/${selectedBatchDetails.batch.importNo}/reject`, {
+        method: "POST"
+      });
+      setSelectedBatchDetails((current) => (current ? { ...current, batch: data.batch } : current));
+      setMessage(`${data.batch.importNo} rejected.`);
+      await loadStagedBatches();
+    } catch (rejectError) {
+      setError(rejectError.message);
+    } finally {
+      setIsRejectingBatch(false);
     }
   }
 
@@ -1365,6 +1408,7 @@ function OpeningBalancePreview({ memberLookup }) {
               <Th isNumeric>Savings</Th>
               <Th>Created By</Th>
               <Th>Created</Th>
+              <Th>Details</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -1381,17 +1425,125 @@ function OpeningBalancePreview({ memberLookup }) {
                 <Td isNumeric>{formatMoney(batch.totalSavings)}</Td>
                 <Td>{batch.createdBy}</Td>
                 <Td>{formatDateTime(batch.createdAt)}</Td>
+                <Td>
+                  <Button
+                    size="sm"
+                    onClick={() => openBatchDetails(batch.importNo)}
+                    isLoading={loadingDetailsId === batch.importNo}
+                  >
+                    View
+                  </Button>
+                </Td>
               </Tr>
             ))}
             {stagedBatches.length === 0 ? (
               <Tr>
-                <Td colSpan={9} color="gray.500">No staged opening balance batches yet.</Td>
+                <Td colSpan={10} color="gray.500">No staged opening balance batches yet.</Td>
               </Tr>
             ) : null}
           </Tbody>
         </Table>
       </TableContainer>
     </Box>
+
+    <Modal isOpen={batchDetails.isOpen} onClose={batchDetails.onClose} size="6xl" scrollBehavior="inside">
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>
+          {selectedBatchDetails ? `Opening Balance Batch - ${selectedBatchDetails.batch.importNo}` : "Opening Balance Batch"}
+        </ModalHeader>
+        <ModalBody>
+          {selectedBatchDetails ? (
+            <VStack align="stretch" spacing={5}>
+              <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Status</Text>
+                  <Badge colorScheme={selectedBatchDetails.batch.status === "Rejected" ? "red" : "blue"}>
+                    {selectedBatchDetails.batch.status}
+                  </Badge>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Ready / Total</Text>
+                  <Text fontWeight="bold">
+                    {selectedBatchDetails.batch.readyRows} / {selectedBatchDetails.batch.totalRows}
+                  </Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Share Capital</Text>
+                  <Text fontWeight="bold">{formatMoney(selectedBatchDetails.batch.totalShareCapital)}</Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Savings</Text>
+                  <Text fontWeight="bold">{formatMoney(selectedBatchDetails.batch.totalSavings)}</Text>
+                </Box>
+              </Grid>
+
+              <TableContainer>
+                <Table size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Row</Th>
+                      <Th>Member</Th>
+                      <Th isNumeric>Share Capital</Th>
+                      <Th isNumeric>Savings</Th>
+                      <Th>Cutover</Th>
+                      <Th>Reference</Th>
+                      <Th>Status</Th>
+                      <Th>Raw Source</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {selectedBatchDetails.rows.map((row) => (
+                      <Tr key={row.id}>
+                        <Td>{row.rowNumber}</Td>
+                        <Td>
+                          <Text>{row.memberNo || "-"}</Text>
+                          <Text color="gray.500" fontSize="xs">{row.memberName || "-"}</Text>
+                        </Td>
+                        <Td isNumeric>{formatMoney(row.shareCapitalAmount)}</Td>
+                        <Td isNumeric>{formatMoney(row.savingsAmount)}</Td>
+                        <Td>{row.cutoverDate || "-"}</Td>
+                        <Td>{row.sourceReference || "-"}</Td>
+                        <Td>
+                          <VStack align="stretch" spacing={1}>
+                            <Badge colorScheme={row.rowStatus === "Ready" ? "green" : "orange"} width="fit-content">
+                              {row.rowStatus}
+                            </Badge>
+                            {row.issues.map((issue) => (
+                              <Badge key={issue} colorScheme="orange" width="fit-content">
+                                {issue}
+                              </Badge>
+                            ))}
+                          </VStack>
+                        </Td>
+                        <Td>
+                          <Text as="pre" whiteSpace="pre-wrap" fontSize="xs" maxW="260px">
+                            {JSON.stringify(row.rawData || {}, null, 2)}
+                          </Text>
+                        </Td>
+                      </Tr>
+                    ))}
+                    {selectedBatchDetails.rows.length === 0 ? (
+                      <Tr>
+                        <Td colSpan={8} color="gray.500">No staged rows found.</Td>
+                      </Tr>
+                    ) : null}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            </VStack>
+          ) : null}
+        </ModalBody>
+        <ModalFooter>
+          {selectedBatchDetails?.batch.status === "Staged" && canRejectOpeningBalanceBatch ? (
+            <Button colorScheme="red" variant="outline" mr={3} onClick={rejectSelectedBatch} isLoading={isRejectingBatch}>
+              Reject Batch
+            </Button>
+          ) : null}
+          <Button onClick={batchDetails.onClose}>Close</Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
     </VStack>
   );
 }
@@ -3134,7 +3286,7 @@ function Ledger({ user }) {
 
           {canPreviewOpeningBalances ? (
             <TabPanel px={0}>
-              <OpeningBalancePreview memberLookup={memberLookup} />
+              <OpeningBalancePreview memberLookup={memberLookup} user={user} />
             </TabPanel>
           ) : null}
 
