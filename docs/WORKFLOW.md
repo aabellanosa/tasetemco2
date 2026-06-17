@@ -212,6 +212,8 @@ Opening Balance Import Planning v0 adds a preview-only Ledger panel for cutover 
 
 The Ledger workspace uses role-aware tabs so users open one ledger work area at a time. Batch Review contains cash count, review/post/close actions, and unposted teller batch rows; Opening Balances contains the cutover balance preview; Batch History contains closed/submitted batch evidence; Posted Entries contains journal entries.
 
+Opening Balance Import Staging v1 lets the System Administrator and Accountant / Bookkeeper save the mapped cutover balance preview as a staged batch. Validation flags missing or unknown member numbers, duplicate member numbers in the upload, members already present in another staged opening-balance batch, invalid/negative amounts, invalid cutover dates, and missing source references. Staging preserves the review queue only; member balances, reports, and journal entries do not change until a later finalization spike.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -590,6 +592,8 @@ Member Import Staging v1 persists the preview into `member_import_batches` and `
 Member Import Finalize v1 adds finalization fields to import batches and keeps the accounting boundary intact: imported profile rows do not carry share capital or savings balances. Run `npm run pg:migrate` before deploying this app build to any Postgres target.
 
 Opening Balance Import Planning v0 is intentionally read-only. It prepares the future migration path for existing members' share capital and savings balances without asking Teller/Cashier to encode historical balances one by one. Later staging/finalization should reconcile subsidiary opening balances to general ledger opening balances.
+
+Opening Balance Import Staging v1 stores the preview into the opening-balance staging tables and lists saved batches in Ledger. It remains a review queue only; a later finalization spike should apply approved opening balances and create the related accounting evidence.
 
 ## 7. Audit Trail Requirements
 
