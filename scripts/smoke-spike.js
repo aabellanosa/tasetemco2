@@ -166,6 +166,14 @@ async function run() {
       throw new Error("Manager should be denied member application approval.");
     }
 
+    const forbiddenOpeningBalanceLookup = await fetch(`${baseUrl}/api/ledger/member-lookup`, {
+      headers: { Cookie: managerCookie }
+    });
+
+    if (forbiddenOpeningBalanceLookup.status !== 403) {
+      throw new Error("Manager should be denied opening balance member lookup.");
+    }
+
     const adminLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -579,6 +587,18 @@ async function run() {
 
     if (!bookkeeperLogin.ok || !bookkeeperBody.user.permissions.includes("ledger:teller-batches:post")) {
       throw new Error("Bookkeeper should be allowed to post teller batches.");
+    }
+
+    const bookkeeperOpeningBalanceLookup = await fetch(`${baseUrl}/api/ledger/member-lookup`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const bookkeeperOpeningBalanceLookupBody = await bookkeeperOpeningBalanceLookup.json();
+
+    if (
+      !bookkeeperOpeningBalanceLookup.ok ||
+      !bookkeeperOpeningBalanceLookupBody.some((member) => member.id === approvalBody.member.id)
+    ) {
+      throw new Error("Bookkeeper should access member lookup for opening balance preview.");
     }
 
     const ledgerBeforePosting = await fetch(`${baseUrl}/api/ledger`, {

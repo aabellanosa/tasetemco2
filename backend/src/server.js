@@ -454,6 +454,29 @@ async function listMembers() {
   return rows;
 }
 
+async function listLedgerMemberLookup() {
+  const db = await getPool();
+
+  if (!db) {
+    return members.map((member) => ({
+      id: member.id,
+      name: member.name,
+      status: member.status,
+      share: member.share,
+      savings: member.savings
+    }));
+  }
+
+  const [rows] = await db.execute(
+    `SELECT member_no AS id, full_name AS name, status,
+            share_capital AS share, savings_balance AS savings
+     FROM members
+     ORDER BY member_no`
+  );
+
+  return rows;
+}
+
 function normalizeOptionalDate(value) {
   const trimmed = String(value || "").trim();
 
@@ -4886,6 +4909,22 @@ app.get("/api/ledger", async (request, response) => {
     latestCashCount: hasPermission(user, "teller-cash-counts:view") ? await getLatestTellerCashCount() : null,
     journalEntries: await listJournalEntries()
   });
+});
+
+app.get("/api/ledger/member-lookup", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user) && !hasPermission(user, "ledger:teller-batches:review")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listLedgerMemberLookup());
 });
 
 app.get("/api/reports/daily-cash-position", async (request, response) => {

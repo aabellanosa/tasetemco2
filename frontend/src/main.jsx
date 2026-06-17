@@ -337,6 +337,130 @@ function buildMemberImportPreview(rows, mapping, existingMembers = []) {
   });
 }
 
+const openingBalanceFields = [
+  { key: "memberNo", label: "Member No.", aliases: ["member no", "member number", "member id", "account no", "account number"] },
+  { key: "memberName", label: "Member Name", aliases: ["member name", "full name", "name"] },
+  {
+    key: "shareCapitalOpeningBalance",
+    label: "Share Capital Opening Balance",
+    aliases: ["share capital", "share capital opening balance", "share balance", "capital share", "paid up share"]
+  },
+  {
+    key: "savingsOpeningBalance",
+    label: "Savings Opening Balance",
+    aliases: ["savings", "savings opening balance", "savings balance", "deposit balance"]
+  },
+  { key: "cutoverDate", label: "Cutover Date", aliases: ["cutover date", "as of date", "balance date", "date"] },
+  { key: "sourceReference", label: "Source Reference", aliases: ["source reference", "reference", "sheet", "file", "batch reference"] }
+];
+
+const sampleOpeningBalanceCsv = `Member No.,Member Name,Share Capital,Savings,Cutover Date,Source Reference
+M-000482,Maria L. Santos,62000,184500,2026-06-30,Excel June 2026
+M-000517,Benito P. Cruz,44000,76800,2026-06-30,Excel June 2026`;
+
+function suggestOpeningBalanceMapping(headers) {
+  return openingBalanceFields.reduce((mapping, field) => {
+    const matchedHeader = headers.find((header) => field.aliases.includes(normalizeImportHeader(header)));
+    return {
+      ...mapping,
+      [field.key]: matchedHeader || ""
+    };
+  }, {});
+}
+
+function parseOpeningBalanceAmount(value) {
+  const cleanedValue = String(value || "")
+    .replace(/[,\s]/g, "")
+    .replace(/^PHP/i, "")
+    .trim();
+
+  if (!cleanedValue) {
+    return { value: 0 };
+  }
+
+  const amount = Number(cleanedValue);
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { value: 0, error: "Invalid amount" };
+  }
+
+  return { value: amount };
+}
+
+function buildOpeningBalancePreview(rows, mapping, memberLookup = []) {
+  const memberMap = new Map(memberLookup.map((member) => [member.id, member]));
+  const seenMemberNos = new Set();
+  const duplicateMemberNos = new Set();
+  const mappedRows = rows.map((row, rowIndex) => {
+    const mapped = openingBalanceFields.reduce((values, field) => {
+      const sourceColumn = mapping[field.key];
+      return {
+        ...values,
+        [field.key]: sourceColumn ? String(row[sourceColumn] || "").trim() : ""
+      };
+    }, {});
+
+    if (mapped.memberNo) {
+      if (seenMemberNos.has(mapped.memberNo)) {
+        duplicateMemberNos.add(mapped.memberNo);
+      }
+      seenMemberNos.add(mapped.memberNo);
+    }
+
+    return {
+      rowNumber: rowIndex + 2,
+      ...mapped
+    };
+  });
+
+  return mappedRows.map((row) => {
+    const issues = [];
+    const warnings = [];
+    const member = memberMap.get(row.memberNo);
+    const shareCapital = parseOpeningBalanceAmount(row.shareCapitalOpeningBalance);
+    const savings = parseOpeningBalanceAmount(row.savingsOpeningBalance);
+
+    if (!row.memberNo) {
+      issues.push("Missing member no.");
+    } else if (!member) {
+      issues.push("Member no. was not found");
+    }
+
+    if (row.memberNo && duplicateMemberNos.has(row.memberNo)) {
+      issues.push("Duplicate member no. in upload");
+    }
+
+    if (shareCapital.error) {
+      issues.push("Invalid share capital amount");
+    }
+
+    if (savings.error) {
+      issues.push("Invalid savings amount");
+    }
+
+    if (!isValidImportDate(row.cutoverDate)) {
+      issues.push("Invalid cutover date");
+    }
+
+    if (!row.sourceReference) {
+      issues.push("Missing source reference");
+    }
+
+    if (member && row.memberName && normalizeImportHeader(member.name) !== normalizeImportHeader(row.memberName)) {
+      warnings.push(`Name differs from system record: ${member.name}`);
+    }
+
+    return {
+      ...row,
+      systemMemberName: member?.name || "",
+      shareCapitalAmount: shareCapital.value,
+      savingsAmount: savings.value,
+      issues,
+      warnings
+    };
+  });
+}
+
 function buildTellerBatchSummary(rows) {
   return rows.reduce(
     (summary, row) => {
@@ -904,6 +1028,219 @@ function Dashboard() {
         </VStack>
       </Box>
     </VStack>
+  );
+}
+
+function OpeningBalancePreview({ memberLookup }) {
+  const [csvText, setCsvText] = useState(sampleOpeningBalanceCsv);
+  const parsedImport = useMemo(() => parseMemberImportCsv(csvText), [csvText]);
+  const [mapping, setMapping] = useState(() => suggestOpeningBalanceMapping(parsedImport.headers));
+
+  useEffect(() => {
+    setMapping((currentMapping) => {
+      const nextMapping = suggestOpeningBalanceMapping(parsedImport.headers);
+      return openingBalanceFields.reduce((values, field) => {
+        const currentSource = currentMapping[field.key];
+        return {
+          ...values,
+          [field.key]: parsedImport.headers.includes(currentSource) ? currentSource : nextMapping[field.key]
+        };
+      }, {});
+    });
+  }, [parsedImport.headers.join("|")]);
+
+  const previewRows = useMemo(
+    () => buildOpeningBalancePreview(parsedImport.rows, mapping, memberLookup),
+    [parsedImport.rows, mapping, memberLookup]
+  );
+  const issueCount = previewRows.reduce((total, row) => total + row.issues.length, parsedImport.errors.length);
+  const warningCount = previewRows.reduce((total, row) => total + row.warnings.length, 0);
+  const validRowCount = previewRows.filter((row) => row.issues.length === 0).length;
+  const shareCapitalTotal = previewRows
+    .filter((row) => row.issues.length === 0)
+    .reduce((total, row) => total + row.shareCapitalAmount, 0);
+  const savingsTotal = previewRows
+    .filter((row) => row.issues.length === 0)
+    .reduce((total, row) => total + row.savingsAmount, 0);
+
+  function updateMapping(fieldKey, sourceColumn) {
+    setMapping((current) => ({
+      ...current,
+      [fieldKey]: sourceColumn
+    }));
+  }
+
+  function resetToSampleCsv() {
+    setCsvText(sampleOpeningBalanceCsv);
+    setMapping(suggestOpeningBalanceMapping(parseMemberImportCsv(sampleOpeningBalanceCsv).headers));
+  }
+
+  function autoMapColumns() {
+    setMapping(suggestOpeningBalanceMapping(parsedImport.headers));
+  }
+
+  return (
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+        <Box>
+          <Heading size="md">Opening Balance Import Preview</Heading>
+          <Text color="gray.600" mt={1}>
+            Preview only. Opening balances are not saved from this panel.
+          </Text>
+        </Box>
+        <HStack spacing={3} flexWrap="wrap">
+          <Button size="sm" variant="outline" onClick={resetToSampleCsv}>
+            Load sample CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={autoMapColumns}>
+            Auto-map columns
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCsvText("")}>
+            Clear
+          </Button>
+        </HStack>
+      </Flex>
+
+      <FormControl mb={4}>
+        <FormLabel>CSV Paste Area</FormLabel>
+        <Textarea
+          value={csvText}
+          onChange={(event) => setCsvText(event.target.value)}
+          minH="130px"
+          fontFamily="mono"
+          fontSize="sm"
+        />
+      </FormControl>
+
+      <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={4}>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Valid Rows</Text>
+          <Text fontWeight="bold">{validRowCount} / {previewRows.length}</Text>
+        </Box>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Share Capital Total</Text>
+          <Text fontWeight="bold">{formatMoney(shareCapitalTotal)}</Text>
+        </Box>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Savings Total</Text>
+          <Text fontWeight="bold">{formatMoney(savingsTotal)}</Text>
+        </Box>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Issues / Warnings</Text>
+          <Text fontWeight="bold">{issueCount} / {warningCount}</Text>
+        </Box>
+      </Grid>
+
+      <Box borderWidth="1px" borderRadius="md" p={4} mb={4}>
+        <Text fontWeight="bold" mb={3}>Detected Columns</Text>
+        <HStack spacing={2} flexWrap="wrap">
+          {parsedImport.headers.length > 0 ? (
+            parsedImport.headers.map((header) => (
+              <Badge key={header} colorScheme="blue" variant="subtle">
+                {header}
+              </Badge>
+            ))
+          ) : (
+            <Text color="gray.500">No header row detected.</Text>
+          )}
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderRadius="md" p={4} mb={4}>
+        <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+          <Text fontWeight="bold">Column Mapping</Text>
+          <Text color={issueCount > 0 ? "orange.600" : "green.600"} fontSize="sm">
+            Unknown columns can stay as Do not import.
+          </Text>
+        </Flex>
+        <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={4}>
+          {openingBalanceFields.map((field) => (
+            <FormControl key={field.key}>
+              <FormLabel>{field.label}</FormLabel>
+              <Select value={mapping[field.key] || ""} onChange={(event) => updateMapping(field.key, event.target.value)}>
+                <option value="">Do not import</option>
+                {parsedImport.headers.map((header) => (
+                  <option key={header} value={header}>
+                    {header}
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+          ))}
+        </Grid>
+      </Box>
+
+      {parsedImport.errors.length > 0 ? (
+        <Box borderWidth="1px" borderRadius="md" p={4} mb={4} borderColor="orange.200" bg="orange.50">
+          <Text fontWeight="bold" mb={2}>CSV Structure Issues</Text>
+          <VStack align="stretch" spacing={1}>
+            {parsedImport.errors.map((importError) => (
+              <Text key={importError} color="orange.700" fontSize="sm">
+                {importError}
+              </Text>
+            ))}
+          </VStack>
+        </Box>
+      ) : null}
+
+      <TableContainer>
+        <Table size="sm">
+          <Thead>
+            <Tr>
+              <Th>Row</Th>
+              <Th>Member No.</Th>
+              <Th>Member Name</Th>
+              <Th isNumeric>Share Capital</Th>
+              <Th isNumeric>Savings</Th>
+              <Th>Cutover</Th>
+              <Th>Reference</Th>
+              <Th>Issues</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {previewRows.map((row) => (
+              <Tr key={row.rowNumber}>
+                <Td>{row.rowNumber}</Td>
+                <Td>{row.memberNo || "-"}</Td>
+                <Td>
+                  <Text>{row.memberName || "-"}</Text>
+                  {row.systemMemberName ? (
+                    <Text color="gray.500" fontSize="xs">System: {row.systemMemberName}</Text>
+                  ) : null}
+                </Td>
+                <Td isNumeric>{formatMoney(row.shareCapitalAmount)}</Td>
+                <Td isNumeric>{formatMoney(row.savingsAmount)}</Td>
+                <Td>{row.cutoverDate || "-"}</Td>
+                <Td>{row.sourceReference || "-"}</Td>
+                <Td>
+                  {row.issues.length > 0 || row.warnings.length > 0 ? (
+                    <VStack align="stretch" spacing={1}>
+                      {row.issues.map((issue) => (
+                        <Badge key={issue} colorScheme="orange" width="fit-content">
+                          {issue}
+                        </Badge>
+                      ))}
+                      {row.warnings.map((warning) => (
+                        <Badge key={warning} colorScheme="yellow" width="fit-content">
+                          {warning}
+                        </Badge>
+                      ))}
+                    </VStack>
+                  ) : (
+                    <Badge colorScheme="green">Ready</Badge>
+                  )}
+                </Td>
+              </Tr>
+            ))}
+            {previewRows.length === 0 ? (
+              <Tr>
+                <Td colSpan={8} color="gray.500">No rows to preview.</Td>
+              </Tr>
+            ) : null}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    </Box>
   );
 }
 
@@ -2309,6 +2646,7 @@ function Ledger({ user }) {
   const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
+  const [memberLookup, setMemberLookup] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [varianceNote, setVarianceNote] = useState("");
@@ -2320,6 +2658,7 @@ function Ledger({ user }) {
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
   const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
   const canCloseTellerBatch = user.permissions.includes("ledger:teller-batches:close");
+  const canPreviewOpeningBalances = user.username === "admin" || user.role === "Accountant / Bookkeeper";
   const needsVarianceNote = activeBatch?.status === "Submitted" && Number(activeBatch.variance || 0) !== 0;
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
   const activeBatchHistory = activeBatch ? tellerBatches.find((batch) => batch.id === activeBatch.id) : null;
@@ -2329,12 +2668,16 @@ function Ledger({ user }) {
     setError("");
 
     try {
-      const data = await api("/api/ledger");
+      const [data, lookupRows] = await Promise.all([
+        api("/api/ledger"),
+        canPreviewOpeningBalances ? api("/api/ledger/member-lookup") : []
+      ]);
       setActiveBatch(data.activeBatch);
       setTellerBatch(data.tellerBatch);
       setTellerBatches(data.tellerBatches || []);
       setLatestCashCount(data.latestCashCount);
       setJournalEntries(data.journalEntries);
+      setMemberLookup(lookupRows);
       if (!data.activeBatch || data.activeBatch.status !== "Submitted" || data.activeBatch.variance === 0) {
         setVarianceNote("");
       }
@@ -2451,6 +2794,8 @@ function Ledger({ user }) {
 
       {message ? <Text color="green.600">{message}</Text> : null}
       {error ? <Text color="red.500">{error}</Text> : null}
+
+      {canPreviewOpeningBalances ? <OpeningBalancePreview memberLookup={memberLookup} /> : null}
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
