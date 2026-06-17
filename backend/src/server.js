@@ -798,6 +798,382 @@ function mapMemberImportRow(row) {
   };
 }
 
+function parseOpeningBalanceAmount(value) {
+  const cleanedValue = String(value || "")
+    .replace(/[,\s]/g, "")
+    .replace(/^PHP/i, "")
+    .trim();
+
+  if (!cleanedValue) {
+    return { value: 0 };
+  }
+
+  const amount = Number(cleanedValue);
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { value: 0, error: "Invalid amount" };
+  }
+
+  return { value: amount };
+}
+
+function normalizeImportMemberNo(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+async function listOpeningBalanceStagedMemberNos() {
+  const db = await getPool();
+
+  if (!db) {
+    const stagedBatchNos = new Set(
+      openingBalanceImportBatches
+        .filter((batch) => batch.status === "Staged")
+        .map((batch) => batch.importNo)
+    );
+
+    return [
+      ...new Set(
+        openingBalanceImportRows
+          .filter((row) => stagedBatchNos.has(row.importNo))
+          .map((row) => normalizeImportMemberNo(row.memberNo))
+          .filter(Boolean)
+      )
+    ];
+  }
+
+  const [rows] = await db.execute(
+    `SELECT DISTINCT row.member_no AS memberNo
+     FROM opening_balance_import_rows row
+     INNER JOIN opening_balance_import_batches batch
+       ON batch.import_no = row.import_no
+     WHERE batch.status = 'Staged'
+       AND row.member_no <> ''`
+  );
+
+  return rows.map((row) => normalizeImportMemberNo(row.memberNo)).filter(Boolean);
+}
+
+async function validateOpeningBalanceImportRows(inputRows) {
+  if (!Array.isArray(inputRows) || inputRows.length === 0) {
+    return { error: "At least one opening balance row is required." };
+  }
+
+  if (inputRows.length > 500) {
+    return { error: "Opening balance import is limited to 500 rows per staged batch." };
+  }
+
+  const memberRows = await listLedgerMemberLookup();
+  const memberMap = new Map(memberRows.map((member) => [normalizeImportMemberNo(member.id), member]));
+  const stagedMemberNos = new Set(await listOpeningBalanceStagedMemberNos());
+  const seenMemberNos = new Set();
+  const duplicateMemberNos = new Set();
+  const normalizedRows = inputRows.map((row, index) => {
+    const memberNo = String(row.memberNo || "").trim();
+    const normalizedMemberNo = normalizeImportMemberNo(memberNo);
+
+    if (normalizedMemberNo) {
+      if (seenMemberNos.has(normalizedMemberNo)) {
+        duplicateMemberNos.add(normalizedMemberNo);
+      }
+      seenMemberNos.add(normalizedMemberNo);
+    }
+
+    return {
+      rowNumber: Number(row.rowNumber || index + 2),
+      memberNo,
+      normalizedMemberNo,
+      memberName: String(row.memberName || "").trim(),
+      shareCapitalOpeningBalance: row.shareCapitalOpeningBalance ?? row.shareCapitalAmount ?? "",
+      savingsOpeningBalance: row.savingsOpeningBalance ?? row.savingsAmount ?? "",
+      cutoverDate: String(row.cutoverDate || "").trim(),
+      sourceReference: String(row.sourceReference || "").trim().slice(0, 120),
+      rawData: row.rawData && typeof row.rawData === "object" ? row.rawData : {}
+    };
+  });
+
+  return {
+    rows: normalizedRows.map((row) => {
+      const issues = [];
+      const member = memberMap.get(row.normalizedMemberNo);
+      const shareCapital = parseOpeningBalanceAmount(row.shareCapitalOpeningBalance);
+      const savings = parseOpeningBalanceAmount(row.savingsOpeningBalance);
+      const cutoverDate = normalizeOptionalDate(row.cutoverDate);
+
+      if (!row.memberNo) {
+        issues.push("Missing member no.");
+      } else if (!member) {
+        issues.push("Member no. was not found");
+      }
+
+      if (row.normalizedMemberNo && duplicateMemberNos.has(row.normalizedMemberNo)) {
+        issues.push("Duplicate member no. in upload");
+      }
+
+      if (row.normalizedMemberNo && stagedMemberNos.has(row.normalizedMemberNo)) {
+        issues.push("Member already has a staged opening balance");
+      }
+
+      if (shareCapital.error) {
+        issues.push("Invalid share capital amount");
+      }
+
+      if (savings.error) {
+        issues.push("Invalid savings amount");
+      }
+
+      if (!cutoverDate || !isValidIsoDate(cutoverDate)) {
+        issues.push("Invalid cutover date");
+      }
+
+      if (!row.sourceReference) {
+        issues.push("Missing source reference");
+      }
+
+      return {
+        ...row,
+        memberName: row.memberName || member?.name || "",
+        shareCapitalAmount: shareCapital.value,
+        savingsAmount: savings.value,
+        cutoverDate,
+        rowStatus: issues.length > 0 ? "Has Issues" : "Ready",
+        issues
+      };
+    })
+  };
+}
+
+function summarizeOpeningBalanceImportRows(rows) {
+  const readyRows = rows.filter((row) => row.rowStatus === "Ready");
+
+  return {
+    totalRows: rows.length,
+    readyRows: readyRows.length,
+    issueRows: rows.length - readyRows.length,
+    totalShareCapital: readyRows.reduce((total, row) => total + row.shareCapitalAmount, 0),
+    totalSavings: readyRows.reduce((total, row) => total + row.savingsAmount, 0)
+  };
+}
+
+function mapOpeningBalanceImportBatch(row) {
+  return {
+    id: row.importNo,
+    importNo: row.importNo,
+    sourceLabel: row.sourceLabel,
+    status: row.status,
+    totalRows: row.totalRows,
+    readyRows: row.readyRows,
+    issueRows: row.issueRows,
+    totalShareCapital: row.totalShareCapital,
+    totalSavings: row.totalSavings,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+    finalizedBy: row.finalizedBy || "",
+    finalizedAt: row.finalizedAt || "",
+    finalizedRows: row.finalizedRows || 0,
+    skippedRows: row.skippedRows || 0
+  };
+}
+
+function mapOpeningBalanceImportRow(row) {
+  return {
+    id: row.id,
+    rowNumber: row.rowNumber,
+    memberNo: row.memberNo,
+    memberName: row.memberName,
+    shareCapitalAmount: row.shareCapitalAmount,
+    savingsAmount: row.savingsAmount,
+    cutoverDate: row.cutoverDate,
+    sourceReference: row.sourceReference,
+    rowStatus: row.rowStatus,
+    issues: parseIssues(row.issues),
+    rawData: typeof row.rawData === "string" ? JSON.parse(row.rawData || "{}") : row.rawData || {},
+    finalizedAt: row.finalizedAt || ""
+  };
+}
+
+async function nextOpeningBalanceImportNo(connection = null) {
+  const db = connection || (await getPool());
+
+  if (!db) {
+    return `OB-${new Date().getFullYear()}-${String(openingBalanceImportBatches.length + 1).padStart(4, "0")}`;
+  }
+
+  const [countRows] = await db.execute(
+    `SELECT COUNT(*) AS countValue
+     FROM opening_balance_import_batches
+     WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+  );
+
+  return `OB-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+}
+
+async function listOpeningBalanceImportBatches() {
+  const db = await getPool();
+
+  if (!db) {
+    return openingBalanceImportBatches.map(mapOpeningBalanceImportBatch);
+  }
+
+  const [rows] = await db.execute(
+    `SELECT import_no AS importNo, source_label AS sourceLabel, status,
+            total_rows AS totalRows, ready_rows AS readyRows, issue_rows AS issueRows,
+            total_share_capital AS totalShareCapital, total_savings AS totalSavings,
+            created_by AS createdBy, created_at AS createdAt,
+            finalized_by AS finalizedBy, finalized_at AS finalizedAt,
+            finalized_rows AS finalizedRows, skipped_rows AS skippedRows
+     FROM opening_balance_import_batches
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows.map(mapOpeningBalanceImportBatch);
+}
+
+async function getOpeningBalanceImportBatch(importNo) {
+  const db = await getPool();
+
+  if (!db) {
+    const batch = openingBalanceImportBatches.find((item) => item.importNo === importNo || item.id === importNo);
+
+    if (!batch) {
+      return { error: "Opening balance import batch was not found.", statusCode: 404 };
+    }
+
+    const rows = openingBalanceImportRows.filter((row) => row.importNo === batch.importNo);
+    return { batch: mapOpeningBalanceImportBatch(batch), rows: rows.map(mapOpeningBalanceImportRow) };
+  }
+
+  const [batchRows] = await db.execute(
+    `SELECT import_no AS importNo, source_label AS sourceLabel, status,
+            total_rows AS totalRows, ready_rows AS readyRows, issue_rows AS issueRows,
+            total_share_capital AS totalShareCapital, total_savings AS totalSavings,
+            created_by AS createdBy, created_at AS createdAt,
+            finalized_by AS finalizedBy, finalized_at AS finalizedAt,
+            finalized_rows AS finalizedRows, skipped_rows AS skippedRows
+     FROM opening_balance_import_batches
+     WHERE import_no = ?
+     LIMIT 1`,
+    [importNo]
+  );
+
+  if (batchRows.length === 0) {
+    return { error: "Opening balance import batch was not found.", statusCode: 404 };
+  }
+
+  const [rows] = await db.execute(
+    `SELECT id, row_no AS rowNumber, member_no AS memberNo, member_name AS memberName,
+            share_capital_opening_balance AS shareCapitalAmount,
+            savings_opening_balance AS savingsAmount,
+            cutover_date AS cutoverDate, source_reference AS sourceReference,
+            row_status AS rowStatus, issues, raw_data AS rawData, finalized_at AS finalizedAt
+     FROM opening_balance_import_rows
+     WHERE import_no = ?
+     ORDER BY row_no`,
+    [importNo]
+  );
+
+  return {
+    batch: mapOpeningBalanceImportBatch(batchRows[0]),
+    rows: rows.map(mapOpeningBalanceImportRow)
+  };
+}
+
+async function createOpeningBalanceImportBatch(input, user) {
+  const validation = await validateOpeningBalanceImportRows(input.rows);
+
+  if (validation.error) {
+    return { error: validation.error, statusCode: 400 };
+  }
+
+  const sourceLabel = String(input.sourceLabel || "CSV Paste").trim().slice(0, 160) || "CSV Paste";
+  const rows = validation.rows;
+  const summary = summarizeOpeningBalanceImportRows(rows);
+  const db = await getPool();
+
+  if (!db) {
+    const importNo = await nextOpeningBalanceImportNo();
+    const batch = {
+      id: importNo,
+      importNo,
+      sourceLabel,
+      status: "Staged",
+      ...summary,
+      createdBy: user.username,
+      createdAt: new Date().toISOString()
+    };
+
+    openingBalanceImportBatches.unshift(batch);
+    rows.forEach((row, index) => {
+      openingBalanceImportRows.push({
+        id: `${importNo}-${index + 1}`,
+        importNo,
+        ...row
+      });
+    });
+
+    return { batch: mapOpeningBalanceImportBatch(batch), rows: openingBalanceImportRows.filter((row) => row.importNo === importNo).map(mapOpeningBalanceImportRow) };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const importNo = await nextOpeningBalanceImportNo(connection);
+
+    await connection.execute(
+      `INSERT INTO opening_balance_import_batches (
+         import_no, source_label, status, total_rows, ready_rows, issue_rows,
+         total_share_capital, total_savings, created_by
+       )
+       VALUES (?, ?, 'Staged', ?, ?, ?, ?, ?, ?)`,
+      [
+        importNo,
+        sourceLabel,
+        summary.totalRows,
+        summary.readyRows,
+        summary.issueRows,
+        summary.totalShareCapital,
+        summary.totalSavings,
+        user.username
+      ]
+    );
+
+    for (const row of rows) {
+      await connection.execute(
+        `INSERT INTO opening_balance_import_rows (
+           import_no, row_no, member_no, member_name, share_capital_opening_balance,
+           savings_opening_balance, cutover_date, source_reference, row_status,
+           issues, raw_data
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          importNo,
+          row.rowNumber,
+          row.memberNo,
+          row.memberName,
+          row.shareCapitalAmount,
+          row.savingsAmount,
+          row.cutoverDate,
+          row.sourceReference,
+          row.rowStatus,
+          JSON.stringify(row.issues),
+          JSON.stringify(row.rawData)
+        ]
+      );
+    }
+
+    await connection.commit();
+    return await getOpeningBalanceImportBatch(importNo);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function nextMemberImportNo(connection = null) {
   const db = connection || (await getPool());
 
@@ -4959,6 +5335,84 @@ app.get("/api/ledger/member-lookup", async (request, response) => {
   }
 
   response.json(await listLedgerMemberLookup());
+});
+
+app.get("/api/ledger/opening-balance-import-batches", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user) && !hasPermission(user, "ledger:teller-batches:review")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listOpeningBalanceImportBatches());
+});
+
+app.get("/api/ledger/opening-balance-staged-member-nos", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user) && !hasPermission(user, "ledger:teller-batches:review")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listOpeningBalanceStagedMemberNos());
+});
+
+app.post("/api/ledger/opening-balance-import-batches", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user) && !hasPermission(user, "ledger:teller-batches:review")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await createOpeningBalanceImportBatch(request.body, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.status(201).json(result);
+});
+
+app.get("/api/ledger/opening-balance-import-batches/:importNo", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user) && !hasPermission(user, "ledger:teller-batches:review")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await getOpeningBalanceImportBatch(request.params.importNo);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
 });
 
 app.get("/api/reports/daily-cash-position", async (request, response) => {

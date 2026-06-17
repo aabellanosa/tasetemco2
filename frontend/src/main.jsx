@@ -185,6 +185,13 @@ function normalizeImportHeader(value) {
     .replace(/\s+/g, " ");
 }
 
+function normalizeImportMemberNo(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
 function parseCsvLine(line) {
   const cells = [];
   let cell = "";
@@ -297,7 +304,8 @@ function buildMemberImportPreview(rows, mapping, existingMembers = []) {
 
     return {
       rowNumber: rowIndex + 2,
-      ...mapped
+      ...mapped,
+      rawData: row
     };
   });
 
@@ -387,8 +395,9 @@ function parseOpeningBalanceAmount(value) {
   return { value: amount };
 }
 
-function buildOpeningBalancePreview(rows, mapping, memberLookup = []) {
-  const memberMap = new Map(memberLookup.map((member) => [member.id, member]));
+function buildOpeningBalancePreview(rows, mapping, memberLookup = [], stagedMemberNos = []) {
+  const memberMap = new Map(memberLookup.map((member) => [normalizeImportMemberNo(member.id), member]));
+  const stagedMemberNoSet = new Set(stagedMemberNos.map(normalizeImportMemberNo).filter(Boolean));
   const seenMemberNos = new Set();
   const duplicateMemberNos = new Set();
   const mappedRows = rows.map((row, rowIndex) => {
@@ -400,23 +409,27 @@ function buildOpeningBalancePreview(rows, mapping, memberLookup = []) {
       };
     }, {});
 
-    if (mapped.memberNo) {
-      if (seenMemberNos.has(mapped.memberNo)) {
-        duplicateMemberNos.add(mapped.memberNo);
+    const normalizedMemberNo = normalizeImportMemberNo(mapped.memberNo);
+
+    if (normalizedMemberNo) {
+      if (seenMemberNos.has(normalizedMemberNo)) {
+        duplicateMemberNos.add(normalizedMemberNo);
       }
-      seenMemberNos.add(mapped.memberNo);
+      seenMemberNos.add(normalizedMemberNo);
     }
 
     return {
       rowNumber: rowIndex + 2,
-      ...mapped
+      ...mapped,
+      normalizedMemberNo,
+      rawData: row
     };
   });
 
   return mappedRows.map((row) => {
     const issues = [];
     const warnings = [];
-    const member = memberMap.get(row.memberNo);
+    const member = memberMap.get(row.normalizedMemberNo);
     const shareCapital = parseOpeningBalanceAmount(row.shareCapitalOpeningBalance);
     const savings = parseOpeningBalanceAmount(row.savingsOpeningBalance);
 
@@ -426,8 +439,12 @@ function buildOpeningBalancePreview(rows, mapping, memberLookup = []) {
       issues.push("Member no. was not found");
     }
 
-    if (row.memberNo && duplicateMemberNos.has(row.memberNo)) {
+    if (row.normalizedMemberNo && duplicateMemberNos.has(row.normalizedMemberNo)) {
       issues.push("Duplicate member no. in upload");
+    }
+
+    if (row.normalizedMemberNo && stagedMemberNoSet.has(row.normalizedMemberNo)) {
+      issues.push("Member already has a staged opening balance");
     }
 
     if (shareCapital.error) {
@@ -1035,6 +1052,13 @@ function OpeningBalancePreview({ memberLookup }) {
   const [csvText, setCsvText] = useState(sampleOpeningBalanceCsv);
   const parsedImport = useMemo(() => parseMemberImportCsv(csvText), [csvText]);
   const [mapping, setMapping] = useState(() => suggestOpeningBalanceMapping(parsedImport.headers));
+  const [sourceLabel, setSourceLabel] = useState("CSV Paste");
+  const [stagedBatches, setStagedBatches] = useState([]);
+  const [stagedMemberNos, setStagedMemberNos] = useState([]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
 
   useEffect(() => {
     setMapping((currentMapping) => {
@@ -1050,8 +1074,8 @@ function OpeningBalancePreview({ memberLookup }) {
   }, [parsedImport.headers.join("|")]);
 
   const previewRows = useMemo(
-    () => buildOpeningBalancePreview(parsedImport.rows, mapping, memberLookup),
-    [parsedImport.rows, mapping, memberLookup]
+    () => buildOpeningBalancePreview(parsedImport.rows, mapping, memberLookup, stagedMemberNos),
+    [parsedImport.rows, mapping, memberLookup, stagedMemberNos]
   );
   const issueCount = previewRows.reduce((total, row) => total + row.issues.length, parsedImport.errors.length);
   const warningCount = previewRows.reduce((total, row) => total + row.warnings.length, 0);
@@ -1062,6 +1086,28 @@ function OpeningBalancePreview({ memberLookup }) {
   const savingsTotal = previewRows
     .filter((row) => row.issues.length === 0)
     .reduce((total, row) => total + row.savingsAmount, 0);
+  const canSaveStagedBatch = previewRows.length > 0 && parsedImport.errors.length === 0;
+
+  async function loadStagedBatches() {
+    setIsLoadingBatches(true);
+
+    try {
+      const [rows, memberNos] = await Promise.all([
+        api("/api/ledger/opening-balance-import-batches"),
+        api("/api/ledger/opening-balance-staged-member-nos")
+      ]);
+      setStagedBatches(rows);
+      setStagedMemberNos(memberNos);
+    } catch (batchError) {
+      setError(batchError.message);
+    } finally {
+      setIsLoadingBatches(false);
+    }
+  }
+
+  useEffect(() => {
+    loadStagedBatches();
+  }, []);
 
   function updateMapping(fieldKey, sourceColumn) {
     setMapping((current) => ({
@@ -1072,6 +1118,7 @@ function OpeningBalancePreview({ memberLookup }) {
 
   function resetToSampleCsv() {
     setCsvText(sampleOpeningBalanceCsv);
+    setSourceLabel("CSV Paste");
     setMapping(suggestOpeningBalanceMapping(parseMemberImportCsv(sampleOpeningBalanceCsv).headers));
   }
 
@@ -1079,13 +1126,47 @@ function OpeningBalancePreview({ memberLookup }) {
     setMapping(suggestOpeningBalanceMapping(parsedImport.headers));
   }
 
+  async function saveStagedBatch() {
+    setMessage("");
+    setError("");
+    setIsSaving(true);
+
+    try {
+      const payloadRows = previewRows.map((row) => ({
+        rowNumber: row.rowNumber,
+        memberNo: row.memberNo,
+        memberName: row.memberName,
+        shareCapitalOpeningBalance: row.shareCapitalOpeningBalance,
+        savingsOpeningBalance: row.savingsOpeningBalance,
+        cutoverDate: row.cutoverDate,
+        sourceReference: row.sourceReference,
+        rawData: row.rawData
+      }));
+      const data = await api("/api/ledger/opening-balance-import-batches", {
+        method: "POST",
+        body: JSON.stringify({
+          sourceLabel,
+          rows: payloadRows
+        })
+      });
+
+      setMessage(`${data.batch.importNo} saved as staged opening balance import.`);
+      await loadStagedBatches();
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
+    <VStack align="stretch" spacing={5}>
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
         <Box>
-          <Heading size="md">Opening Balance Import Preview</Heading>
+          <Heading size="md">Opening Balance Import</Heading>
           <Text color="gray.600" mt={1}>
-            Preview only. Opening balances are not saved from this panel.
+            Save mapped cutover balances into a staged review batch. Final posting is not enabled yet.
           </Text>
         </Box>
         <HStack spacing={3} flexWrap="wrap">
@@ -1098,8 +1179,25 @@ function OpeningBalancePreview({ memberLookup }) {
           <Button size="sm" variant="ghost" onClick={() => setCsvText("")}>
             Clear
           </Button>
+          <Button
+            size="sm"
+            colorScheme="green"
+            onClick={saveStagedBatch}
+            isLoading={isSaving}
+            isDisabled={!canSaveStagedBatch}
+          >
+            Save Staged Batch
+          </Button>
         </HStack>
       </Flex>
+
+      {message ? <Text color="green.600" mb={4}>{message}</Text> : null}
+      {error ? <Text color="red.500" mb={4}>{error}</Text> : null}
+
+      <FormControl mb={4}>
+        <FormLabel>Source Label</FormLabel>
+        <Input value={sourceLabel} onChange={(event) => setSourceLabel(event.target.value)} />
+      </FormControl>
 
       <FormControl mb={4}>
         <FormLabel>CSV Paste Area</FormLabel>
@@ -1241,6 +1339,60 @@ function OpeningBalancePreview({ memberLookup }) {
         </Table>
       </TableContainer>
     </Box>
+
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" align="center" gap={4} wrap="wrap" mb={4}>
+        <Box>
+          <Heading size="md">Staged Opening Balance Batches</Heading>
+          <Text color="gray.600" mt={1}>
+            Saved imports stay staged until a future finalization step applies balances.
+          </Text>
+        </Box>
+        <Button size="sm" variant="outline" onClick={loadStagedBatches} isLoading={isLoadingBatches}>
+          Refresh
+        </Button>
+      </Flex>
+      <TableContainer>
+        <Table size="sm">
+          <Thead>
+            <Tr>
+              <Th>Batch</Th>
+              <Th>Status</Th>
+              <Th>Source</Th>
+              <Th isNumeric>Ready</Th>
+              <Th isNumeric>Issues</Th>
+              <Th isNumeric>Share Capital</Th>
+              <Th isNumeric>Savings</Th>
+              <Th>Created By</Th>
+              <Th>Created</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {stagedBatches.map((batch) => (
+              <Tr key={batch.importNo}>
+                <Td>{batch.importNo}</Td>
+                <Td>
+                  <Badge colorScheme={batch.status === "Staged" ? "blue" : "green"}>{batch.status}</Badge>
+                </Td>
+                <Td>{batch.sourceLabel}</Td>
+                <Td isNumeric>{batch.readyRows} / {batch.totalRows}</Td>
+                <Td isNumeric>{batch.issueRows}</Td>
+                <Td isNumeric>{formatMoney(batch.totalShareCapital)}</Td>
+                <Td isNumeric>{formatMoney(batch.totalSavings)}</Td>
+                <Td>{batch.createdBy}</Td>
+                <Td>{formatDateTime(batch.createdAt)}</Td>
+              </Tr>
+            ))}
+            {stagedBatches.length === 0 ? (
+              <Tr>
+                <Td colSpan={9} color="gray.500">No staged opening balance batches yet.</Td>
+              </Tr>
+            ) : null}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    </Box>
+    </VStack>
   );
 }
 

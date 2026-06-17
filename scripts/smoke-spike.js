@@ -601,6 +601,142 @@ async function run() {
       throw new Error("Bookkeeper should access member lookup for opening balance preview.");
     }
 
+    const forbiddenOpeningBalanceBatches = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      headers: { Cookie: managerCookie }
+    });
+
+    if (forbiddenOpeningBalanceBatches.status !== 403) {
+      throw new Error("Manager should be denied opening balance staged batches.");
+    }
+
+    const stagedOpeningBalance = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Smoke Opening Balances",
+        rows: [
+          {
+            rowNumber: 2,
+            memberNo: approvalBody.member.id,
+            memberName: approvalBody.member.name,
+            shareCapitalOpeningBalance: 1000,
+            savingsOpeningBalance: 500,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Smoke CSV",
+            rawData: {
+              "Member No.": approvalBody.member.id,
+              "Member Name": approvalBody.member.name
+            }
+          }
+        ]
+      })
+    });
+    const stagedOpeningBalanceBody = await stagedOpeningBalance.json();
+
+    if (
+      !stagedOpeningBalance.ok ||
+      stagedOpeningBalanceBody.batch.status !== "Staged" ||
+      stagedOpeningBalanceBody.batch.readyRows !== 1 ||
+      stagedOpeningBalanceBody.batch.totalShareCapital !== 1000 ||
+      stagedOpeningBalanceBody.batch.totalSavings !== 500
+    ) {
+      throw new Error("Bookkeeper should be able to stage opening balance imports.");
+    }
+
+    const openingBalanceBatchList = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const openingBalanceBatchRows = await openingBalanceBatchList.json();
+
+    if (!openingBalanceBatchRows.some((batch) => batch.importNo === stagedOpeningBalanceBody.batch.importNo)) {
+      throw new Error("Staged opening balance import should be returned by the batch list.");
+    }
+
+    const stagedOpeningBalanceMembers = await fetch(`${baseUrl}/api/ledger/opening-balance-staged-member-nos`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const stagedOpeningBalanceMemberNos = await stagedOpeningBalanceMembers.json();
+
+    if (!stagedOpeningBalanceMemberNos.includes(approvalBody.member.id)) {
+      throw new Error("Staged opening balance member numbers should include saved staged rows.");
+    }
+
+    const alreadyStagedOpeningBalance = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Smoke Already Staged Opening Balance",
+        rows: [
+          {
+            rowNumber: 2,
+            memberNo: approvalBody.member.id,
+            memberName: approvalBody.member.name,
+            shareCapitalOpeningBalance: 1000,
+            savingsOpeningBalance: 500,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Smoke CSV"
+          }
+        ]
+      })
+    });
+    const alreadyStagedOpeningBalanceBody = await alreadyStagedOpeningBalance.json();
+
+    if (
+      !alreadyStagedOpeningBalance.ok ||
+      alreadyStagedOpeningBalanceBody.batch.readyRows !== 0 ||
+      alreadyStagedOpeningBalanceBody.batch.issueRows !== 1 ||
+      !alreadyStagedOpeningBalanceBody.rows[0].issues.includes("Member already has a staged opening balance")
+    ) {
+      throw new Error("Members already in staged opening balance batches should be issue rows.");
+    }
+
+    const duplicateOpeningBalance = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Smoke Duplicate Opening Balances",
+        rows: [
+          {
+            rowNumber: 2,
+            memberNo: approvalBody.member.id,
+            memberName: approvalBody.member.name,
+            shareCapitalOpeningBalance: 1000,
+            savingsOpeningBalance: 500,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Smoke CSV"
+          },
+          {
+            rowNumber: 3,
+            memberNo: approvalBody.member.id.toLowerCase(),
+            memberName: approvalBody.member.name,
+            shareCapitalOpeningBalance: 2000,
+            savingsOpeningBalance: 750,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Smoke CSV"
+          }
+        ]
+      })
+    });
+    const duplicateOpeningBalanceBody = await duplicateOpeningBalance.json();
+
+    if (
+      !duplicateOpeningBalance.ok ||
+      duplicateOpeningBalanceBody.batch.readyRows !== 0 ||
+      duplicateOpeningBalanceBody.batch.issueRows !== 2 ||
+      !duplicateOpeningBalanceBody.rows.every((row) => row.issues.includes("Duplicate member no. in upload"))
+    ) {
+      throw new Error("Duplicate opening balance member numbers should be staged as issue rows.");
+    }
+
     const ledgerBeforePosting = await fetch(`${baseUrl}/api/ledger`, {
       headers: { Cookie: bookkeeperCookie }
     });
