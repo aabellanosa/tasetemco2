@@ -2663,6 +2663,9 @@ function Ledger({ user }) {
     user.role === "System Administrator" ||
     canReviewTellerBatch ||
     canPostTellerBatch;
+  const canManageTellerBatches = canReviewTellerBatch || canPostTellerBatch || canCloseTellerBatch;
+  const canViewLedgerHistory = canManageTellerBatches || canPreviewOpeningBalances;
+  const canViewPostedEntries = canPostTellerBatch || canReviewTellerBatch || user.role === "System Administrator";
   const needsVarianceNote = activeBatch?.status === "Submitted" && Number(activeBatch.variance || 0) !== 0;
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
   const activeBatchHistory = activeBatch ? tellerBatches.find((batch) => batch.id === activeBatch.id) : null;
@@ -2799,291 +2802,320 @@ function Ledger({ user }) {
       {message ? <Text color="green.600">{message}</Text> : null}
       {error ? <Text color="red.500">{error}</Text> : null}
 
-      {canPreviewOpeningBalances ? <OpeningBalancePreview memberLookup={memberLookup} /> : null}
+      <Tabs variant="enclosed" colorScheme="green" isLazy>
+        <TabList overflowX="auto" overflowY="hidden" maxW="100%">
+          {canManageTellerBatches ? <Tab flexShrink={0}>Batch Review</Tab> : null}
+          {canPreviewOpeningBalances ? <Tab flexShrink={0}>Opening Balances</Tab> : null}
+          {canViewLedgerHistory ? <Tab flexShrink={0}>Batch History</Tab> : null}
+          {canViewPostedEntries ? <Tab flexShrink={0}>Posted Entries</Tab> : null}
+        </TabList>
 
-      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
-          <Box>
-            <Heading size="md">Teller Cash Count</Heading>
-            <Text color="gray.600" mt={1}>
-              Latest teller-submitted cash count for the unposted batch.
-            </Text>
-          </Box>
-          <HStack flexWrap="wrap">
-            <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : activeBatch ? "purple" : "gray"}>
-              {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
-            </Badge>
-            {latestCashCount && latestCashCount.variance !== 0 ? (
-              <Badge colorScheme="orange">Variance warning</Badge>
-            ) : null}
-            {canReviewTellerBatch && activeBatch?.status === "Submitted" ? (
-              <Button
-                size="sm"
-                colorScheme="green"
-                onClick={reviewBatch}
-                isDisabled={needsVarianceNote && !varianceNote.trim()}
-              >
-                Mark reviewed
-              </Button>
-            ) : null}
-            {canPostTellerBatch && activeBatch?.status === "Reviewed" ? (
-              <Button
-                size="sm"
-                colorScheme="green"
-                onClick={postReviewedBatch}
-                isDisabled={tellerBatch.length === 0}
-              >
-                Post reviewed batch
-              </Button>
-            ) : null}
-            {canCloseTellerBatch && activeBatch?.status === "Reviewed" ? (
-              <Button
-                size="sm"
-                colorScheme="green"
-                onClick={closeConfirmation.onOpen}
-                isDisabled={tellerBatch.length > 0}
-              >
-                Close and open next
-              </Button>
-            ) : null}
-          </HStack>
-        </Flex>
-        <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Expected Cash
-            </Text>
-            <Text fontWeight="bold">
-              {formatMoney(latestCashCount ? latestCashCount.expectedCash : tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
-            </Text>
-          </Box>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Actual Cash
-            </Text>
-            <Text fontWeight="bold">{latestCashCount ? formatMoney(latestCashCount.actualCash) : "-"}</Text>
-          </Box>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Variance
-            </Text>
-            <Text fontWeight="bold">{latestCashCount ? formatMoney(latestCashCount.variance) : "-"}</Text>
-          </Box>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Submitted By
-            </Text>
-            <Text fontWeight="bold">{latestCashCount ? latestCashCount.submittedBy : "-"}</Text>
-          </Box>
-        </Grid>
-        <Text mt={3} color="gray.600" fontSize="sm">
-          Post reviewed batch creates the accounting entries for all unposted rows in the reviewed batch. A non-zero variance requires a Bookkeeper note before review.
-        </Text>
-        {needsVarianceNote ? (
-          <FormControl mt={4} isRequired>
-            <FormLabel>Variance note</FormLabel>
-            <Textarea
-              value={varianceNote}
-              onChange={(event) => setVarianceNote(event.target.value)}
-              placeholder="Record the reason or follow-up action before review."
-            />
-          </FormControl>
-        ) : null}
-      </Box>
-
-      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Heading size="md" mb={4}>
-          Unposted Teller Batch
-        </Heading>
-        <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={4}>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Cash In
-            </Text>
-            <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn)}</Text>
-          </Box>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Cash Out
-            </Text>
-            <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashOut)}</Text>
-          </Box>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Net Cash
-            </Text>
-            <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}</Text>
-          </Box>
-          <Box borderWidth="1px" borderRadius="md" p={4}>
-            <Text color="gray.500" fontSize="sm">
-              Transactions
-            </Text>
-            <Text fontWeight="bold">{tellerBatchSummary.transactionCount}</Text>
-          </Box>
-        </Grid>
-        <TableContainer>
-          <Table size="sm">
-            <Thead>
-              <Tr>
-                <Th>Payment No.</Th>
-                <Th>Type</Th>
-                <Th>Member</Th>
-                <Th isNumeric>Cash In</Th>
-                <Th isNumeric>Cash Out</Th>
-                <Th isNumeric>Share Capital</Th>
-                <Th isNumeric>Fee</Th>
-                <Th isNumeric>Savings</Th>
-                <Th>Status</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {tellerBatch.map((payment) => (
-                <Tr key={payment.id}>
-                  <Td>{payment.id}</Td>
-                  <Td>{payment.batchType}</Td>
-                  <Td>{payment.memberName}</Td>
-                  <Td isNumeric>{payment.cashReceived ? formatMoney(payment.cashReceived) : ""}</Td>
-                  <Td isNumeric>{payment.cashOut ? formatMoney(payment.cashOut) : ""}</Td>
-                  <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
-                  <Td isNumeric>{formatMoney(payment.membershipFeeAmount)}</Td>
-                  <Td isNumeric>{formatMoney(payment.savingsDepositAmount)}</Td>
-                  <Td>
-                    <Badge colorScheme="blue">{payment.status}</Badge>
-                  </Td>
-                </Tr>
-              ))}
-              {tellerBatch.length === 0 ? (
-                <Tr>
-                  <Td colSpan={9} color="gray.500">
-                    No unposted teller batch payments.
-                  </Td>
-                </Tr>
-              ) : null}
-            </Tbody>
-          </Table>
-        </TableContainer>
-      </Box>
-
-      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Heading size="md" mb={4}>
-          Teller Batch History
-        </Heading>
-        <TableContainer>
-          <Table size="sm">
-            <Thead>
-              <Tr>
-                <Th>Batch</Th>
-                <Th>Status</Th>
-                <Th>Teller</Th>
-                <Th isNumeric>Expected</Th>
-                <Th isNumeric>Actual</Th>
-                <Th isNumeric>Variance</Th>
-                <Th isNumeric>Txns</Th>
-                <Th isNumeric>Posted</Th>
-                <Th isNumeric>Unposted</Th>
-                <Th>Variance Note</Th>
-                <Th>Reviewed By</Th>
-                <Th>Closed By</Th>
-                <Th>Closed</Th>
-                <Th>Details</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {tellerBatches.map((batch) => (
-                <Tr key={batch.id}>
-                  <Td>{batch.id}</Td>
-                  <Td>
-                    <Badge
-                      colorScheme={
-                        batch.status === "Open"
-                          ? "blue"
-                          : batch.status === "Closed"
-                            ? "gray"
-                            : batch.status === "Reviewed"
-                              ? "green"
-                              : "purple"
-                      }
-                    >
-                      {batch.status}
-                    </Badge>
-                  </Td>
-                  <Td>{batch.tellerUsername}</Td>
-                  <Td isNumeric>{formatMoney(batch.expectedCash)}</Td>
-                  <Td isNumeric>{formatMoney(batch.actualCash)}</Td>
-                  <Td isNumeric>{formatMoney(batch.variance)}</Td>
-                  <Td isNumeric>{batch.transactionCount}</Td>
-                  <Td isNumeric>{batch.postedEntryCount}</Td>
-                  <Td isNumeric>{batch.unpostedTransactionCount}</Td>
-                  <Td>{batch.varianceNote || "-"}</Td>
-                  <Td>{batch.reviewedBy || "-"}</Td>
-                  <Td>{batch.closedBy || "-"}</Td>
-                  <Td>{formatDateTime(batch.closedAt)}</Td>
-                  <Td>
-                    <Button
-                      size="sm"
-                      onClick={() => openBatchDetails(batch.id)}
-                      isLoading={loadingBatchDetailsId === batch.id}
-                    >
-                      View
-                    </Button>
-                  </Td>
-                </Tr>
-              ))}
-              {tellerBatches.length === 0 ? (
-                <Tr>
-                  <Td colSpan={14} color="gray.500">
-                    No teller batch history yet.
-                  </Td>
-                </Tr>
-              ) : null}
-            </Tbody>
-          </Table>
-        </TableContainer>
-      </Box>
-
-      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Heading size="md" mb={4}>
-          Posted Journal Entries
-        </Heading>
-        <VStack align="stretch" spacing={4}>
-          {journalEntries.map((entry) => (
-            <Box key={entry.id} borderWidth="1px" borderRadius="md" p={4}>
-              <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
-                <Box>
-                  <Text fontWeight="bold">{entry.id}</Text>
-                  <Text color="gray.600">{entry.description}</Text>
+        <TabPanels>
+          {canManageTellerBatches ? (
+            <TabPanel px={0}>
+              <VStack align="stretch" spacing={5}>
+                <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+                  <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+                    <Box>
+                      <Heading size="md">Teller Cash Count</Heading>
+                      <Text color="gray.600" mt={1}>
+                        Latest teller-submitted cash count for the unposted batch.
+                      </Text>
+                    </Box>
+                    <HStack flexWrap="wrap">
+                      <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : activeBatch ? "purple" : "gray"}>
+                        {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
+                      </Badge>
+                      {latestCashCount && latestCashCount.variance !== 0 ? (
+                        <Badge colorScheme="orange">Variance warning</Badge>
+                      ) : null}
+                      {canReviewTellerBatch && activeBatch?.status === "Submitted" ? (
+                        <Button
+                          size="sm"
+                          colorScheme="green"
+                          onClick={reviewBatch}
+                          isDisabled={needsVarianceNote && !varianceNote.trim()}
+                        >
+                          Mark reviewed
+                        </Button>
+                      ) : null}
+                      {canPostTellerBatch && activeBatch?.status === "Reviewed" ? (
+                        <Button
+                          size="sm"
+                          colorScheme="green"
+                          onClick={postReviewedBatch}
+                          isDisabled={tellerBatch.length === 0}
+                        >
+                          Post reviewed batch
+                        </Button>
+                      ) : null}
+                      {canCloseTellerBatch && activeBatch?.status === "Reviewed" ? (
+                        <Button
+                          size="sm"
+                          colorScheme="green"
+                          onClick={closeConfirmation.onOpen}
+                          isDisabled={tellerBatch.length > 0}
+                        >
+                          Close and open next
+                        </Button>
+                      ) : null}
+                    </HStack>
+                  </Flex>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Expected Cash
+                      </Text>
+                      <Text fontWeight="bold">
+                        {formatMoney(latestCashCount ? latestCashCount.expectedCash : tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
+                      </Text>
+                    </Box>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Actual Cash
+                      </Text>
+                      <Text fontWeight="bold">{latestCashCount ? formatMoney(latestCashCount.actualCash) : "-"}</Text>
+                    </Box>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Variance
+                      </Text>
+                      <Text fontWeight="bold">{latestCashCount ? formatMoney(latestCashCount.variance) : "-"}</Text>
+                    </Box>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Submitted By
+                      </Text>
+                      <Text fontWeight="bold">{latestCashCount ? latestCashCount.submittedBy : "-"}</Text>
+                    </Box>
+                  </Grid>
+                  <Text mt={3} color="gray.600" fontSize="sm">
+                    Post reviewed batch creates the accounting entries for all unposted rows in the reviewed batch. A non-zero variance requires a Bookkeeper note before review.
+                  </Text>
+                  {needsVarianceNote ? (
+                    <FormControl mt={4} isRequired>
+                      <FormLabel>Variance note</FormLabel>
+                      <Textarea
+                        value={varianceNote}
+                        onChange={(event) => setVarianceNote(event.target.value)}
+                        placeholder="Record the reason or follow-up action before review."
+                      />
+                    </FormControl>
+                  ) : null}
                 </Box>
-                <Text color="gray.500" fontSize="sm">
-                  Posted by {entry.postedBy}
-                </Text>
-              </Flex>
-              <TableContainer>
-                <Table size="sm">
-                  <Thead>
-                    <Tr>
-                      <Th>Account</Th>
-                      <Th isNumeric>Debit</Th>
-                      <Th isNumeric>Credit</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {entry.lines.map((line) => (
-                      <Tr key={`${entry.id}-${line.accountCode}`}>
-                        <Td>
-                          {line.accountCode} - {line.accountName}
-                        </Td>
-                        <Td isNumeric>{line.debit ? formatMoney(line.debit) : ""}</Td>
-                        <Td isNumeric>{line.credit ? formatMoney(line.credit) : ""}</Td>
+
+                <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+                  <Heading size="md" mb={4}>
+                    Unposted Teller Batch
+                  </Heading>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={4}>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Cash In
+                      </Text>
+                      <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn)}</Text>
+                    </Box>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Cash Out
+                      </Text>
+                      <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashOut)}</Text>
+                    </Box>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Net Cash
+                      </Text>
+                      <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}</Text>
+                    </Box>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Transactions
+                      </Text>
+                      <Text fontWeight="bold">{tellerBatchSummary.transactionCount}</Text>
+                    </Box>
+                  </Grid>
+                  <TableContainer>
+                    <Table size="sm">
+                      <Thead>
+                        <Tr>
+                          <Th>Payment No.</Th>
+                          <Th>Type</Th>
+                          <Th>Member</Th>
+                          <Th isNumeric>Cash In</Th>
+                          <Th isNumeric>Cash Out</Th>
+                          <Th isNumeric>Share Capital</Th>
+                          <Th isNumeric>Fee</Th>
+                          <Th isNumeric>Savings</Th>
+                          <Th>Status</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {tellerBatch.map((payment) => (
+                          <Tr key={payment.id}>
+                            <Td>{payment.id}</Td>
+                            <Td>{payment.batchType}</Td>
+                            <Td>{payment.memberName}</Td>
+                            <Td isNumeric>{payment.cashReceived ? formatMoney(payment.cashReceived) : ""}</Td>
+                            <Td isNumeric>{payment.cashOut ? formatMoney(payment.cashOut) : ""}</Td>
+                            <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
+                            <Td isNumeric>{formatMoney(payment.membershipFeeAmount)}</Td>
+                            <Td isNumeric>{formatMoney(payment.savingsDepositAmount)}</Td>
+                            <Td>
+                              <Badge colorScheme="blue">{payment.status}</Badge>
+                            </Td>
+                          </Tr>
+                        ))}
+                        {tellerBatch.length === 0 ? (
+                          <Tr>
+                            <Td colSpan={9} color="gray.500">
+                              No unposted teller batch payments.
+                            </Td>
+                          </Tr>
+                        ) : null}
+                      </Tbody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              </VStack>
+            </TabPanel>
+          ) : null}
+
+          {canPreviewOpeningBalances ? (
+            <TabPanel px={0}>
+              <OpeningBalancePreview memberLookup={memberLookup} />
+            </TabPanel>
+          ) : null}
+
+          {canViewLedgerHistory ? (
+            <TabPanel px={0}>
+              <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+                <Heading size="md" mb={4}>
+                  Teller Batch History
+                </Heading>
+                <TableContainer>
+                  <Table size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th>Batch</Th>
+                        <Th>Status</Th>
+                        <Th>Teller</Th>
+                        <Th isNumeric>Expected</Th>
+                        <Th isNumeric>Actual</Th>
+                        <Th isNumeric>Variance</Th>
+                        <Th isNumeric>Txns</Th>
+                        <Th isNumeric>Posted</Th>
+                        <Th isNumeric>Unposted</Th>
+                        <Th>Variance Note</Th>
+                        <Th>Reviewed By</Th>
+                        <Th>Closed By</Th>
+                        <Th>Closed</Th>
+                        <Th>Details</Th>
                       </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              </TableContainer>
-            </Box>
-          ))}
-          {journalEntries.length === 0 ? <Text color="gray.500">No posted journal entries yet.</Text> : null}
-        </VStack>
-      </Box>
+                    </Thead>
+                    <Tbody>
+                      {tellerBatches.map((batch) => (
+                        <Tr key={batch.id}>
+                          <Td>{batch.id}</Td>
+                          <Td>
+                            <Badge
+                              colorScheme={
+                                batch.status === "Open"
+                                  ? "blue"
+                                  : batch.status === "Closed"
+                                    ? "gray"
+                                    : batch.status === "Reviewed"
+                                      ? "green"
+                                      : "purple"
+                              }
+                            >
+                              {batch.status}
+                            </Badge>
+                          </Td>
+                          <Td>{batch.tellerUsername}</Td>
+                          <Td isNumeric>{formatMoney(batch.expectedCash)}</Td>
+                          <Td isNumeric>{formatMoney(batch.actualCash)}</Td>
+                          <Td isNumeric>{formatMoney(batch.variance)}</Td>
+                          <Td isNumeric>{batch.transactionCount}</Td>
+                          <Td isNumeric>{batch.postedEntryCount}</Td>
+                          <Td isNumeric>{batch.unpostedTransactionCount}</Td>
+                          <Td>{batch.varianceNote || "-"}</Td>
+                          <Td>{batch.reviewedBy || "-"}</Td>
+                          <Td>{batch.closedBy || "-"}</Td>
+                          <Td>{formatDateTime(batch.closedAt)}</Td>
+                          <Td>
+                            <Button
+                              size="sm"
+                              onClick={() => openBatchDetails(batch.id)}
+                              isLoading={loadingBatchDetailsId === batch.id}
+                            >
+                              View
+                            </Button>
+                          </Td>
+                        </Tr>
+                      ))}
+                      {tellerBatches.length === 0 ? (
+                        <Tr>
+                          <Td colSpan={14} color="gray.500">
+                            No teller batch history yet.
+                          </Td>
+                        </Tr>
+                      ) : null}
+                    </Tbody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            </TabPanel>
+          ) : null}
+
+          {canViewPostedEntries ? (
+            <TabPanel px={0}>
+              <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+                <Heading size="md" mb={4}>
+                  Posted Journal Entries
+                </Heading>
+                <VStack align="stretch" spacing={4}>
+                  {journalEntries.map((entry) => (
+                    <Box key={entry.id} borderWidth="1px" borderRadius="md" p={4}>
+                      <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+                        <Box>
+                          <Text fontWeight="bold">{entry.id}</Text>
+                          <Text color="gray.600">{entry.description}</Text>
+                        </Box>
+                        <Text color="gray.500" fontSize="sm">
+                          Posted by {entry.postedBy}
+                        </Text>
+                      </Flex>
+                      <TableContainer>
+                        <Table size="sm">
+                          <Thead>
+                            <Tr>
+                              <Th>Account</Th>
+                              <Th isNumeric>Debit</Th>
+                              <Th isNumeric>Credit</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {entry.lines.map((line) => (
+                              <Tr key={`${entry.id}-${line.accountCode}`}>
+                                <Td>
+                                  {line.accountCode} - {line.accountName}
+                                </Td>
+                                <Td isNumeric>{line.debit ? formatMoney(line.debit) : ""}</Td>
+                                <Td isNumeric>{line.credit ? formatMoney(line.credit) : ""}</Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  ))}
+                  {journalEntries.length === 0 ? <Text color="gray.500">No posted journal entries yet.</Text> : null}
+                </VStack>
+              </Box>
+            </TabPanel>
+          ) : null}
+        </TabPanels>
+      </Tabs>
 
       <Modal isOpen={closeConfirmation.isOpen} onClose={closeConfirmation.onClose} isCentered>
         <ModalOverlay />
