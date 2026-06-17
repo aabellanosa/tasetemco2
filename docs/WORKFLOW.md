@@ -214,6 +214,8 @@ The Ledger workspace uses role-aware tabs so users open one ledger work area at 
 
 Opening Balance Import Staging v1 lets the System Administrator and Accountant / Bookkeeper save the mapped cutover balance preview as a staged batch. Validation flags missing or unknown member numbers, duplicate member numbers in the upload, members already present in another staged opening-balance batch, invalid/negative amounts, invalid cutover dates, and missing source references. Staging preserves the review queue only; member balances, reports, and journal entries do not change until a later finalization spike.
 
+Opening Balance Import Details v1 lets the System Administrator and Accountant / Bookkeeper open each staged batch to inspect row status, validation issues, and raw source values. The System Administrator can reject a staged batch; rejected batches remain visible for audit evidence and no longer block a corrected upload for the same members.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -594,6 +596,8 @@ Member Import Finalize v1 adds finalization fields to import batches and keeps t
 Opening Balance Import Planning v0 is intentionally read-only. It prepares the future migration path for existing members' share capital and savings balances without asking Teller/Cashier to encode historical balances one by one. Later staging/finalization should reconcile subsidiary opening balances to general ledger opening balances.
 
 Opening Balance Import Staging v1 stores the preview into the opening-balance staging tables and lists saved batches in Ledger. It remains a review queue only; a later finalization spike should apply approved opening balances and create the related accounting evidence.
+
+Opening Balance Import Details v1 adds row-level batch inspection and Admin-only rejection. Rejection changes the batch status to `Rejected`, keeps the batch in history, and releases its member numbers for a corrected staged upload.
 
 ## 7. Audit Trail Requirements
 
