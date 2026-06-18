@@ -1075,6 +1075,7 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
   const [loadingDetailsId, setLoadingDetailsId] = useState("");
   const [isRejectingBatch, setIsRejectingBatch] = useState(false);
   const [isFinalizingBatch, setIsFinalizingBatch] = useState(false);
+  const [isPostingJournal, setIsPostingJournal] = useState(false);
   const batchDetails = useDisclosure();
   const finalizeConfirmation = useDisclosure();
   const canRejectOpeningBalanceBatch = user.username === "admin" || user.role === "System Administrator";
@@ -1243,6 +1244,31 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
       setError(finalizeError.message);
     } finally {
       setIsFinalizingBatch(false);
+    }
+  }
+
+  async function postMissingJournal() {
+    if (!selectedBatchDetails) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setIsPostingJournal(true);
+
+    try {
+      const data = await api(
+        `/api/ledger/opening-balance-import-batches/${selectedBatchDetails.batch.importNo}/post-journal`,
+        { method: "POST" }
+      );
+      setSelectedBatchDetails((current) => (current ? { ...current, batch: data.batch } : current));
+      setMessage(`${data.batch.importNo} linked to journal ${data.entry.id}.`);
+      await loadStagedBatches();
+      await onBalancesChanged?.();
+    } catch (journalError) {
+      setError(journalError.message);
+    } finally {
+      setIsPostingJournal(false);
     }
   }
 
@@ -1556,6 +1582,16 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
                 </Grid>
               ) : null}
 
+              {selectedBatchDetails.batch.status === "Finalized" ? (
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text color="gray.500" fontSize="sm">Opening Journal</Text>
+                  <Text fontWeight="bold">{selectedBatchDetails.batch.postedEntryNo || "Missing journal"}</Text>
+                  <Text color="gray.500" fontSize="sm" mt={1}>
+                    Debit Opening Balance Clearing; credit Share Capital and Savings Deposits Payable.
+                  </Text>
+                </Box>
+              ) : null}
+
               <TableContainer>
                 <Table size="sm">
                   <Thead>
@@ -1613,6 +1649,13 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
           ) : null}
         </ModalBody>
         <ModalFooter>
+          {selectedBatchDetails?.batch.status === "Finalized" &&
+          !selectedBatchDetails.batch.postedEntryNo &&
+          canFinalizeOpeningBalanceBatch ? (
+            <Button colorScheme="orange" mr={3} onClick={postMissingJournal} isLoading={isPostingJournal}>
+              Post Missing Journal
+            </Button>
+          ) : null}
           {selectedBatchDetails?.batch.status === "Staged" &&
           selectedBatchDetails.batch.readyRows > 0 &&
           canFinalizeOpeningBalanceBatch ? (
@@ -1657,8 +1700,8 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
                 <Text fontWeight="bold">{formatMoney(selectedBatchDetails?.batch.totalSavings || 0)}</Text>
               </Box>
             </Grid>
-            <Text color="orange.700" fontSize="sm">
-              This updates member balances. Journal entries will be added in the next accounting spike.
+            <Text color="green.700" fontSize="sm">
+              This updates member balances and creates one balanced opening journal for the finalized rows.
             </Text>
           </VStack>
         </ModalBody>

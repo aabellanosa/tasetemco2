@@ -850,9 +850,46 @@ async function run() {
       finalizedOpeningBalanceBody.batch.status !== "Finalized" ||
       finalizedOpeningBalanceBody.batch.finalizedRows !== 1 ||
       finalizedOpeningBalanceBody.batch.skippedRows !== 1 ||
+      !finalizedOpeningBalanceBody.batch.postedEntryNo ||
       finalizedOpeningBalanceBody.rows.find((row) => row.memberNo === "M-000482")?.rowStatus !== "Finalized"
     ) {
-      throw new Error("Admin should finalize ready opening balance rows and skip issue rows.");
+      throw new Error("Admin should finalize ready rows, skip issue rows, and create an opening journal.");
+    }
+
+    const ledgerAfterOpeningBalance = await fetch(`${baseUrl}/api/ledger`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const ledgerAfterOpeningBalanceBody = await ledgerAfterOpeningBalance.json();
+    const openingJournal = ledgerAfterOpeningBalanceBody.journalEntries.find(
+      (entry) => entry.id === finalizedOpeningBalanceBody.batch.postedEntryNo
+    );
+    const openingJournalDebit = openingJournal?.lines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
+    const openingJournalCredit = openingJournal?.lines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
+
+    if (
+      !openingJournal ||
+      openingJournal.sourceType !== "Opening Balance Import" ||
+      openingJournalDebit !== 1500 ||
+      openingJournalCredit !== 1500 ||
+      !openingJournal.lines.some(
+        (line) => line.accountCode === "1090" && line.accountName === "Opening Balance Clearing" && line.debit === 1500
+      ) ||
+      !openingJournal.lines.some((line) => line.accountCode === "3010" && line.credit === 1000) ||
+      !openingJournal.lines.some((line) => line.accountCode === "2020" && line.credit === 500)
+    ) {
+      throw new Error("Opening balance finalization should create the expected balanced journal entry.");
+    }
+
+    const duplicateOpeningJournal = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-import-batches/${finalizableOpeningBalanceBody.batch.importNo}/post-journal`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie }
+      }
+    );
+
+    if (duplicateOpeningJournal.status !== 409) {
+      throw new Error("Opening balance batches should not post more than one opening journal.");
     }
 
     const membersAfterOpeningBalance = await fetch(`${baseUrl}/api/members`, {
@@ -1633,6 +1670,9 @@ async function run() {
     const statementCashAccount = statementOfFinancialConditionBody.sections.assets.find(
       (row) => row.accountCode === "1010"
     );
+    const statementOpeningClearingAccount = statementOfFinancialConditionBody.sections.assets.find(
+      (row) => row.accountCode === "1090"
+    );
     const statementSavingsAccount = statementOfFinancialConditionBody.sections.liabilities.find(
       (row) => row.accountCode === "2020"
     );
@@ -1646,13 +1686,14 @@ async function run() {
     if (
       !statementOfFinancialCondition.ok ||
       !statementCashAccount ||
+      !statementOpeningClearingAccount ||
       !statementSavingsAccount ||
       !statementShareCapitalAccount ||
       !currentPeriodSurplus ||
-      statementOfFinancialConditionBody.summary.totalAssets !== 15000 ||
-      statementOfFinancialConditionBody.summary.totalLiabilities !== 2800 ||
-      statementOfFinancialConditionBody.summary.totalEquity !== 12200 ||
-      statementOfFinancialConditionBody.summary.totalLiabilitiesAndEquity !== 15000 ||
+      statementOfFinancialConditionBody.summary.totalAssets !== 16500 ||
+      statementOfFinancialConditionBody.summary.totalLiabilities !== 3300 ||
+      statementOfFinancialConditionBody.summary.totalEquity !== 13200 ||
+      statementOfFinancialConditionBody.summary.totalLiabilitiesAndEquity !== 16500 ||
       statementOfFinancialConditionBody.summary.currentPeriodSurplus !== 200 ||
       statementOfFinancialConditionBody.summary.difference !== 0 ||
       statementOfFinancialConditionBody.summary.status !== "Balanced"

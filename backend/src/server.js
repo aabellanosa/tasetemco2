@@ -1003,7 +1003,8 @@ function mapOpeningBalanceImportBatch(row) {
     finalizedBy: row.finalizedBy || "",
     finalizedAt: row.finalizedAt || "",
     finalizedRows: row.finalizedRows || 0,
-    skippedRows: row.skippedRows || 0
+    skippedRows: row.skippedRows || 0,
+    postedEntryNo: row.postedEntryNo || ""
   };
 }
 
@@ -1044,7 +1045,15 @@ async function listOpeningBalanceImportBatches() {
   const db = await getPool();
 
   if (!db) {
-    return openingBalanceImportBatches.map(mapOpeningBalanceImportBatch);
+    return openingBalanceImportBatches.map((batch) =>
+      mapOpeningBalanceImportBatch({
+        ...batch,
+        postedEntryNo:
+          journalEntries.find(
+            (entry) => entry.sourceType === "Opening Balance Import" && entry.sourceNo === batch.importNo
+          )?.id || ""
+      })
+    );
   }
 
   const [rows] = await db.execute(
@@ -1053,9 +1062,13 @@ async function listOpeningBalanceImportBatches() {
             total_share_capital AS totalShareCapital, total_savings AS totalSavings,
             created_by AS createdBy, created_at AS createdAt,
             finalized_by AS finalizedBy, finalized_at AS finalizedAt,
-            finalized_rows AS finalizedRows, skipped_rows AS skippedRows
-     FROM opening_balance_import_batches
-     ORDER BY created_at DESC, id DESC`
+            finalized_rows AS finalizedRows, skipped_rows AS skippedRows,
+            journal.entry_no AS postedEntryNo
+     FROM opening_balance_import_batches batch
+     LEFT JOIN journal_entries journal
+       ON journal.source_type = 'Opening Balance Import'
+      AND journal.source_no = batch.import_no
+     ORDER BY batch.created_at DESC, batch.id DESC`
   );
 
   return rows.map(mapOpeningBalanceImportBatch);
@@ -1072,7 +1085,14 @@ async function getOpeningBalanceImportBatch(importNo) {
     }
 
     const rows = openingBalanceImportRows.filter((row) => row.importNo === batch.importNo);
-    return { batch: mapOpeningBalanceImportBatch(batch), rows: rows.map(mapOpeningBalanceImportRow) };
+    const postedEntryNo =
+      journalEntries.find(
+        (entry) => entry.sourceType === "Opening Balance Import" && entry.sourceNo === batch.importNo
+      )?.id || "";
+    return {
+      batch: mapOpeningBalanceImportBatch({ ...batch, postedEntryNo }),
+      rows: rows.map(mapOpeningBalanceImportRow)
+    };
   }
 
   const [batchRows] = await db.execute(
@@ -1081,9 +1101,13 @@ async function getOpeningBalanceImportBatch(importNo) {
             total_share_capital AS totalShareCapital, total_savings AS totalSavings,
             created_by AS createdBy, created_at AS createdAt,
             finalized_by AS finalizedBy, finalized_at AS finalizedAt,
-            finalized_rows AS finalizedRows, skipped_rows AS skippedRows
-     FROM opening_balance_import_batches
-     WHERE import_no = ?
+            finalized_rows AS finalizedRows, skipped_rows AS skippedRows,
+            journal.entry_no AS postedEntryNo
+     FROM opening_balance_import_batches batch
+     LEFT JOIN journal_entries journal
+       ON journal.source_type = 'Opening Balance Import'
+      AND journal.source_no = batch.import_no
+     WHERE batch.import_no = ?
      LIMIT 1`,
     [importNo]
   );
@@ -1251,6 +1275,132 @@ async function rejectOpeningBalanceImportBatch(importNo, user) {
   return { batch: result.batch };
 }
 
+function buildOpeningBalanceJournalLines(shareCapitalAmount, savingsAmount) {
+  const total = Number(shareCapitalAmount || 0) + Number(savingsAmount || 0);
+
+  return [
+    {
+      accountCode: "1090",
+      accountName: "Opening Balance Clearing",
+      debit: total,
+      credit: 0
+    },
+    {
+      accountCode: "3010",
+      accountName: "Share Capital",
+      debit: 0,
+      credit: Number(shareCapitalAmount || 0)
+    },
+    {
+      accountCode: "2020",
+      accountName: "Savings Deposits Payable",
+      debit: 0,
+      credit: Number(savingsAmount || 0)
+    }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
+function createOpeningBalanceJournalInMemory(batch, rows, user) {
+  const existingEntry = journalEntries.find(
+    (entry) => entry.sourceType === "Opening Balance Import" && entry.sourceNo === batch.importNo
+  );
+
+  if (existingEntry) {
+    return existingEntry;
+  }
+
+  const finalizedRows = rows.filter((row) => row.rowStatus === "Finalized" && row.finalizedAt);
+  const shareCapitalAmount = finalizedRows.reduce(
+    (total, row) => total + Number(row.shareCapitalAmount || 0),
+    0
+  );
+  const savingsAmount = finalizedRows.reduce((total, row) => total + Number(row.savingsAmount || 0), 0);
+
+  if (shareCapitalAmount + savingsAmount <= 0) {
+    return null;
+  }
+
+  const cutoverDate = finalizedRows.map((row) => row.cutoverDate).filter(Boolean).sort()[0] || new Date().toISOString();
+  const entry = {
+    id: nextJournalEntryNumber(),
+    sourceType: "Opening Balance Import",
+    sourceNo: batch.importNo,
+    description: `Opening balances - ${batch.importNo}`,
+    postedBy: user.username,
+    postedAt: cutoverDate,
+    lines: buildOpeningBalanceJournalLines(shareCapitalAmount, savingsAmount)
+  };
+  journalEntries.unshift(entry);
+  return entry;
+}
+
+async function createOpeningBalanceJournalInDatabase(connection, importNo, user) {
+  const [existingRows] = await connection.execute(
+    `SELECT entry_no AS id
+     FROM journal_entries
+     WHERE source_type = 'Opening Balance Import'
+       AND source_no = ?
+     LIMIT 1`,
+    [importNo]
+  );
+
+  if (existingRows.length > 0) {
+    return existingRows[0].id;
+  }
+
+  const [totalsRows] = await connection.execute(
+    `SELECT COALESCE(SUM(share_capital_opening_balance), 0) AS shareCapitalAmount,
+            COALESCE(SUM(savings_opening_balance), 0) AS savingsAmount,
+            MIN(cutover_date) AS cutoverDate
+     FROM opening_balance_import_rows
+     WHERE import_no = ?
+       AND row_status = 'Finalized'
+       AND finalized_at IS NOT NULL`,
+    [importNo]
+  );
+  const totals = totalsRows[0];
+  const totalAmount = Number(totals.shareCapitalAmount || 0) + Number(totals.savingsAmount || 0);
+
+  if (totalAmount <= 0) {
+    return "";
+  }
+
+  const [countRows] = await connection.execute(
+    `SELECT COUNT(*) AS countValue
+     FROM journal_entries
+     WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+  );
+  const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+  const cutoverDate = totals.cutoverDate
+    ? totals.cutoverDate instanceof Date
+      ? totals.cutoverDate.toISOString().slice(0, 10)
+      : String(totals.cutoverDate).slice(0, 10)
+    : "";
+  const postedAt = cutoverDate ? `${cutoverDate} 00:00:00+08` : new Date();
+
+  await connection.execute(
+    `INSERT INTO journal_entries (
+       entry_no, source_type, source_no, description, posted_by, posted_at
+     )
+     VALUES (?, 'Opening Balance Import', ?, ?, ?, ?)`,
+    [entryNo, importNo, `Opening balances - ${importNo}`, user.username, postedAt]
+  );
+
+  const lines = buildOpeningBalanceJournalLines(totals.shareCapitalAmount, totals.savingsAmount);
+
+  for (const line of lines) {
+    await connection.execute(
+      `INSERT INTO journal_entry_lines (
+         entry_no, account_code, account_name, debit, credit
+       )
+       VALUES (?, ?, ?, ?, ?)`,
+      [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+    );
+  }
+
+  return entryNo;
+}
+
 async function finalizeOpeningBalanceImportBatch(importNo, user) {
   const db = await getPool();
 
@@ -1312,6 +1462,7 @@ async function finalizeOpeningBalanceImportBatch(importNo, user) {
     batch.skippedRows = skippedRows;
     batch.finalizedBy = user.username;
     batch.finalizedAt = finalizedAt;
+    createOpeningBalanceJournalInMemory(batch, rows, user);
     return await getOpeningBalanceImportBatch(batch.importNo);
   }
 
@@ -1427,9 +1578,100 @@ async function finalizeOpeningBalanceImportBatch(importNo, user) {
        WHERE import_no = ?`,
       [finalizedRows, skippedRows, user.username, importNo]
     );
+    await createOpeningBalanceJournalInDatabase(connection, importNo, user);
 
     await connection.commit();
     return await getOpeningBalanceImportBatch(importNo);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function repairOpeningBalanceJournal(importNo, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const batch = openingBalanceImportBatches.find((item) => item.importNo === importNo || item.id === importNo);
+
+    if (!batch) {
+      return { error: "Opening balance import batch was not found.", statusCode: 404 };
+    }
+
+    if (batch.status !== "Finalized") {
+      return { error: "Only finalized opening balance batches can post a repair journal.", statusCode: 409 };
+    }
+
+    if (
+      journalEntries.some(
+        (entry) => entry.sourceType === "Opening Balance Import" && entry.sourceNo === batch.importNo
+      )
+    ) {
+      return { error: "Opening balance journal already exists.", statusCode: 409 };
+    }
+
+    const rows = openingBalanceImportRows.filter((row) => row.importNo === batch.importNo);
+    const entry = createOpeningBalanceJournalInMemory(batch, rows, user);
+
+    if (!entry) {
+      return { error: "No finalized opening balance amounts are available to post.", statusCode: 409 };
+    }
+
+    return { batch: (await getOpeningBalanceImportBatch(importNo)).batch, entry };
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [batchRows] = await connection.execute(
+      `SELECT import_no AS importNo, status
+       FROM opening_balance_import_batches
+       WHERE import_no = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [importNo]
+    );
+
+    if (batchRows.length === 0) {
+      await connection.rollback();
+      return { error: "Opening balance import batch was not found.", statusCode: 404 };
+    }
+
+    if (batchRows[0].status !== "Finalized") {
+      await connection.rollback();
+      return { error: "Only finalized opening balance batches can post a repair journal.", statusCode: 409 };
+    }
+
+    const [existingJournalRows] = await connection.execute(
+      `SELECT entry_no AS entryNo
+       FROM journal_entries
+       WHERE source_type = 'Opening Balance Import'
+         AND source_no = ?
+       LIMIT 1`,
+      [importNo]
+    );
+
+    if (existingJournalRows.length > 0) {
+      await connection.rollback();
+      return { error: "Opening balance journal already exists.", statusCode: 409 };
+    }
+
+    const entryNo = await createOpeningBalanceJournalInDatabase(connection, importNo, user);
+
+    if (!entryNo) {
+      await connection.rollback();
+      return { error: "No finalized opening balance amounts are available to post.", statusCode: 409 };
+    }
+
+    await connection.commit();
+    const entries = await listJournalEntries();
+    return {
+      batch: (await getOpeningBalanceImportBatch(importNo)).batch,
+      entry: entries.find((entry) => entry.id === entryNo)
+    };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -2261,6 +2503,25 @@ async function listJournalEntries() {
   }));
 }
 
+async function listFinalizedOpeningBalanceRows() {
+  const db = await getPool();
+
+  if (!db) {
+    return openingBalanceImportRows.filter((row) => row.rowStatus === "Finalized" && row.finalizedAt);
+  }
+
+  const [rows] = await db.execute(
+    `SELECT member_no AS memberNo,
+            share_capital_opening_balance AS shareCapitalAmount,
+            savings_opening_balance AS savingsAmount
+     FROM opening_balance_import_rows
+     WHERE row_status = 'Finalized'
+       AND finalized_at IS NOT NULL`
+  );
+
+  return rows;
+}
+
 async function listTellerBatchRows(batchId = "") {
   const rows = [
     ...(await listInitialPayments())
@@ -2587,6 +2848,7 @@ async function getControlAccountReconciliationReport() {
   );
   const savingsDepositRows = (await listSavingsDeposits()).filter((deposit) => deposit.status === "Posted");
   const savingsWithdrawalRows = (await listSavingsWithdrawals()).filter((withdrawal) => withdrawal.status === "Posted");
+  const openingBalanceRows = await listFinalizedOpeningBalanceRows();
   const entries = await listJournalEntries();
 
   const glBalance = (accountCode) =>
@@ -2600,10 +2862,12 @@ async function getControlAccountReconciliationReport() {
     );
 
   const shareCapitalSubsidiaryTotal =
+    openingBalanceRows.reduce((sum, row) => sum + Number(row.shareCapitalAmount || 0), 0) +
     initialPaymentRows.reduce((sum, payment) => sum + Number(payment.shareCapitalAmount || 0), 0) +
     shareCapitalContributionRows.reduce((sum, contribution) => sum + Number(contribution.amount || 0), 0);
 
   const savingsSubsidiaryTotal =
+    openingBalanceRows.reduce((sum, row) => sum + Number(row.savingsAmount || 0), 0) +
     initialPaymentRows.reduce((sum, payment) => sum + Number(payment.savingsDepositAmount || 0), 0) +
     savingsDepositRows.reduce((sum, deposit) => sum + Number(deposit.amount || 0), 0) -
     savingsWithdrawalRows.reduce((sum, withdrawal) => sum + Number(withdrawal.amount || 0), 0);
@@ -5732,6 +5996,29 @@ app.post("/api/ledger/opening-balance-import-batches/:importNo/finalize", async 
   }
 
   const result = await finalizeOpeningBalanceImportBatch(request.params.importNo, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/ledger/opening-balance-import-batches/:importNo/post-journal", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user)) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await repairOpeningBalanceJournal(request.params.importNo, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

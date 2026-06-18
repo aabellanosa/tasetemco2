@@ -220,6 +220,8 @@ Opening Balance Import Details v1 lets the System Administrator and Accountant /
 
 Opening Balance Import Finalization v1d.1 lets the System Administrator finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. This spike does not create general-ledger journal entries yet.
 
+Opening Balance Accounting Entries v1d.2 creates one balanced journal when an opening-balance batch is finalized: debit `1090 Opening Balance Clearing`, credit `3010 Share Capital`, and credit `2020 Savings Deposits Payable`. The journal uses only finalized rows, links back to the import batch, appears in Posted Entries and financial reports, and brings opening-balance subsidiary totals into Control Account Reconciliation. Finalized batches created before this spike show an Admin-only `Post Missing Journal` repair action.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -630,6 +632,8 @@ Opening Balance Import Staging v1 stores the preview into the opening-balance st
 Opening Balance Import Details v1 adds row-level batch inspection and Admin-only rejection. Rejection changes the staged batch status to `Rejected` and keeps the batch in history for audit review.
 
 Opening Balance Import Finalization v1d.1 applies ready staged rows to member share capital and savings balances with Admin confirmation and transactional persistence. Issue rows remain unapplied. The following accounting spike must create balanced opening journal entries so these subsidiary balances reconcile to the general ledger.
+
+Opening Balance Accounting Entries v1d.2 completes that accounting link. The clearing-account debit represents the historical assets and other opening-balance components that are not yet individually mapped in this prototype; it is not current teller cash. A later full opening-trial-balance migration should replace or reconcile the clearing amount against the cooperative's confirmed asset, liability, and equity accounts.
 
 ## 7. Audit Trail Requirements
 
