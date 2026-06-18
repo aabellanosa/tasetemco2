@@ -216,6 +216,8 @@ Opening Balance Import Staging v1 lets the System Administrator and Accountant /
 
 Opening Balance Import Details v1 lets the System Administrator and Accountant / Bookkeeper open each staged batch to inspect row status, validation issues, and raw source values. The System Administrator can reject a staged batch; rejected batches remain visible for audit evidence and no longer block a corrected upload for the same members.
 
+Opening Balance Import Finalization v1d.1 lets the System Administrator finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. General-ledger journal entries remain for the next accounting spike.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -598,6 +600,8 @@ Opening Balance Import Planning v0 is intentionally read-only. It prepares the f
 Opening Balance Import Staging v1 stores the preview into the opening-balance staging tables and lists saved batches in Ledger. It remains a review queue only; a later finalization spike should apply approved opening balances and create the related accounting evidence.
 
 Opening Balance Import Details v1 adds row-level batch inspection and Admin-only rejection. Rejection changes the batch status to `Rejected`, keeps the batch in history, and releases its member numbers for a corrected staged upload.
+
+Opening Balance Import Finalization v1d.1 applies ready staged rows to member share capital and savings balances with Admin confirmation and transactional persistence. Issue rows remain unapplied. The following accounting spike must create balanced opening journal entries so these subsidiary balances reconcile to the general ledger.
 
 ## 7. Audit Trail Requirements
 
