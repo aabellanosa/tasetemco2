@@ -395,9 +395,16 @@ function parseOpeningBalanceAmount(value) {
   return { value: amount };
 }
 
-function buildOpeningBalancePreview(rows, mapping, memberLookup = [], stagedMemberNos = []) {
+function buildOpeningBalancePreview(
+  rows,
+  mapping,
+  memberLookup = [],
+  stagedMemberNos = [],
+  finalizedMemberNos = []
+) {
   const memberMap = new Map(memberLookup.map((member) => [normalizeImportMemberNo(member.id), member]));
   const stagedMemberNoSet = new Set(stagedMemberNos.map(normalizeImportMemberNo).filter(Boolean));
+  const finalizedMemberNoSet = new Set(finalizedMemberNos.map(normalizeImportMemberNo).filter(Boolean));
   const seenMemberNos = new Set();
   const duplicateMemberNos = new Set();
   const mappedRows = rows.map((row, rowIndex) => {
@@ -445,6 +452,10 @@ function buildOpeningBalancePreview(rows, mapping, memberLookup = [], stagedMemb
 
     if (row.normalizedMemberNo && stagedMemberNoSet.has(row.normalizedMemberNo)) {
       issues.push("Member already has a staged opening balance");
+    }
+
+    if (row.normalizedMemberNo && finalizedMemberNoSet.has(row.normalizedMemberNo)) {
+      issues.push("Opening balance already finalized for member");
     }
 
     if (shareCapital.error) {
@@ -1048,13 +1059,14 @@ function Dashboard() {
   );
 }
 
-function OpeningBalancePreview({ memberLookup, user }) {
+function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
   const [csvText, setCsvText] = useState(sampleOpeningBalanceCsv);
   const parsedImport = useMemo(() => parseMemberImportCsv(csvText), [csvText]);
   const [mapping, setMapping] = useState(() => suggestOpeningBalanceMapping(parsedImport.headers));
   const [sourceLabel, setSourceLabel] = useState("CSV Paste");
   const [stagedBatches, setStagedBatches] = useState([]);
   const [stagedMemberNos, setStagedMemberNos] = useState([]);
+  const [finalizedMemberNos, setFinalizedMemberNos] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -1062,8 +1074,11 @@ function OpeningBalancePreview({ memberLookup, user }) {
   const [selectedBatchDetails, setSelectedBatchDetails] = useState(null);
   const [loadingDetailsId, setLoadingDetailsId] = useState("");
   const [isRejectingBatch, setIsRejectingBatch] = useState(false);
+  const [isFinalizingBatch, setIsFinalizingBatch] = useState(false);
   const batchDetails = useDisclosure();
+  const finalizeConfirmation = useDisclosure();
   const canRejectOpeningBalanceBatch = user.username === "admin" || user.role === "System Administrator";
+  const canFinalizeOpeningBalanceBatch = canRejectOpeningBalanceBatch;
 
   useEffect(() => {
     setMapping((currentMapping) => {
@@ -1079,8 +1094,8 @@ function OpeningBalancePreview({ memberLookup, user }) {
   }, [parsedImport.headers.join("|")]);
 
   const previewRows = useMemo(
-    () => buildOpeningBalancePreview(parsedImport.rows, mapping, memberLookup, stagedMemberNos),
-    [parsedImport.rows, mapping, memberLookup, stagedMemberNos]
+    () => buildOpeningBalancePreview(parsedImport.rows, mapping, memberLookup, stagedMemberNos, finalizedMemberNos),
+    [parsedImport.rows, mapping, memberLookup, stagedMemberNos, finalizedMemberNos]
   );
   const issueCount = previewRows.reduce((total, row) => total + row.issues.length, parsedImport.errors.length);
   const warningCount = previewRows.reduce((total, row) => total + row.warnings.length, 0);
@@ -1097,12 +1112,14 @@ function OpeningBalancePreview({ memberLookup, user }) {
     setIsLoadingBatches(true);
 
     try {
-      const [rows, memberNos] = await Promise.all([
+      const [rows, memberNos, finalizedNos] = await Promise.all([
         api("/api/ledger/opening-balance-import-batches"),
-        api("/api/ledger/opening-balance-staged-member-nos")
+        api("/api/ledger/opening-balance-staged-member-nos"),
+        api("/api/ledger/opening-balance-finalized-member-nos")
       ]);
       setStagedBatches(rows);
       setStagedMemberNos(memberNos);
+      setFinalizedMemberNos(finalizedNos);
     } catch (batchError) {
       setError(batchError.message);
     } finally {
@@ -1199,6 +1216,33 @@ function OpeningBalancePreview({ memberLookup, user }) {
       setError(rejectError.message);
     } finally {
       setIsRejectingBatch(false);
+    }
+  }
+
+  async function finalizeSelectedBatch() {
+    if (!selectedBatchDetails) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setIsFinalizingBatch(true);
+
+    try {
+      const data = await api(`/api/ledger/opening-balance-import-batches/${selectedBatchDetails.batch.importNo}/finalize`, {
+        method: "POST"
+      });
+      setSelectedBatchDetails(data);
+      setMessage(
+        `${data.batch.importNo} finalized: ${data.batch.finalizedRows} row${data.batch.finalizedRows === 1 ? "" : "s"} applied, ${data.batch.skippedRows} skipped.`
+      );
+      finalizeConfirmation.onClose();
+      await loadStagedBatches();
+      await onBalancesChanged?.();
+    } catch (finalizeError) {
+      setError(finalizeError.message);
+    } finally {
+      setIsFinalizingBatch(false);
     }
   }
 
@@ -1388,7 +1432,7 @@ function OpeningBalancePreview({ memberLookup, user }) {
         <Box>
           <Heading size="md">Staged Opening Balance Batches</Heading>
           <Text color="gray.600" mt={1}>
-            Saved imports stay staged until a future finalization step applies balances.
+            Opening balance batches remain visible through staged, finalized, and rejected status.
           </Text>
         </Box>
         <Button size="sm" variant="outline" onClick={loadStagedBatches} isLoading={isLoadingBatches}>
@@ -1416,7 +1460,13 @@ function OpeningBalancePreview({ memberLookup, user }) {
               <Tr key={batch.importNo}>
                 <Td>{batch.importNo}</Td>
                 <Td>
-                  <Badge colorScheme={batch.status === "Staged" ? "blue" : "green"}>{batch.status}</Badge>
+                  <Badge
+                    colorScheme={
+                      batch.status === "Rejected" ? "red" : batch.status === "Finalized" ? "green" : "blue"
+                    }
+                  >
+                    {batch.status}
+                  </Badge>
                 </Td>
                 <Td>{batch.sourceLabel}</Td>
                 <Td isNumeric>{batch.readyRows} / {batch.totalRows}</Td>
@@ -1458,7 +1508,15 @@ function OpeningBalancePreview({ memberLookup, user }) {
               <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
                 <Box borderWidth="1px" borderRadius="md" p={4}>
                   <Text color="gray.500" fontSize="sm">Status</Text>
-                  <Badge colorScheme={selectedBatchDetails.batch.status === "Rejected" ? "red" : "blue"}>
+                  <Badge
+                    colorScheme={
+                      selectedBatchDetails.batch.status === "Rejected"
+                        ? "red"
+                        : selectedBatchDetails.batch.status === "Finalized"
+                          ? "green"
+                          : "blue"
+                    }
+                  >
                     {selectedBatchDetails.batch.status}
                   </Badge>
                 </Box>
@@ -1477,6 +1535,26 @@ function OpeningBalancePreview({ memberLookup, user }) {
                   <Text fontWeight="bold">{formatMoney(selectedBatchDetails.batch.totalSavings)}</Text>
                 </Box>
               </Grid>
+
+              {selectedBatchDetails.batch.status !== "Staged" ? (
+                <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={4}>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Finalized Rows</Text>
+                    <Text fontWeight="bold">{selectedBatchDetails.batch.finalizedRows || 0}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Skipped Rows</Text>
+                    <Text fontWeight="bold">{selectedBatchDetails.batch.skippedRows || 0}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Actioned By</Text>
+                    <Text fontWeight="bold">{selectedBatchDetails.batch.finalizedBy || "-"}</Text>
+                    <Text color="gray.500" fontSize="xs">
+                      {formatDateTime(selectedBatchDetails.batch.finalizedAt)}
+                    </Text>
+                  </Box>
+                </Grid>
+              ) : null}
 
               <TableContainer>
                 <Table size="sm">
@@ -1535,12 +1613,62 @@ function OpeningBalancePreview({ memberLookup, user }) {
           ) : null}
         </ModalBody>
         <ModalFooter>
+          {selectedBatchDetails?.batch.status === "Staged" &&
+          selectedBatchDetails.batch.readyRows > 0 &&
+          canFinalizeOpeningBalanceBatch ? (
+            <Button colorScheme="green" mr={3} onClick={finalizeConfirmation.onOpen}>
+              Finalize Ready Rows
+            </Button>
+          ) : null}
           {selectedBatchDetails?.batch.status === "Staged" && canRejectOpeningBalanceBatch ? (
             <Button colorScheme="red" variant="outline" mr={3} onClick={rejectSelectedBatch} isLoading={isRejectingBatch}>
               Reject Batch
             </Button>
           ) : null}
           <Button onClick={batchDetails.onClose}>Close</Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+
+    <Modal isOpen={finalizeConfirmation.isOpen} onClose={finalizeConfirmation.onClose} isCentered>
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>Confirm Opening Balance Finalization</ModalHeader>
+        <ModalBody>
+          <VStack align="stretch" spacing={4}>
+            <Text>
+              Finalize the ready rows in {selectedBatchDetails?.batch.importNo || "this batch"}?
+            </Text>
+            <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">Ready Rows</Text>
+                <Text fontWeight="bold">{selectedBatchDetails?.batch.readyRows || 0}</Text>
+              </Box>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">Issue Rows Skipped</Text>
+                <Text fontWeight="bold">{selectedBatchDetails?.batch.issueRows || 0}</Text>
+              </Box>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">Share Capital</Text>
+                <Text fontWeight="bold">{formatMoney(selectedBatchDetails?.batch.totalShareCapital || 0)}</Text>
+              </Box>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">Savings</Text>
+                <Text fontWeight="bold">{formatMoney(selectedBatchDetails?.batch.totalSavings || 0)}</Text>
+              </Box>
+            </Grid>
+            <Text color="orange.700" fontSize="sm">
+              This updates member balances. Journal entries will be added in the next accounting spike.
+            </Text>
+          </VStack>
+        </ModalBody>
+        <ModalFooter>
+          <Button mr={3} onClick={finalizeConfirmation.onClose}>
+            Cancel
+          </Button>
+          <Button colorScheme="green" onClick={finalizeSelectedBatch} isLoading={isFinalizingBatch}>
+            Confirm Finalization
+          </Button>
         </ModalFooter>
       </ModalContent>
     </Modal>
@@ -3286,7 +3414,7 @@ function Ledger({ user }) {
 
           {canPreviewOpeningBalances ? (
             <TabPanel px={0}>
-              <OpeningBalancePreview memberLookup={memberLookup} user={user} />
+              <OpeningBalancePreview memberLookup={memberLookup} user={user} onBalancesChanged={loadLedger} />
             </TabPanel>
           ) : null}
 

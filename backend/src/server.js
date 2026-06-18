@@ -856,6 +856,30 @@ async function listOpeningBalanceStagedMemberNos() {
   return rows.map((row) => normalizeImportMemberNo(row.memberNo)).filter(Boolean);
 }
 
+async function listOpeningBalanceFinalizedMemberNos() {
+  const db = await getPool();
+
+  if (!db) {
+    return [
+      ...new Set(
+        openingBalanceImportRows
+          .filter((row) => row.finalizedAt)
+          .map((row) => normalizeImportMemberNo(row.memberNo))
+          .filter(Boolean)
+      )
+    ];
+  }
+
+  const [rows] = await db.execute(
+    `SELECT DISTINCT member_no AS memberNo
+     FROM opening_balance_import_rows
+     WHERE finalized_at IS NOT NULL
+       AND member_no <> ''`
+  );
+
+  return rows.map((row) => normalizeImportMemberNo(row.memberNo)).filter(Boolean);
+}
+
 async function validateOpeningBalanceImportRows(inputRows) {
   if (!Array.isArray(inputRows) || inputRows.length === 0) {
     return { error: "At least one opening balance row is required." };
@@ -868,6 +892,7 @@ async function validateOpeningBalanceImportRows(inputRows) {
   const memberRows = await listLedgerMemberLookup();
   const memberMap = new Map(memberRows.map((member) => [normalizeImportMemberNo(member.id), member]));
   const stagedMemberNos = new Set(await listOpeningBalanceStagedMemberNos());
+  const finalizedMemberNos = new Set(await listOpeningBalanceFinalizedMemberNos());
   const seenMemberNos = new Set();
   const duplicateMemberNos = new Set();
   const normalizedRows = inputRows.map((row, index) => {
@@ -916,6 +941,10 @@ async function validateOpeningBalanceImportRows(inputRows) {
         issues.push("Member already has a staged opening balance");
       }
 
+      if (row.normalizedMemberNo && finalizedMemberNos.has(row.normalizedMemberNo)) {
+        issues.push("Opening balance already finalized for member");
+      }
+
       if (shareCapital.error) {
         issues.push("Invalid share capital amount");
       }
@@ -934,6 +963,7 @@ async function validateOpeningBalanceImportRows(inputRows) {
 
       return {
         ...row,
+        memberNo: member?.id || row.memberNo,
         memberName: row.memberName || member?.name || "",
         shareCapitalAmount: shareCapital.value,
         savingsAmount: savings.value,
@@ -1219,6 +1249,193 @@ async function rejectOpeningBalanceImportBatch(importNo, user) {
 
   const result = await getOpeningBalanceImportBatch(importNo);
   return { batch: result.batch };
+}
+
+async function finalizeOpeningBalanceImportBatch(importNo, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const batch = openingBalanceImportBatches.find((item) => item.importNo === importNo || item.id === importNo);
+
+    if (!batch) {
+      return { error: "Opening balance import batch was not found.", statusCode: 404 };
+    }
+
+    if (batch.status !== "Staged") {
+      return { error: "Only staged opening balance batches can be finalized.", statusCode: 409 };
+    }
+
+    const rows = openingBalanceImportRows.filter((row) => row.importNo === batch.importNo);
+    const finalizedMemberNos = new Set(
+      openingBalanceImportRows
+        .filter((row) => row.importNo !== batch.importNo && row.finalizedAt)
+        .map((row) => normalizeImportMemberNo(row.memberNo))
+    );
+    let finalizedRows = 0;
+    let skippedRows = rows.filter((row) => row.rowStatus !== "Ready").length;
+    const finalizedAt = new Date().toISOString();
+
+    for (const row of rows.filter((item) => item.rowStatus === "Ready")) {
+      const member = members.find(
+        (item) => normalizeImportMemberNo(item.id) === normalizeImportMemberNo(row.memberNo)
+      );
+
+      if (!member) {
+        row.rowStatus = "Skipped";
+        row.issues = [...parseIssues(row.issues), "Member no. was not found during finalization"];
+        skippedRows += 1;
+        continue;
+      }
+
+      if (finalizedMemberNos.has(normalizeImportMemberNo(member.id))) {
+        row.rowStatus = "Skipped";
+        row.issues = [...parseIssues(row.issues), "Opening balance already finalized for member"];
+        skippedRows += 1;
+        continue;
+      }
+
+      member.share += row.shareCapitalAmount;
+      member.savings += row.savingsAmount;
+      row.memberNo = member.id;
+      row.rowStatus = "Finalized";
+      row.finalizedAt = finalizedAt;
+      finalizedMemberNos.add(normalizeImportMemberNo(member.id));
+      finalizedRows += 1;
+    }
+
+    if (finalizedRows === 0) {
+      return { error: "No ready opening balance rows could be finalized.", statusCode: 409 };
+    }
+
+    batch.status = "Finalized";
+    batch.finalizedRows = finalizedRows;
+    batch.skippedRows = skippedRows;
+    batch.finalizedBy = user.username;
+    batch.finalizedAt = finalizedAt;
+    return await getOpeningBalanceImportBatch(batch.importNo);
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [batchRows] = await connection.execute(
+      `SELECT import_no AS importNo, status
+       FROM opening_balance_import_batches
+       WHERE import_no = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [importNo]
+    );
+
+    if (batchRows.length === 0) {
+      await connection.rollback();
+      return { error: "Opening balance import batch was not found.", statusCode: 404 };
+    }
+
+    if (batchRows[0].status !== "Staged") {
+      await connection.rollback();
+      return { error: "Only staged opening balance batches can be finalized.", statusCode: 409 };
+    }
+
+    const [rows] = await connection.execute(
+      `SELECT id, row_no AS rowNumber, member_no AS memberNo,
+              share_capital_opening_balance AS shareCapitalAmount,
+              savings_opening_balance AS savingsAmount,
+              row_status AS rowStatus, issues
+       FROM opening_balance_import_rows
+       WHERE import_no = ?
+       ORDER BY row_no, id`,
+      [importNo]
+    );
+    const [memberRows] = await connection.execute(
+      `SELECT member_no AS id
+       FROM members`
+    );
+    const memberMap = new Map(
+      memberRows.map((member) => [normalizeImportMemberNo(member.id), member.id])
+    );
+    const [previouslyFinalizedRows] = await connection.execute(
+      `SELECT row.member_no AS memberNo
+       FROM opening_balance_import_rows row
+       INNER JOIN opening_balance_import_batches batch
+         ON batch.import_no = row.import_no
+       WHERE row.finalized_at IS NOT NULL
+         AND batch.import_no <> ?`,
+      [importNo]
+    );
+    const finalizedMemberNos = new Set(
+      previouslyFinalizedRows.map((row) => normalizeImportMemberNo(row.memberNo))
+    );
+    let finalizedRows = 0;
+    let skippedRows = rows.filter((row) => row.rowStatus !== "Ready").length;
+
+    for (const row of rows.filter((item) => item.rowStatus === "Ready")) {
+      const normalizedMemberNo = normalizeImportMemberNo(row.memberNo);
+      const memberNo = memberMap.get(normalizedMemberNo);
+
+      if (!memberNo) {
+        const issues = [...parseIssues(row.issues), "Member no. was not found during finalization"];
+        await connection.execute(
+          `UPDATE opening_balance_import_rows
+           SET row_status = 'Skipped', issues = ?
+           WHERE id = ?`,
+          [JSON.stringify(issues), row.id]
+        );
+        skippedRows += 1;
+        continue;
+      }
+
+      if (finalizedMemberNos.has(normalizedMemberNo)) {
+        const issues = [...parseIssues(row.issues), "Opening balance already finalized for member"];
+        await connection.execute(
+          `UPDATE opening_balance_import_rows
+           SET row_status = 'Skipped', issues = ?
+           WHERE id = ?`,
+          [JSON.stringify(issues), row.id]
+        );
+        skippedRows += 1;
+        continue;
+      }
+
+      await connection.execute(
+        `UPDATE members
+         SET share_capital = share_capital + ?, savings_balance = savings_balance + ?
+         WHERE member_no = ?`,
+        [row.shareCapitalAmount, row.savingsAmount, memberNo]
+      );
+      await connection.execute(
+        `UPDATE opening_balance_import_rows
+         SET member_no = ?, row_status = 'Finalized', finalized_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [memberNo, row.id]
+      );
+      finalizedMemberNos.add(normalizedMemberNo);
+      finalizedRows += 1;
+    }
+
+    if (finalizedRows === 0) {
+      await connection.rollback();
+      return { error: "No ready opening balance rows could be finalized.", statusCode: 409 };
+    }
+
+    await connection.execute(
+      `UPDATE opening_balance_import_batches
+       SET status = 'Finalized', finalized_rows = ?, skipped_rows = ?,
+           finalized_by = ?, finalized_at = CURRENT_TIMESTAMP
+       WHERE import_no = ?`,
+      [finalizedRows, skippedRows, user.username, importNo]
+    );
+
+    await connection.commit();
+    return await getOpeningBalanceImportBatch(importNo);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function nextMemberImportNo(connection = null) {
@@ -5416,6 +5633,22 @@ app.get("/api/ledger/opening-balance-staged-member-nos", async (request, respons
   response.json(await listOpeningBalanceStagedMemberNos());
 });
 
+app.get("/api/ledger/opening-balance-finalized-member-nos", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user) && !hasPermission(user, "ledger:teller-batches:review")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listOpeningBalanceFinalizedMemberNos());
+});
+
 app.post("/api/ledger/opening-balance-import-batches", async (request, response) => {
   const user = parseSession(request);
 
@@ -5476,6 +5709,29 @@ app.post("/api/ledger/opening-balance-import-batches/:importNo/reject", async (r
   }
 
   const result = await rejectOpeningBalanceImportBatch(request.params.importNo, user);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/ledger/opening-balance-import-batches/:importNo/finalize", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!isAdminUser(user)) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await finalizeOpeningBalanceImportBatch(request.params.importNo, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });

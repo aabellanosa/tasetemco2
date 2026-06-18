@@ -778,6 +778,153 @@ async function run() {
       throw new Error("Admin should be able to reject staged opening balance batches.");
     }
 
+    const membersBeforeOpeningBalance = await fetch(`${baseUrl}/api/members`, {
+      headers: { Cookie: adminCookie }
+    });
+    const membersBeforeOpeningBalanceBody = await membersBeforeOpeningBalance.json();
+    const openingBalanceMemberBefore = membersBeforeOpeningBalanceBody.find((member) => member.id === "M-000482");
+
+    const finalizableOpeningBalance = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Smoke Finalizable Opening Balance",
+        rows: [
+          {
+            rowNumber: 2,
+            memberNo: "M-000482",
+            memberName: "Maria L. Santos",
+            shareCapitalOpeningBalance: 1000,
+            savingsOpeningBalance: 500,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Smoke Finalization"
+          },
+          {
+            rowNumber: 3,
+            memberNo: "M-UNKNOWN",
+            memberName: "Unknown Member",
+            shareCapitalOpeningBalance: 200,
+            savingsOpeningBalance: 100,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Smoke Finalization"
+          }
+        ]
+      })
+    });
+    const finalizableOpeningBalanceBody = await finalizableOpeningBalance.json();
+
+    if (
+      !finalizableOpeningBalance.ok ||
+      finalizableOpeningBalanceBody.batch.readyRows !== 1 ||
+      finalizableOpeningBalanceBody.batch.issueRows !== 1
+    ) {
+      throw new Error("Opening balance finalization test batch should contain one ready and one issue row.");
+    }
+
+    const forbiddenOpeningBalanceFinalize = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-import-batches/${finalizableOpeningBalanceBody.batch.importNo}/finalize`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+
+    if (forbiddenOpeningBalanceFinalize.status !== 403) {
+      throw new Error("Opening balance finalization should be restricted to admin.");
+    }
+
+    const finalizedOpeningBalance = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-import-batches/${finalizableOpeningBalanceBody.batch.importNo}/finalize`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie }
+      }
+    );
+    const finalizedOpeningBalanceBody = await finalizedOpeningBalance.json();
+
+    if (
+      !finalizedOpeningBalance.ok ||
+      finalizedOpeningBalanceBody.batch.status !== "Finalized" ||
+      finalizedOpeningBalanceBody.batch.finalizedRows !== 1 ||
+      finalizedOpeningBalanceBody.batch.skippedRows !== 1 ||
+      finalizedOpeningBalanceBody.rows.find((row) => row.memberNo === "M-000482")?.rowStatus !== "Finalized"
+    ) {
+      throw new Error("Admin should finalize ready opening balance rows and skip issue rows.");
+    }
+
+    const membersAfterOpeningBalance = await fetch(`${baseUrl}/api/members`, {
+      headers: { Cookie: adminCookie }
+    });
+    const membersAfterOpeningBalanceBody = await membersAfterOpeningBalance.json();
+    const openingBalanceMemberAfter = membersAfterOpeningBalanceBody.find((member) => member.id === "M-000482");
+
+    if (
+      !openingBalanceMemberBefore ||
+      !openingBalanceMemberAfter ||
+      openingBalanceMemberAfter.share !== openingBalanceMemberBefore.share + 1000 ||
+      openingBalanceMemberAfter.savings !== openingBalanceMemberBefore.savings + 500
+    ) {
+      throw new Error("Finalized opening balances should update member share capital and savings.");
+    }
+
+    const repeatedOpeningBalanceFinalize = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-import-batches/${finalizableOpeningBalanceBody.batch.importNo}/finalize`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie }
+      }
+    );
+
+    if (repeatedOpeningBalanceFinalize.status !== 409) {
+      throw new Error("Finalized opening balance batches should not finalize twice.");
+    }
+
+    const finalizedOpeningBalanceMembers = await fetch(
+      `${baseUrl}/api/ledger/opening-balance-finalized-member-nos`,
+      {
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const finalizedOpeningBalanceMemberNos = await finalizedOpeningBalanceMembers.json();
+
+    if (!finalizedOpeningBalanceMemberNos.includes("M-000482")) {
+      throw new Error("Finalized opening balance member numbers should be available for preview validation.");
+    }
+
+    const alreadyFinalizedOpeningBalance = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Smoke Already Finalized Opening Balance",
+        rows: [
+          {
+            rowNumber: 2,
+            memberNo: "M-000482",
+            memberName: "Maria L. Santos",
+            shareCapitalOpeningBalance: 1000,
+            savingsOpeningBalance: 500,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Smoke Finalization"
+          }
+        ]
+      })
+    });
+    const alreadyFinalizedOpeningBalanceBody = await alreadyFinalizedOpeningBalance.json();
+
+    if (
+      !alreadyFinalizedOpeningBalance.ok ||
+      alreadyFinalizedOpeningBalanceBody.batch.readyRows !== 0 ||
+      !alreadyFinalizedOpeningBalanceBody.rows[0].issues.includes("Opening balance already finalized for member")
+    ) {
+      throw new Error("Members with finalized opening balances should be staged as issue rows.");
+    }
+
     const ledgerBeforePosting = await fetch(`${baseUrl}/api/ledger`, {
       headers: { Cookie: bookkeeperCookie }
     });
