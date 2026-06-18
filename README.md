@@ -155,6 +155,8 @@ Opening Balance Import Details v1 lets Admin and Bookkeeper open each staged bat
 
 Opening Balance Import Finalization v1d.1 lets Admin finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. General-ledger journal entries remain for the next accounting spike.
 
+Opening Balance Accounting Entries v1d.2 now creates one balanced journal automatically during finalization: debit `1090 Opening Balance Clearing`, credit `3010 Share Capital`, and credit `2020 Savings Deposits Payable`. Only finalized rows are included. The journal is linked to the batch, appears in Posted Entries and reports, and brings opening balances into Control Account Reconciliation. Older finalized batches without a journal expose an Admin-only `Post Missing Journal` repair action.
+
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
