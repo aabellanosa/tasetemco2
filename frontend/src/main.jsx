@@ -4365,6 +4365,8 @@ function AdminUserManagement({ user }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const canManageUsers = user.username === "admin" || user.role === "System Administrator";
+  const canViewUsers = canManageUsers || user.permissions.includes("users:view");
 
   const roleOptions = useMemo(() => roles.map((role) => role.name), [roles]);
   const defaultViews = useMemo(
@@ -4465,7 +4467,7 @@ function AdminUserManagement({ user }) {
     }
   }
 
-  if (user.username !== "admin") {
+  if (!canViewUsers) {
     return null;
   }
 
@@ -4473,9 +4475,11 @@ function AdminUserManagement({ user }) {
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" align="flex-start" gap={4} wrap="wrap" mb={4}>
         <Box>
-          <Heading size="md">User Management</Heading>
+          <Heading size="md">{canManageUsers ? "User Management" : "User / Security Review"}</Heading>
           <Text color="gray.600" mt={1}>
-            Staff accounts use the shared prototype password while role and access testing continues.
+            {canManageUsers
+              ? "Staff accounts use the shared prototype password while role and access testing continues."
+              : "Read-only staff account directory for compliance and access review."}
           </Text>
         </Box>
         <Badge colorScheme="purple">{users.length} users</Badge>
@@ -4493,6 +4497,7 @@ function AdminUserManagement({ user }) {
         </Box>
       ) : null}
 
+      {canManageUsers ? (
       <Box as="form" onSubmit={createUser} borderWidth="1px" borderRadius="md" p={4} mb={5}>
         <Heading size="sm" mb={4}>Create Staff User</Heading>
         <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "2fr 1fr 1fr 1fr" }} gap={4}>
@@ -4544,6 +4549,7 @@ function AdminUserManagement({ user }) {
           </Button>
         </Flex>
       </Box>
+      ) : null}
 
       <TableContainer>
         <Table size="sm">
@@ -4568,38 +4574,54 @@ function AdminUserManagement({ user }) {
                     <Text color="gray.500" fontSize="sm">@{item.username}</Text>
                   </Td>
                   <Td minW="220px">
-                    <Select size="sm" value={draft.role} onChange={(event) => updateDraft(item.username, { role: event.target.value })}>
-                      {roleOptions.map((role) => (
-                        <option key={role} value={role}>{role}</option>
-                      ))}
-                    </Select>
+                    {canManageUsers ? (
+                      <Select size="sm" value={draft.role} onChange={(event) => updateDraft(item.username, { role: event.target.value })}>
+                        {roleOptions.map((role) => (
+                          <option key={role} value={role}>{role}</option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <Text>{item.role}</Text>
+                    )}
                   </Td>
                   <Td minW="150px">
-                    <Select
-                      size="sm"
-                      value={draft.defaultView}
-                      onChange={(event) => updateDraft(item.username, { defaultView: event.target.value })}
-                    >
-                      {draftViews.map((viewName) => (
-                        <option key={viewName} value={viewName}>{viewTitles[viewName]}</option>
-                      ))}
-                    </Select>
+                    {canManageUsers ? (
+                      <Select
+                        size="sm"
+                        value={draft.defaultView}
+                        onChange={(event) => updateDraft(item.username, { defaultView: event.target.value })}
+                      >
+                        {draftViews.map((viewName) => (
+                          <option key={viewName} value={viewName}>{viewTitles[viewName]}</option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <Text>{viewTitles[item.defaultView] || item.defaultView}</Text>
+                    )}
                   </Td>
                   <Td minW="120px">
-                    <Select
-                      size="sm"
-                      value={draft.status}
-                      onChange={(event) => updateDraft(item.username, { status: event.target.value })}
-                      isDisabled={item.username === "admin"}
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </Select>
+                    {canManageUsers ? (
+                      <Select
+                        size="sm"
+                        value={draft.status}
+                        onChange={(event) => updateDraft(item.username, { status: event.target.value })}
+                        isDisabled={item.username === "admin"}
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                      </Select>
+                    ) : (
+                      <Badge colorScheme={item.status === "Active" ? "green" : "gray"}>{item.status}</Badge>
+                    )}
                   </Td>
                   <Td textAlign="right">
-                    <Button size="sm" onClick={() => saveUser(item.username)} isLoading={busy}>
-                      Save
-                    </Button>
+                    {canManageUsers ? (
+                      <Button size="sm" onClick={() => saveUser(item.username)} isLoading={busy}>
+                        Save
+                      </Button>
+                    ) : (
+                      <Text color="gray.500" fontSize="sm">Read only</Text>
+                    )}
                   </Td>
                 </Tr>
               );
@@ -4687,7 +4709,7 @@ function AdminDemoMaintenance({ user }) {
   }
 
   if (user.username !== "admin") {
-    return <Placeholder view="users" />;
+    return null;
   }
 
   return (

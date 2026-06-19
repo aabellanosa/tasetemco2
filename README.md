@@ -161,6 +161,8 @@ Only the `admin` user can access Demo Maintenance controls. Other roles are bloc
 
 The `admin` user can also manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; production password storage is intentionally left for a later security spike.
 
+The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, and account status, but cannot see the shared prototype password, create or modify users, download backups, or reset demo data.
+
 Member Profile v1 expands member master data with contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. `admin` and `membership` can update profile fields; other member-view roles can inspect them read-only. Share capital and savings balances stay read-only because they are derived from transactions.
 
 Member Import Preview v0 lets `admin` and `membership` paste a CSV export from Excel, map source columns to member profile fields, and review validation issues before any database write exists. It checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses. This is intentionally preview-only while client Excel formats are still being discovered.

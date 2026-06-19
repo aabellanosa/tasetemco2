@@ -104,7 +104,8 @@ export const rolePermissions = {
     "teller-cash-counts:view",
     "teller-batches:view",
     "ledger:view",
-    "reports:view"
+    "reports:view",
+    "users:view"
   ],
   "General Manager": [
     "members:view",
@@ -159,7 +160,8 @@ export const rolePermissions = {
     "teller-cash-counts:view",
     "teller-batches:view",
     "ledger:view",
-    "reports:view"
+    "reports:view",
+    "users:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
 };

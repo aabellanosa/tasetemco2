@@ -194,6 +194,53 @@ async function run() {
       throw new Error("User management should be restricted to admin users.");
     }
 
+    const auditorLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "auditor", password: "p@55@LL" })
+    });
+    const auditorBody = await auditorLogin.json();
+    const auditorCookie = auditorLogin.headers.get("set-cookie")?.split(";")[0];
+
+    if (
+      !auditorLogin.ok ||
+      !auditorBody.user.permissions.includes("users:view") ||
+      !auditorBody.user.allowedViews.includes("users")
+    ) {
+      throw new Error("Auditor should receive read-only User / Security access.");
+    }
+
+    const auditorUsers = await fetch(`${baseUrl}/api/admin/users`, {
+      headers: { Cookie: auditorCookie }
+    });
+    const auditorUsersBody = await auditorUsers.json();
+
+    if (
+      !auditorUsers.ok ||
+      !auditorUsersBody.users.some((item) => item.username === "admin") ||
+      auditorUsersBody.defaultPassword
+    ) {
+      throw new Error("Auditor should list users without receiving the shared prototype password.");
+    }
+
+    const forbiddenAuditorCreate = await fetch(`${baseUrl}/api/admin/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: auditorCookie
+      },
+      body: JSON.stringify({
+        name: "Blocked Auditor Staff",
+        username: "auditblocked",
+        role: "Membership Officer",
+        defaultView: "members"
+      })
+    });
+
+    if (forbiddenAuditorCreate.status !== 403) {
+      throw new Error("Auditor should not create or maintain system users.");
+    }
+
     const adminUsers = await fetch(`${baseUrl}/api/admin/users`, {
       headers: { Cookie: adminCookie }
     });

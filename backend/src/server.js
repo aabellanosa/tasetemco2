@@ -5240,8 +5240,8 @@ app.get("/api/admin/users", async (request, response) => {
     return;
   }
 
-  if (!isAdminUser(user)) {
-    response.status(403).json({ error: "Admin access required" });
+  if (!isAdminUser(user) && !hasPermission(user, "users:view")) {
+    response.status(403).json({ error: "Access denied" });
     return;
   }
 
@@ -5251,7 +5251,7 @@ app.get("/api/admin/users", async (request, response) => {
       name: role,
       defaultViews: roleViews[role] || []
     })),
-    defaultPassword
+    defaultPassword: isAdminUser(user) ? defaultPassword : ""
   });
 });
 

@@ -617,6 +617,8 @@ Maintenance controls are intentionally limited to the System Administrator. Othe
 
 The System Administrator also manages prototype staff users under Users. Admin can create a staff user, assign role and default screen, and activate or deactivate non-admin accounts. All users continue to share the prototype password `p@55@LL` until a later authentication security spike introduces per-user password storage and reset flows.
 
+The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, and account status, but cannot see the shared prototype password, create or modify users, download backups, or reset demo data.
+
 Member Profile v1 adds editable master-data fields for contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. The System Administrator and Membership Officer can update these fields. Manager, Auditor, and other member-view roles can review the profile read-only. Financial balances remain transaction-derived and cannot be edited from the profile panel.
 
 Member Import Preview v0 supports client discovery of existing Excel columns before a write-enabled importer is built. Admin and Membership Officer can paste CSV text, map fields, and review validation results. The preview does not create or update member records.
