@@ -238,6 +238,8 @@ Loan Application v1 adds a separate Applications tab beside Loan Products. The L
 
 Loan Credit Review v1 makes Submitted applications actionable for the Credit Committee / Approver. The reviewer records credit assessment notes, recommended principal, recommended term, decision date, and decision remarks, then chooses `Approved`, `Rejected`, or `Returned`. Approval recommendations cannot exceed the requested amount or term. Rejection and return require remarks. Returned applications remain visible with their review evidence and become editable by the originating Loan Officer; saving moves them back to Draft for resubmission. Approved and Rejected applications cannot receive another decision.
 
+Loan Computation and Amortization Preview v1 adds a separate Computations tab. The originating Loan Officer selects an Approved application and first payment date, then previews a repayment schedule based on the application's snapshotted principal, term, rate, interest method, payment frequency, and processing fee. The current engine supports Flat Interest. Principal and interest are distributed as whole pesos, with rounding remainders assigned to the final installment. Saving creates one immutable loan and its installment rows, then changes the application status to `For Release`.
+
 | Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -248,7 +250,17 @@ Loan Credit Review v1 makes Submitted applications actionable for the Credit Com
 | Teller / Cashier | No | No | No | No |
 | Membership Officer | No | No | No | No |
 
-The implemented status flow is `Draft -> Submitted -> Approved`, `Rejected`, or `Returned`. A returned application follows `Returned -> Draft -> Submitted`. Loan computation, release, amortization schedules, collections, and general-ledger entries are not yet implemented.
+| Loan Computation Access | View Schedule | Preview / Save |
+| --- | --- | --- |
+| System Administrator | Yes | No |
+| General Manager | Yes | No |
+| Loan Officer | Yes | Own approved applications |
+| Credit Committee / Approver | Yes | No |
+| Auditor / Compliance Officer | Yes | No |
+| Teller / Cashier | No | No |
+| Membership Officer | No | No |
+
+The implemented status flow is `Draft -> Submitted -> Approved -> For Release`, with alternate `Rejected` or `Returned` decisions. A returned application follows `Returned -> Draft -> Submitted`. Loan release, collections, and general-ledger entries are not yet implemented.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
@@ -646,6 +658,8 @@ Loan Product Foundation v1 adds the `loan_products` Postgres table and seeded le
 Loan Application v1 adds the `loan_applications` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. Product terms are copied into each application as an audit snapshot. A full demo reset includes one Submitted sample application, while normal operation preserves existing tester data. This slice does not create a loan account, release, schedule, collection, or journal entry.
 
 Loan Credit Review v1 adds assessment notes, recommendations, decision, remarks, date, actor, and timestamp columns to `loan_applications`. Run `npm run pg:migrate` before deploying the matching app build. The migration preserves existing applications and initializes the new review fields without seeding or resetting hosted tester data.
+
+Loan Computation and Amortization Preview v1 adds the `loans` and `loan_installments` Postgres tables. Run `npm run pg:migrate` before deploying the matching app build. No seed is required: Approved applications are computed through the Loan Officer UI. Saving is transactional and unique per application, preventing partial or duplicate schedules. No release transaction or accounting journal is created by this slice.
 
 ## 7. Audit Trail Requirements
 
