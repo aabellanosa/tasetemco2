@@ -242,6 +242,8 @@ Loan Computation and Amortization Preview v1 adds a separate Computations tab. T
 
 Loan Release v1a adds a Releases tab. Teller/Cashier sees loans marked `For Release`, verifies member and computed amounts, enters release date and a unique voucher/reference number, and confirms cash released. Cash must exactly equal net proceeds. The system creates one immutable release record, assigns it to the current Open teller batch, includes net proceeds in batch cash-out, and changes both loan and application status to `Released`. Teller cannot change principal, fee, interest, or schedule.
 
+Loan Release v1b uses the standard teller batch review and posting cycle. Teller submits cash count, Bookkeeper records any required variance note and marks the batch Reviewed, then `Post reviewed batch` creates a balanced journal: debit Loans Receivable for principal, credit Cash on Hand for net proceeds, and credit Processing Fee Income for the deducted fee. Frozen application account mappings are used. The release, loan, and application become `Posted`, and release history and batch details retain the journal number.
+
 | Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -272,7 +274,7 @@ Loan Release v1a adds a Releases tab. Teller/Cashier sees loans marked `For Rele
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
-The implemented status flow is `Draft -> Submitted -> Approved -> For Release -> Released`, with alternate `Rejected` or `Returned` decisions. A returned application follows `Returned -> Draft -> Submitted`. Bookkeeper posting of the release, loan collections, and related general-ledger entries are not yet implemented.
+The implemented status flow is `Draft -> Submitted -> Approved -> For Release -> Released -> Posted`, with alternate `Rejected` or `Returned` decisions. A returned application follows `Returned -> Draft -> Submitted`. Loan collections are not yet implemented.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
@@ -674,6 +676,10 @@ Loan Credit Review v1 adds assessment notes, recommendations, decision, remarks,
 Loan Computation and Amortization Preview v1 adds the `loans` and `loan_installments` Postgres tables. Run `npm run pg:migrate` before deploying the matching app build. No seed is required: Approved applications are computed through the Loan Officer UI. Saving is transactional and unique per application, preventing partial or duplicate schedules. No release transaction or accounting journal is created by this slice.
 
 Loan Release v1a adds the `loan_releases` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. No seed is required. Release vouchers are unique across loan releases and savings withdrawals, each loan can be released only once, and the release is linked to a teller batch. The release remains `Teller Batch` until Loan Release v1b adds Bookkeeper posting and the balanced journal.
+
+Loan Release v1b requires no new migration. It uses the journal tables and posting fields already introduced in earlier spikes. A Posted release is excluded from the unposted batch and cannot create a duplicate journal.
+
+The prototype does not yet model teller opening cash or a release funding transfer. A batch containing a large loan cash-out may therefore show an artificial positive cash-count variance. During prototype testing, Bookkeeper records a variance note before review. A later Teller Opening Cash / Cash Fund spike should calculate expected ending cash as opening cash plus receipts minus releases.
 
 ## 7. Audit Trail Requirements
 
