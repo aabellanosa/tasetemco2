@@ -205,6 +205,8 @@ Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted
 
 Loan Computation and Amortization Preview v1 lets the originating Loan Officer compute an Approved application using its snapshotted Flat Interest terms. The Loan Officer selects the first payment date, previews principal, interest, processing fee, net proceeds, total payable, maturity, and every installment, then saves the schedule once as `For Release`. Whole-peso rounding differences are placed in the final installment. Monthly, semi-monthly, and weekly schedules are supported. Saving creates an immutable loan header and installment rows but does not release cash or create journal entries.
 
+Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Teller confirms the release date, unique voucher/reference number, and cash released, which must exactly equal computed net proceeds. The release is immutable, linked to the current Open teller batch, counted as cash-out, and changes the loan and application status to `Released`. Loan Officer, Approver, Admin, Manager, and Auditor have read-only release visibility. Bookkeeper journal posting remains Loan Release v1b.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -223,6 +225,16 @@ Loan Computation and Amortization Preview v1 lets the originating Loan Officer c
 | Credit Committee / Approver | Yes | No |
 | Auditor / Compliance Officer | Yes | No |
 | Teller / Cashier | No | No |
+| Membership Officer | No | No |
+
+| Loan Release Access | View | Release Cash |
+| --- | --- | --- |
+| System Administrator | Yes | No |
+| General Manager | Yes | No |
+| Loan Officer | Yes | No |
+| Credit Committee / Approver | Yes | No |
+| Teller / Cashier | Yes | Yes |
+| Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.

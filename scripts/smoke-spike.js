@@ -2479,6 +2479,190 @@ async function run() {
       throw new Error("Membership Officer should not receive loan computation access.");
     }
 
+    const closeReviewedBatchForRelease = await fetch(
+      `${baseUrl}/api/teller-batches/${secondReviewedBatchBody.batch.id}/close`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: bookkeeperCookie
+        },
+        body: JSON.stringify({
+          closingNote: "Close reviewed batch before testing the loan release cash-out."
+        })
+      }
+    );
+
+    if (!closeReviewedBatchForRelease.ok) {
+      throw new Error("Reviewed teller batch should close before a new loan release transaction.");
+    }
+
+    const tellerLoansBeforeRelease = await fetch(`${baseUrl}/api/loans`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const tellerLoansBeforeReleaseRows = await tellerLoansBeforeRelease.json();
+
+    if (
+      !tellerLoansBeforeRelease.ok ||
+      !tellerLoansBeforeReleaseRows.some((loan) => loan.loanNo === smokeLoanNo && loan.status === "For Release")
+    ) {
+      throw new Error("Teller should see the For Release loan queue.");
+    }
+
+    const tellerBatchesBeforeRelease = await fetch(`${baseUrl}/api/teller-batches`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const tellerBatchesBeforeReleaseBody = await tellerBatchesBeforeRelease.json();
+    const openBatchBeforeRelease = tellerBatchesBeforeReleaseBody.find((batch) => batch.status === "Open");
+    const openBatchDetailsBeforeRelease = await fetch(
+      `${baseUrl}/api/teller-batches/${openBatchBeforeRelease.id}`,
+      { headers: { Cookie: tellerCookie } }
+    );
+    const openBatchDetailsBeforeReleaseBody = await openBatchDetailsBeforeRelease.json();
+    const cashOutBeforeRelease = openBatchDetailsBeforeReleaseBody.transactions.reduce(
+      (sum, transaction) => sum + Number(transaction.cashOut || 0),
+      0
+    );
+
+    const incorrectCashRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        releaseDate: "2026-07-01",
+        referenceNo: "LV-SMOKE-WRONG-CASH",
+        cashReleased: 12000
+      })
+    });
+
+    if (incorrectCashRelease.status !== 400) {
+      throw new Error("Loan release cash should exactly match computed net proceeds.");
+    }
+
+    const duplicateCashOutReference = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        releaseDate: "2026-07-01",
+        referenceNo: "WV-SMOKE-001",
+        cashReleased: 12750
+      })
+    });
+
+    if (duplicateCashOutReference.status !== 409) {
+      throw new Error("Loan release vouchers should not reuse an existing cash-out reference.");
+    }
+
+    const releaseLoan = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        releaseDate: "2026-07-01",
+        referenceNo: "LV-SMOKE-001",
+        cashReleased: 12750
+      })
+    });
+    const releaseLoanBody = await releaseLoan.json();
+    const smokeReleaseNo = releaseLoanBody.release?.releaseNo;
+
+    if (
+      !releaseLoan.ok ||
+      !smokeReleaseNo ||
+      releaseLoanBody.release.status !== "Teller Batch" ||
+      releaseLoanBody.release.cashReleased !== 12750 ||
+      releaseLoanBody.loan.status !== "Released"
+    ) {
+      throw new Error("Teller should record an immutable loan release in the open teller batch.");
+    }
+
+    const duplicateLoanRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        releaseDate: "2026-07-01",
+        referenceNo: "LV-SMOKE-002",
+        cashReleased: 12750
+      })
+    });
+
+    if (duplicateLoanRelease.status !== 409) {
+      throw new Error("A released loan should not be released twice.");
+    }
+
+    const tellerLoanReleases = await fetch(`${baseUrl}/api/loan-releases`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const tellerLoanReleaseRows = await tellerLoanReleases.json();
+
+    if (
+      !tellerLoanReleases.ok ||
+      !tellerLoanReleaseRows.some(
+        (release) => release.releaseNo === smokeReleaseNo && release.referenceNo === "LV-SMOKE-001"
+      )
+    ) {
+      throw new Error("Teller should see immutable loan release history.");
+    }
+
+    const tellerBatchesAfterRelease = await fetch(`${baseUrl}/api/teller-batches`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const tellerBatchesAfterReleaseBody = await tellerBatchesAfterRelease.json();
+    const releaseBatch = tellerBatchesAfterReleaseBody.find(
+      (batch) => batch.id === releaseLoanBody.release.batchId
+    );
+    const releaseBatchDetails = await fetch(`${baseUrl}/api/teller-batches/${releaseBatch.id}`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const releaseBatchDetailsBody = await releaseBatchDetails.json();
+    const cashOutAfterRelease = releaseBatchDetailsBody.transactions.reduce(
+      (sum, transaction) => sum + Number(transaction.cashOut || 0),
+      0
+    );
+
+    if (
+      !tellerBatchesAfterRelease.ok ||
+      !releaseBatchDetails.ok ||
+      cashOutAfterRelease !== cashOutBeforeRelease + 12750
+    ) {
+      throw new Error("Loan release net proceeds should increase teller batch cash-out.");
+    }
+
+    const forbiddenLoanOfficerRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: loanOfficerCookie
+      },
+      body: JSON.stringify({
+        releaseDate: "2026-07-01",
+        referenceNo: "LV-SMOKE-OFFICER",
+        cashReleased: 12750
+      })
+    });
+
+    if (forbiddenLoanOfficerRelease.status !== 403) {
+      throw new Error("Loan Officer should not record cash releases.");
+    }
+
+    const forbiddenMembershipReleases = await fetch(`${baseUrl}/api/loan-releases`, {
+      headers: { Cookie: cookie }
+    });
+
+    if (forbiddenMembershipReleases.status !== 403) {
+      throw new Error("Membership Officer should not receive loan release access.");
+    }
+
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
   } catch (error) {
     error.message = `${error.message}\n\nServer output:\n${output}`;

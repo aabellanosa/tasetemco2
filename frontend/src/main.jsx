@@ -5315,7 +5315,8 @@ function LoanApplications({ user }) {
       Approved: "green",
       Rejected: "red",
       Returned: "orange",
-      "For Release": "purple"
+      "For Release": "purple",
+      Released: "teal"
     }[status] || "gray";
   }
 
@@ -5946,12 +5947,230 @@ function LoanComputations({ user }) {
   );
 }
 
+function LoanReleases({ user }) {
+  const [loans, setLoans] = useState([]);
+  const [releases, setReleases] = useState([]);
+  const [selectedLoan, setSelectedLoan] = useState(null);
+  const [form, setForm] = useState({
+    releaseDate: new Date().toISOString().slice(0, 10),
+    referenceNo: "",
+    cashReleased: 0
+  });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const releaseModal = useDisclosure();
+  const canCreate = user.permissions.includes("loans:releases:create");
+
+  const loadReleases = useCallback(async () => {
+    setError("");
+    try {
+      const [loanRows, releaseRows] = await Promise.all([
+        api("/api/loans"),
+        api("/api/loan-releases")
+      ]);
+      setLoans(loanRows);
+      setReleases(releaseRows);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReleases();
+  }, [loadReleases]);
+
+  function startRelease(loan) {
+    setSelectedLoan(loan);
+    setForm({
+      releaseDate: new Date().toISOString().slice(0, 10),
+      referenceNo: "",
+      cashReleased: loan.netProceeds
+    });
+    setMessage("");
+    setError("");
+    releaseModal.onOpen();
+  }
+
+  async function confirmRelease() {
+    if (!selectedLoan) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api(`/api/loans/${selectedLoan.loanNo}/release`, {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setMessage(`${result.release.releaseNo} recorded in teller batch ${result.release.batchId}.`);
+      releaseModal.onClose();
+      setSelectedLoan(null);
+      await loadReleases();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const readyLoans = loans.filter((loan) => loan.status === "For Release");
+
+  return (
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
+      <Flex justify="space-between" gap={4} align="center" wrap="wrap">
+        <Box>
+          <Heading size="md">Loan Releases</Heading>
+          <Text color="gray.600" mt={1}>
+            Teller confirms computed proceeds and records the cash release into the open teller batch.
+          </Text>
+        </Box>
+        <Button size="sm" variant="outline" onClick={loadReleases}>Refresh</Button>
+      </Flex>
+
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      {canCreate && readyLoans.length ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm" mb={4}>For Release Queue</Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Loan</Th>
+                  <Th>Member</Th>
+                  <Th isNumeric>Principal</Th>
+                  <Th isNumeric>Processing Fee</Th>
+                  <Th isNumeric>Net Proceeds</Th>
+                  <Th>Action</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {readyLoans.map((loan) => (
+                  <Tr key={loan.loanNo}>
+                    <Td>{loan.loanNo}</Td>
+                    <Td>{loan.memberName}</Td>
+                    <Td isNumeric>{formatMoney(loan.principal)}</Td>
+                    <Td isNumeric>{formatMoney(loan.processingFee)}</Td>
+                    <Td isNumeric fontWeight="bold">{formatMoney(loan.netProceeds)}</Td>
+                    <Td>
+                      <Button size="sm" colorScheme="green" onClick={() => startRelease(loan)}>
+                        Release
+                      </Button>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="sm" mb={4}>Release History</Heading>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Release</Th>
+                <Th>Loan</Th>
+                <Th>Member</Th>
+                <Th>Batch</Th>
+                <Th>Reference</Th>
+                <Th isNumeric>Cash Released</Th>
+                <Th>Date</Th>
+                <Th>Status</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {releases.map((release) => (
+                <Tr key={release.releaseNo}>
+                  <Td>{release.releaseNo}</Td>
+                  <Td>{release.loanNo}</Td>
+                  <Td>{release.memberName}</Td>
+                  <Td>{release.batchId}</Td>
+                  <Td>{release.referenceNo}</Td>
+                  <Td isNumeric>{formatMoney(release.cashReleased)}</Td>
+                  <Td>{release.releaseDate}</Td>
+                  <Td><Badge colorScheme={release.status === "Posted" ? "green" : "orange"}>{release.status}</Badge></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+        {!releases.length ? <Text color="gray.500">No loan releases recorded yet.</Text> : null}
+      </Box>
+
+      <Modal isOpen={releaseModal.isOpen} onClose={releaseModal.onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>{selectedLoan ? `Release ${selectedLoan.loanNo}` : "Release Loan"}</ModalHeader>
+          <ModalBody>
+            {selectedLoan ? (
+              <VStack align="stretch" spacing={4}>
+                <Box>
+                  <Text fontWeight="bold">{selectedLoan.memberName}</Text>
+                  <Text color="gray.600">Principal: {formatMoney(selectedLoan.principal)}</Text>
+                  <Text color="gray.600">Processing fee: {formatMoney(selectedLoan.processingFee)}</Text>
+                  <Text fontWeight="bold">Net proceeds: {formatMoney(selectedLoan.netProceeds)}</Text>
+                </Box>
+                <FormControl isRequired>
+                  <FormLabel>Release Date</FormLabel>
+                  <Input
+                    type="date"
+                    value={form.releaseDate}
+                    onChange={(event) => setForm((current) => ({ ...current, releaseDate: event.target.value }))}
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Release Voucher / Reference Number</FormLabel>
+                  <Input
+                    value={form.referenceNo}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      referenceNo: event.target.value.toUpperCase()
+                    }))}
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Cash Released</FormLabel>
+                  <NumberInput
+                    min={0}
+                    value={form.cashReleased}
+                    onChange={(value) => setForm((current) => ({
+                      ...current,
+                      cashReleased: Number(value || 0)
+                    }))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <Text color="gray.500" fontSize="sm">
+                  Cash must exactly match net proceeds. Posting to the general ledger remains a Bookkeeper step.
+                </Text>
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={releaseModal.onClose}>Cancel</Button>
+            <Button colorScheme="green" onClick={confirmRelease} isLoading={busy}>
+              Confirm Release
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </VStack>
+  );
+}
+
 function Loans({ user }) {
   const canViewApplications = user.permissions.includes("loans:applications:view");
   const canViewComputations = user.permissions.includes("loans:computations:view");
+  const canViewReleases = user.permissions.includes("loans:releases:view");
   const canViewProducts = user.permissions.includes("loans:products:view");
 
-  if (!canViewApplications && !canViewComputations && !canViewProducts) {
+  if (!canViewApplications && !canViewComputations && !canViewReleases && !canViewProducts) {
     return <Placeholder view="loans" />;
   }
 
@@ -5960,11 +6179,13 @@ function Loans({ user }) {
       <TabList overflowX="auto" overflowY="hidden">
         {canViewApplications ? <Tab flexShrink={0}>Applications</Tab> : null}
         {canViewComputations ? <Tab flexShrink={0}>Computations</Tab> : null}
+        {canViewReleases ? <Tab flexShrink={0}>Releases</Tab> : null}
         {canViewProducts ? <Tab flexShrink={0}>Loan Products</Tab> : null}
       </TabList>
       <TabPanels>
         {canViewApplications ? <TabPanel px={0}><LoanApplications user={user} /></TabPanel> : null}
         {canViewComputations ? <TabPanel px={0}><LoanComputations user={user} /></TabPanel> : null}
+        {canViewReleases ? <TabPanel px={0}><LoanReleases user={user} /></TabPanel> : null}
         {canViewProducts ? <TabPanel px={0}><LoanProducts user={user} /></TabPanel> : null}
       </TabPanels>
     </Tabs>

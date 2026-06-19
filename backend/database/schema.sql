@@ -128,6 +128,27 @@ CREATE TABLE IF NOT EXISTS loan_installments (
   UNIQUE (loan_no, installment_no)
 );
 
+CREATE TABLE IF NOT EXISTS loan_releases (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  release_no VARCHAR(40) NOT NULL UNIQUE,
+  loan_no VARCHAR(40) NOT NULL UNIQUE,
+  batch_no VARCHAR(40) NOT NULL,
+  member_no VARCHAR(40) NOT NULL,
+  member_name VARCHAR(180) NOT NULL,
+  principal INT NOT NULL DEFAULT 0,
+  processing_fee INT NOT NULL DEFAULT 0,
+  net_proceeds INT NOT NULL DEFAULT 0,
+  cash_released INT NOT NULL DEFAULT 0,
+  release_date DATE NOT NULL,
+  reference_no VARCHAR(80) NOT NULL UNIQUE,
+  released_by VARCHAR(80) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
+  posted_by VARCHAR(80),
+  posted_entry_no VARCHAR(40),
+  posted_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS member_applications (
   id INT AUTO_INCREMENT PRIMARY KEY,
   application_no VARCHAR(40) NOT NULL UNIQUE,

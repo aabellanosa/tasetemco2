@@ -242,6 +242,8 @@ Loan Credit Review v1 makes Submitted applications actionable for the Credit Com
 
 Loan Computation and Amortization Preview v1 adds a separate Computations tab. The originating Loan Officer selects an Approved application and first payment date, then previews a repayment schedule based on the application's snapshotted principal, term, rate, interest method, payment frequency, and processing fee. The current engine supports Flat Interest. Total interest is principal multiplied by the annual rate and term fraction; principal and interest are distributed as whole pesos, with rounding remainders assigned to the final installment. Saving creates one immutable loan and its installment rows, then changes the application status to `For Release`.
 
+Loan Release v1a adds a Releases tab. Teller/Cashier sees loans marked `For Release`, verifies member and computed amounts, enters release date and a unique voucher/reference number, and confirms cash released. Cash must exactly equal net proceeds. The system creates one immutable release record, assigns it to the current Open teller batch, includes net proceeds in batch cash-out, and changes both loan and application status to `Released`. Teller cannot change principal, fee, interest, or schedule.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -262,7 +264,17 @@ Loan Computation and Amortization Preview v1 adds a separate Computations tab. T
 | Teller / Cashier | No | No |
 | Membership Officer | No | No |
 
-The implemented status flow is `Draft -> Submitted -> Approved -> For Release`, with alternate `Rejected` or `Returned` decisions. A returned application follows `Returned -> Draft -> Submitted`. Loan release, collections, and general-ledger entries are not yet implemented.
+| Loan Release Access | View | Release Cash |
+| --- | --- | --- |
+| System Administrator | Yes | No |
+| General Manager | Yes | No |
+| Loan Officer | Yes | No |
+| Credit Committee / Approver | Yes | No |
+| Teller / Cashier | Yes | Yes |
+| Auditor / Compliance Officer | Yes | No |
+| Membership Officer | No | No |
+
+The implemented status flow is `Draft -> Submitted -> Approved -> For Release -> Released`, with alternate `Rejected` or `Returned` decisions. A returned application follows `Returned -> Draft -> Submitted`. Bookkeeper posting of the release, loan collections, and related general-ledger entries are not yet implemented.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
@@ -688,6 +700,8 @@ Loan Application v1 adds the `loan_applications` Postgres table. Run `npm run pg
 Loan Credit Review v1 adds decision columns to `loan_applications`, including assessment notes, recommendations, decision, remarks, date, actor, and timestamp. Run `npm run pg:migrate` before starting or deploying this build. The migration preserves existing applications and initializes the new review fields without seeding or resetting hosted tester data.
 
 Loan Computation and Amortization Preview v1 adds the `loans` and `loan_installments` Postgres tables. Run `npm run pg:migrate` before starting or deploying this build. No seed is required: Approved applications are computed through the Loan Officer UI. Saving is transactional and unique per application, preventing partial or duplicate schedules. No release transaction or accounting journal is created by this slice.
+
+Loan Release v1a adds the `loan_releases` Postgres table. Run `npm run pg:migrate` before starting or deploying this build. No seed is required. Release vouchers are unique across loan releases and savings withdrawals, each loan can be released only once, and the release is linked to a teller batch. The release remains `Teller Batch` until Loan Release v1b adds Bookkeeper posting and the balanced journal.
 
 ## 7. Audit Trail Requirements
 
