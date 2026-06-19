@@ -212,7 +212,10 @@
           originating Loan Officer selects the first payment date, previews the Flat Interest
           schedule, processing fee, net proceeds, total payable, and maturity, then saves it
           once as For Release. Whole-peso rounding differences go to the final installment.
-          Loan release, collections, and accounting entries remain later workflow steps.
+          Loan Release v1a adds a Releases tab for Teller / Cashier. Teller verifies the
+          computed amounts, enters a unique voucher and release date, and confirms cash equal
+          to net proceeds. The release is immutable, linked to the Open teller batch, and
+          counted as cash-out. Bookkeeper posting and the release journal remain the next step.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -303,7 +306,9 @@
               <li>Approved and Rejected applications retain immutable decision evidence.</li>
               <li>Loan Officer previews and saves the approved amortization schedule.</li>
               <li>Saved computations move to For Release without moving cash.</li>
-              <li>Loan release remains the next planned workflow stage.</li>
+              <li>Teller confirms the unique release voucher and exact net cash proceeds.</li>
+              <li>Released proceeds enter the Open teller batch as cash-out evidence.</li>
+              <li>Bookkeeper posting remains the next planned workflow stage.</li>
             </ol>
           </article>
 
