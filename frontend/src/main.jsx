@@ -4829,6 +4829,292 @@ function AdminDemoMaintenance({ user }) {
   );
 }
 
+const defaultLoanProductForm = {
+  code: "",
+  name: "",
+  description: "",
+  minimumPrincipal: 5000,
+  maximumPrincipal: 50000,
+  minimumTermMonths: 3,
+  maximumTermMonths: 12,
+  annualInterestRateBps: 1200,
+  interestMethod: "Flat Interest",
+  paymentFrequency: "Monthly",
+  processingFee: 250,
+  penaltyRateBps: 200,
+  loansReceivableAccount: "1050",
+  interestIncomeAccount: "4010",
+  processingFeeAccount: "4030",
+  penaltyIncomeAccount: "4040",
+  cashAccount: "1010",
+  status: "Active"
+};
+
+function formatRateBps(value) {
+  return `${(Number(value || 0) / 100).toFixed(2)}%`;
+}
+
+function Loans({ user }) {
+  const [products, setProducts] = useState([]);
+  const [form, setForm] = useState(defaultLoanProductForm);
+  const [editingCode, setEditingCode] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busyCode, setBusyCode] = useState("");
+  const canViewProducts = user.permissions.includes("loans:products:view");
+  const canManageProducts = user.permissions.includes("loans:products:manage");
+
+  const loadProducts = useCallback(async () => {
+    if (!canViewProducts) {
+      return;
+    }
+
+    setError("");
+    try {
+      const rows = await api("/api/loan-products");
+      setProducts(rows);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, [canViewProducts]);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  function updateForm(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function startEdit(product) {
+    setEditingCode(product.code);
+    setForm({ ...product });
+    setMessage("");
+    setError("");
+  }
+
+  function cancelEdit() {
+    setEditingCode("");
+    setForm(defaultLoanProductForm);
+  }
+
+  async function submitProduct(event) {
+    event.preventDefault();
+    setBusyCode(editingCode || "create");
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await api(editingCode ? `/api/loan-products/${editingCode}` : "/api/loan-products", {
+        method: editingCode ? "PATCH" : "POST",
+        body: JSON.stringify(form)
+      });
+      setMessage(`${data.product.name} ${editingCode ? "updated" : "created"}.`);
+      setEditingCode("");
+      setForm(defaultLoanProductForm);
+      await loadProducts();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyCode("");
+    }
+  }
+
+  if (!canViewProducts) {
+    return <Placeholder view="loans" />;
+  }
+
+  return (
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
+      <Flex justify="space-between" gap={4} align="center" wrap="wrap">
+        <Box>
+          <Heading size="md">Loan Products</Heading>
+          <Text color="gray.600" mt={1}>
+            Reusable lending rules for amount limits, terms, rates, fees, penalties, and accounting mappings.
+          </Text>
+        </Box>
+        <Button size="sm" variant="outline" onClick={loadProducts}>
+          Refresh
+        </Button>
+      </Flex>
+
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      {canManageProducts ? (
+        <Box as="form" onSubmit={submitProduct} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm" mb={4}>{editingCode ? `Edit Loan Product - ${editingCode}` : "Create Loan Product"}</Heading>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4}>
+            <FormControl isRequired>
+              <FormLabel>Product Code</FormLabel>
+              <Input
+                value={form.code}
+                onChange={(event) => updateForm("code", event.target.value.toUpperCase())}
+                isDisabled={Boolean(editingCode)}
+              />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Product Name</FormLabel>
+              <Input value={form.name} onChange={(event) => updateForm("name", event.target.value)} />
+            </FormControl>
+            <FormControl>
+              <FormLabel>Minimum Principal</FormLabel>
+              <NumberInput min={0} value={form.minimumPrincipal} onChange={(value) => updateForm("minimumPrincipal", Number(value || 0))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Maximum Principal</FormLabel>
+              <NumberInput min={1} value={form.maximumPrincipal} onChange={(value) => updateForm("maximumPrincipal", Number(value || 0))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Minimum Term (months)</FormLabel>
+              <NumberInput min={1} value={form.minimumTermMonths} onChange={(value) => updateForm("minimumTermMonths", Number(value || 0))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Maximum Term (months)</FormLabel>
+              <NumberInput min={1} value={form.maximumTermMonths} onChange={(value) => updateForm("maximumTermMonths", Number(value || 0))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Annual Interest (%)</FormLabel>
+              <NumberInput min={0} max={100} precision={2} value={form.annualInterestRateBps / 100} onChange={(value) => updateForm("annualInterestRateBps", Math.round(Number(value || 0) * 100))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Processing Fee</FormLabel>
+              <NumberInput min={0} value={form.processingFee} onChange={(value) => updateForm("processingFee", Number(value || 0))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Penalty Rate (%)</FormLabel>
+              <NumberInput min={0} max={100} precision={2} value={form.penaltyRateBps / 100} onChange={(value) => updateForm("penaltyRateBps", Math.round(Number(value || 0) * 100))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Interest Method</FormLabel>
+              <Select value={form.interestMethod} onChange={(event) => updateForm("interestMethod", event.target.value)}>
+                <option>Flat Interest</option>
+                <option>Diminishing Balance</option>
+              </Select>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Payment Frequency</FormLabel>
+              <Select value={form.paymentFrequency} onChange={(event) => updateForm("paymentFrequency", event.target.value)}>
+                <option>Monthly</option>
+                <option>Semi-monthly</option>
+                <option>Weekly</option>
+              </Select>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Status</FormLabel>
+              <Select value={form.status} onChange={(event) => updateForm("status", event.target.value)}>
+                <option>Active</option>
+                <option>Inactive</option>
+              </Select>
+            </FormControl>
+          </Grid>
+          <FormControl mt={4}>
+            <FormLabel>Description</FormLabel>
+            <Textarea value={form.description} onChange={(event) => updateForm("description", event.target.value)} />
+          </FormControl>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={4} mt={4}>
+            {[
+              ["loansReceivableAccount", "Loans Receivable"],
+              ["interestIncomeAccount", "Interest Income"],
+              ["processingFeeAccount", "Processing Fee"],
+              ["penaltyIncomeAccount", "Penalty Income"],
+              ["cashAccount", "Cash"]
+            ].map(([field, label]) => (
+              <FormControl key={field}>
+                <FormLabel>{label} Account</FormLabel>
+                <Input value={form[field]} onChange={(event) => updateForm(field, event.target.value)} />
+              </FormControl>
+            ))}
+          </Grid>
+          <Flex justify="flex-end" mt={5}>
+            {editingCode ? (
+              <Button mr={3} variant="outline" onClick={cancelEdit}>
+                Cancel
+              </Button>
+            ) : null}
+            <Button type="submit" colorScheme="green" isLoading={busyCode === (editingCode || "create")}>
+              {editingCode ? "Save Product" : "Create Product"}
+            </Button>
+          </Flex>
+        </Box>
+      ) : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Product</Th>
+                <Th>Principal Range</Th>
+                <Th>Term</Th>
+                <Th>Interest</Th>
+                <Th>Frequency</Th>
+                <Th isNumeric>Fee</Th>
+                <Th>Penalty</Th>
+                <Th>Status</Th>
+                {canManageProducts ? <Th>Action</Th> : null}
+              </Tr>
+            </Thead>
+            <Tbody>
+              {products.map((product) => {
+                return (
+                  <Tr key={product.code}>
+                    <Td minW="220px">
+                      <Text fontWeight="bold">{product.code} - {product.name}</Text>
+                      <Text color="gray.500" fontSize="xs">{product.description}</Text>
+                    </Td>
+                    <Td minW="170px">
+                      {formatMoney(product.minimumPrincipal)} - {formatMoney(product.maximumPrincipal)}
+                    </Td>
+                    <Td minW="150px">
+                      {product.minimumTermMonths}-{product.maximumTermMonths} months
+                    </Td>
+                    <Td minW="140px">
+                      <Text>{formatRateBps(product.annualInterestRateBps)} annual</Text>
+                      <Text color="gray.500" fontSize="xs">{product.interestMethod}</Text>
+                    </Td>
+                    <Td>{product.paymentFrequency}</Td>
+                    <Td isNumeric>{formatMoney(product.processingFee)}</Td>
+                    <Td>{formatRateBps(product.penaltyRateBps)}</Td>
+                    <Td>
+                      <Badge colorScheme={product.status === "Active" ? "green" : "gray"}>{product.status}</Badge>
+                    </Td>
+                    {canManageProducts ? (
+                      <Td>
+                        <Button size="sm" onClick={() => startEdit(product)}>
+                          Edit
+                        </Button>
+                      </Td>
+                    ) : null}
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+        </TableContainer>
+        <Text color="gray.500" fontSize="sm" mt={4}>
+          Account mapping: 1050 Loans Receivable, 4010 Interest Income, 4030 Processing Fee Income,
+          4040 Penalty Income, and 1010 Cash on Hand.
+        </Text>
+      </Box>
+    </VStack>
+  );
+}
+
 function Placeholder({ view }) {
   return (
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={6}>
@@ -4852,6 +5138,10 @@ function Shell({ user, onLogout }) {
 
     if (view === "members") {
       return <Members user={user} />;
+    }
+
+    if (view === "loans") {
+      return <Loans user={user} />;
     }
 
     if (view === "ledger") {

@@ -224,6 +224,18 @@ Opening Balance Accounting Entries v1d.2 creates one balanced journal when an op
 
 Opening Balance Visibility v1e adds finalized opening balances to each member statement with batch number, cutover date, source reference, amounts, and linked journal number. The Member Subsidiary Ledger separately shows opening share capital and opening savings beside normal transaction movements and current balances.
 
+Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. The System Administrator can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, processing fee, penalty rate, accounting mappings, and status. General Manager, Loan Officer, Credit Committee / Approver, Teller / Cashier, and Auditor / Compliance Officer have read-only product access. The seeded products are Regular Loan, Emergency Loan, and Small Business Loan.
+
+| Loan Product Access | View | Create / Edit |
+| --- | --- | --- |
+| System Administrator | Yes | Yes |
+| General Manager | Yes | No |
+| Loan Officer | Yes | No |
+| Credit Committee / Approver | Yes | No |
+| Teller / Cashier | Yes | No |
+| Auditor / Compliance Officer | Yes | No |
+| Membership Officer | No | No |
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -640,6 +652,8 @@ Opening Balance Import Finalization v1d.1 applies ready staged rows to member sh
 Opening Balance Accounting Entries v1d.2 completes that accounting link. The clearing-account debit represents the historical assets and other opening-balance components that are not yet individually mapped in this prototype; it is not current teller cash. A later full opening-trial-balance migration should replace or reconcile the clearing amount against the cooperative's confirmed asset, liability, and equity accounts.
 
 Opening Balance Visibility v1e makes the audit trail readable from member-facing operational screens. Finalized opening rows are immutable evidence and remain cross-referenced to their import batch, source reference, cutover date, and opening journal.
+
+Loan Product Foundation v1 adds the `loan_products` Postgres table and seeded lending rules. Run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying this app build to a local or hosted Postgres target. The product-only seed is safe to run without resetting unrelated demo data. Products define future application constraints but do not create loans, schedules, releases, repayments, or journal entries yet.
 
 ## 7. Audit Trail Requirements
 

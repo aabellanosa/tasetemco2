@@ -10,6 +10,7 @@ import {
   defaultPassword,
   initialPayments,
   journalEntries,
+  loanProducts,
   memberApplications,
   memberImportBatches,
   memberImportRows,
@@ -64,6 +65,7 @@ const persistedTables = [
   "teller_batches",
   "opening_balance_import_rows",
   "opening_balance_import_batches",
+  "loan_products",
   "member_import_rows",
   "member_import_batches",
   "member_applications",
@@ -139,6 +141,28 @@ const requiredSchemaColumns = {
     "issues",
     "raw_data",
     "finalized_at"
+  ],
+  loan_products: [
+    "product_code",
+    "product_name",
+    "description",
+    "minimum_principal",
+    "maximum_principal",
+    "minimum_term_months",
+    "maximum_term_months",
+    "annual_interest_rate_bps",
+    "interest_method",
+    "payment_frequency",
+    "processing_fee",
+    "penalty_rate_bps",
+    "loans_receivable_account",
+    "interest_income_account",
+    "processing_fee_account",
+    "penalty_income_account",
+    "cash_account",
+    "status",
+    "created_at",
+    "updated_at"
   ]
 };
 
@@ -313,6 +337,267 @@ async function listSystemUsers() {
   );
 
   return rows;
+}
+
+function mapLoanProduct(row) {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    description: row.description || "",
+    minimumPrincipal: Number(row.minimumPrincipal || 0),
+    maximumPrincipal: Number(row.maximumPrincipal || 0),
+    minimumTermMonths: Number(row.minimumTermMonths || 0),
+    maximumTermMonths: Number(row.maximumTermMonths || 0),
+    annualInterestRateBps: Number(row.annualInterestRateBps || 0),
+    interestMethod: row.interestMethod,
+    paymentFrequency: row.paymentFrequency,
+    processingFee: Number(row.processingFee || 0),
+    penaltyRateBps: Number(row.penaltyRateBps || 0),
+    loansReceivableAccount: row.loansReceivableAccount,
+    interestIncomeAccount: row.interestIncomeAccount,
+    processingFeeAccount: row.processingFeeAccount,
+    penaltyIncomeAccount: row.penaltyIncomeAccount,
+    cashAccount: row.cashAccount,
+    status: row.status,
+    createdAt: row.createdAt || "",
+    updatedAt: row.updatedAt || ""
+  };
+}
+
+async function listLoanProducts() {
+  const db = await getPool();
+
+  if (!db) {
+    return loanProducts.map(mapLoanProduct);
+  }
+
+  const [rows] = await db.execute(
+    `SELECT id, product_code AS code, product_name AS name, description,
+            minimum_principal AS minimumPrincipal, maximum_principal AS maximumPrincipal,
+            minimum_term_months AS minimumTermMonths, maximum_term_months AS maximumTermMonths,
+            annual_interest_rate_bps AS annualInterestRateBps,
+            interest_method AS interestMethod, payment_frequency AS paymentFrequency,
+            processing_fee AS processingFee, penalty_rate_bps AS penaltyRateBps,
+            loans_receivable_account AS loansReceivableAccount,
+            interest_income_account AS interestIncomeAccount,
+            processing_fee_account AS processingFeeAccount,
+            penalty_income_account AS penaltyIncomeAccount, cash_account AS cashAccount,
+            status, created_at AS createdAt, updated_at AS updatedAt
+     FROM loan_products
+     ORDER BY product_name, product_code`
+  );
+
+  return rows.map(mapLoanProduct);
+}
+
+function validateLoanProductInput(body) {
+  const code = String(body.code || "").trim().toUpperCase();
+  const name = String(body.name || "").trim();
+  const description = String(body.description || "").trim().slice(0, 1000);
+  const minimumPrincipal = Number(body.minimumPrincipal);
+  const maximumPrincipal = Number(body.maximumPrincipal);
+  const minimumTermMonths = Number(body.minimumTermMonths);
+  const maximumTermMonths = Number(body.maximumTermMonths);
+  const annualInterestRateBps = Number(body.annualInterestRateBps);
+  const processingFee = Number(body.processingFee);
+  const penaltyRateBps = Number(body.penaltyRateBps);
+  const interestMethod = String(body.interestMethod || "Flat Interest").trim();
+  const paymentFrequency = String(body.paymentFrequency || "Monthly").trim();
+  const status = String(body.status || "Active").trim();
+  const accounts = {
+    loansReceivableAccount: String(body.loansReceivableAccount || "1050").trim(),
+    interestIncomeAccount: String(body.interestIncomeAccount || "4010").trim(),
+    processingFeeAccount: String(body.processingFeeAccount || "4030").trim(),
+    penaltyIncomeAccount: String(body.penaltyIncomeAccount || "4040").trim(),
+    cashAccount: String(body.cashAccount || "1010").trim()
+  };
+
+  if (!/^[A-Z][A-Z0-9-]{2,39}$/.test(code)) {
+    return { error: "Product code must use 3-40 uppercase letters, numbers, or dashes." };
+  }
+
+  if (name.length < 3) {
+    return { error: "Product name is required." };
+  }
+
+  if (!Number.isInteger(minimumPrincipal) || minimumPrincipal < 0) {
+    return { error: "Minimum principal must be a non-negative whole peso amount." };
+  }
+
+  if (!Number.isInteger(maximumPrincipal) || maximumPrincipal < minimumPrincipal || maximumPrincipal <= 0) {
+    return { error: "Maximum principal must be greater than or equal to the minimum principal." };
+  }
+
+  if (!Number.isInteger(minimumTermMonths) || minimumTermMonths < 1) {
+    return { error: "Minimum term must be at least one month." };
+  }
+
+  if (!Number.isInteger(maximumTermMonths) || maximumTermMonths < minimumTermMonths) {
+    return { error: "Maximum term must be greater than or equal to the minimum term." };
+  }
+
+  if (!Number.isInteger(annualInterestRateBps) || annualInterestRateBps < 0 || annualInterestRateBps > 10000) {
+    return { error: "Annual interest rate must be between 0% and 100%." };
+  }
+
+  if (!Number.isInteger(processingFee) || processingFee < 0) {
+    return { error: "Processing fee must be a non-negative whole peso amount." };
+  }
+
+  if (!Number.isInteger(penaltyRateBps) || penaltyRateBps < 0 || penaltyRateBps > 10000) {
+    return { error: "Penalty rate must be between 0% and 100%." };
+  }
+
+  if (!["Flat Interest", "Diminishing Balance"].includes(interestMethod)) {
+    return { error: "Interest method is not supported." };
+  }
+
+  if (!["Monthly", "Semi-monthly", "Weekly"].includes(paymentFrequency)) {
+    return { error: "Payment frequency is not supported." };
+  }
+
+  if (!["Active", "Inactive"].includes(status)) {
+    return { error: "Status must be Active or Inactive." };
+  }
+
+  if (Object.values(accounts).some((account) => !/^[0-9]{4,20}$/.test(account))) {
+    return { error: "Accounting mappings must use numeric account codes." };
+  }
+
+  return {
+    value: {
+      code,
+      name,
+      description,
+      minimumPrincipal,
+      maximumPrincipal,
+      minimumTermMonths,
+      maximumTermMonths,
+      annualInterestRateBps,
+      interestMethod,
+      paymentFrequency,
+      processingFee,
+      penaltyRateBps,
+      ...accounts,
+      status
+    }
+  };
+}
+
+async function createLoanProduct(input) {
+  const db = await getPool();
+
+  if (!db) {
+    if (loanProducts.some((product) => product.code === input.code)) {
+      return { error: "Loan product code already exists.", statusCode: 409 };
+    }
+
+    const product = {
+      id: Math.max(...loanProducts.map((item) => Number(item.id) || 0), 0) + 1,
+      ...input,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    loanProducts.push(product);
+    return { product: mapLoanProduct(product) };
+  }
+
+  try {
+    await db.execute(
+      `INSERT INTO loan_products (
+         product_code, product_name, description, minimum_principal, maximum_principal,
+         minimum_term_months, maximum_term_months, annual_interest_rate_bps,
+         interest_method, payment_frequency, processing_fee, penalty_rate_bps,
+         loans_receivable_account, interest_income_account, processing_fee_account,
+         penalty_income_account, cash_account, status
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.code,
+        input.name,
+        input.description,
+        input.minimumPrincipal,
+        input.maximumPrincipal,
+        input.minimumTermMonths,
+        input.maximumTermMonths,
+        input.annualInterestRateBps,
+        input.interestMethod,
+        input.paymentFrequency,
+        input.processingFee,
+        input.penaltyRateBps,
+        input.loansReceivableAccount,
+        input.interestIncomeAccount,
+        input.processingFeeAccount,
+        input.penaltyIncomeAccount,
+        input.cashAccount,
+        input.status
+      ]
+    );
+  } catch (error) {
+    if (error.code === "23505") {
+      return { error: "Loan product code already exists.", statusCode: 409 };
+    }
+    throw error;
+  }
+
+  const products = await listLoanProducts();
+  return { product: products.find((product) => product.code === input.code) };
+}
+
+async function updateLoanProduct(code, input) {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  const db = await getPool();
+
+  if (!db) {
+    const product = loanProducts.find((item) => item.code === normalizedCode);
+    if (!product) {
+      return { error: "Loan product was not found.", statusCode: 404 };
+    }
+    Object.assign(product, input, { code: normalizedCode, updatedAt: new Date().toISOString() });
+    return { product: mapLoanProduct(product) };
+  }
+
+  const [existingRows] = await db.execute(
+    `SELECT product_code AS code FROM loan_products WHERE product_code = ? LIMIT 1`,
+    [normalizedCode]
+  );
+  if (existingRows.length === 0) {
+    return { error: "Loan product was not found.", statusCode: 404 };
+  }
+
+  await db.execute(
+    `UPDATE loan_products
+     SET product_name = ?, description = ?, minimum_principal = ?, maximum_principal = ?,
+         minimum_term_months = ?, maximum_term_months = ?, annual_interest_rate_bps = ?,
+         interest_method = ?, payment_frequency = ?, processing_fee = ?, penalty_rate_bps = ?,
+         loans_receivable_account = ?, interest_income_account = ?, processing_fee_account = ?,
+         penalty_income_account = ?, cash_account = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE product_code = ?`,
+    [
+      input.name,
+      input.description,
+      input.minimumPrincipal,
+      input.maximumPrincipal,
+      input.minimumTermMonths,
+      input.maximumTermMonths,
+      input.annualInterestRateBps,
+      input.interestMethod,
+      input.paymentFrequency,
+      input.processingFee,
+      input.penaltyRateBps,
+      input.loansReceivableAccount,
+      input.interestIncomeAccount,
+      input.processingFeeAccount,
+      input.penaltyIncomeAccount,
+      input.cashAccount,
+      input.status,
+      normalizedCode
+    ]
+  );
+
+  const products = await listLoanProducts();
+  return { product: products.find((product) => product.code === normalizedCode) };
 }
 
 function validateSystemUserInput(body) {
@@ -5230,6 +5515,81 @@ app.get("/api/dashboard", (request, response) => {
   }
 
   response.json(dashboard);
+});
+
+app.get("/api/loan-products", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:products:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listLoanProducts());
+});
+
+app.post("/api/loan-products", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:products:manage")) {
+    response.status(403).json({ error: "Admin access required" });
+    return;
+  }
+
+  const validation = validateLoanProductInput(request.body);
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await createLoanProduct(validation.value);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.status(201).json(result);
+});
+
+app.patch("/api/loan-products/:code", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:products:manage")) {
+    response.status(403).json({ error: "Admin access required" });
+    return;
+  }
+
+  const validation = validateLoanProductInput({
+    ...request.body,
+    code: request.params.code
+  });
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await updateLoanProduct(request.params.code, validation.value);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
 });
 
 app.get("/api/admin/users", async (request, response) => {

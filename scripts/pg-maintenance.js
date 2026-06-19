@@ -10,6 +10,7 @@ dotenv.config();
 const command = process.argv[2];
 const schemaPath = path.join(process.cwd(), "backend", "database", "schema.postgres.sql");
 const seedPath = path.join(process.cwd(), "backend", "database", "seed.postgres.sql");
+const loanProductSeedPath = path.join(process.cwd(), "backend", "database", "seed.loan-products.postgres.sql");
 const backupDir = path.join(process.cwd(), "data", "backups");
 const connectionTimeoutMillis = Number(process.env.PGCONNECT_TIMEOUT_MS || 8000);
 
@@ -24,6 +25,7 @@ const tables = [
   "teller_batches",
   "opening_balance_import_rows",
   "opening_balance_import_batches",
+  "loan_products",
   "member_import_rows",
   "member_import_batches",
   "member_applications",
@@ -32,7 +34,7 @@ const tables = [
 ];
 
 function requireCommand() {
-  const commands = ["schema", "seed", "backup", "reset-demo"];
+  const commands = ["schema", "seed", "seed-loan-products", "backup", "reset-demo"];
 
   if (!commands.includes(command)) {
     console.error(`Usage: node scripts/pg-maintenance.js <${commands.join("|")}>`);
@@ -149,6 +151,12 @@ async function main() {
   if (command === "seed") {
     await runSqlFile(seedPath);
     console.log("Postgres demo seed applied.");
+    return;
+  }
+
+  if (command === "seed-loan-products") {
+    await runSqlFile(loanProductSeedPath);
+    console.log("Postgres loan product seed applied.");
     return;
   }
 

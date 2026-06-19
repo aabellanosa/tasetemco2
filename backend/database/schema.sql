@@ -19,6 +19,30 @@ CREATE TABLE IF NOT EXISTS members (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS loan_products (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  product_code VARCHAR(40) NOT NULL UNIQUE,
+  product_name VARCHAR(160) NOT NULL,
+  description TEXT NOT NULL,
+  minimum_principal INT NOT NULL DEFAULT 0,
+  maximum_principal INT NOT NULL DEFAULT 0,
+  minimum_term_months INT NOT NULL DEFAULT 1,
+  maximum_term_months INT NOT NULL DEFAULT 1,
+  annual_interest_rate_bps INT NOT NULL DEFAULT 0,
+  interest_method VARCHAR(40) NOT NULL DEFAULT 'Flat Interest',
+  payment_frequency VARCHAR(40) NOT NULL DEFAULT 'Monthly',
+  processing_fee INT NOT NULL DEFAULT 0,
+  penalty_rate_bps INT NOT NULL DEFAULT 0,
+  loans_receivable_account VARCHAR(40) NOT NULL DEFAULT '1050',
+  interest_income_account VARCHAR(40) NOT NULL DEFAULT '4010',
+  processing_fee_account VARCHAR(40) NOT NULL DEFAULT '4030',
+  penalty_income_account VARCHAR(40) NOT NULL DEFAULT '4040',
+  cash_account VARCHAR(40) NOT NULL DEFAULT '1010',
+  status VARCHAR(30) NOT NULL DEFAULT 'Active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS member_applications (
   id INT AUTO_INCREMENT PRIMARY KEY,
   application_no VARCHAR(40) NOT NULL UNIQUE,

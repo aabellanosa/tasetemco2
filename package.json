@@ -17,6 +17,7 @@
     "pg:migrate": "npm run pg:schema",
     "pg:schema": "node scripts/pg-maintenance.js schema",
     "pg:seed": "node scripts/pg-maintenance.js seed",
+    "pg:seed-loan-products": "node scripts/pg-maintenance.js seed-loan-products",
     "pg:backup": "node scripts/pg-maintenance.js backup",
     "pg:reset-demo": "node scripts/pg-maintenance.js reset-demo",
     "test": "node scripts/smoke-spike.js",

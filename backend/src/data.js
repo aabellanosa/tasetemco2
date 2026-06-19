@@ -105,7 +105,9 @@ export const rolePermissions = {
     "teller-batches:view",
     "ledger:view",
     "reports:view",
-    "users:view"
+    "users:view",
+    "loans:products:view",
+    "loans:products:manage"
   ],
   "General Manager": [
     "members:view",
@@ -117,7 +119,8 @@ export const rolePermissions = {
     "teller-cash-counts:view",
     "teller-batches:view",
     "ledger:view",
-    "reports:view"
+    "reports:view",
+    "loans:products:view"
   ],
   "Accountant / Bookkeeper": [
     "ledger:view",
@@ -128,8 +131,13 @@ export const rolePermissions = {
     "teller-batches:view",
     "reports:view"
   ],
-  "Loan Officer": ["members:view"],
-  "Credit Committee / Approver": ["members:view", "members:applications:view", "reports:view"],
+  "Loan Officer": ["members:view", "loans:products:view"],
+  "Credit Committee / Approver": [
+    "members:view",
+    "members:applications:view",
+    "reports:view",
+    "loans:products:view"
+  ],
   "Teller / Cashier": [
     "members:view",
     "members:initial-payments:view",
@@ -142,7 +150,8 @@ export const rolePermissions = {
     "members:savings-withdrawals:create",
     "teller-cash-counts:view",
     "teller-cash-counts:create",
-    "teller-batches:view"
+    "teller-batches:view",
+    "loans:products:view"
   ],
   "Membership Officer": [
     "members:view",
@@ -161,7 +170,8 @@ export const rolePermissions = {
     "teller-batches:view",
     "ledger:view",
     "reports:view",
-    "users:view"
+    "users:view",
+    "loans:products:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
 };
@@ -220,6 +230,72 @@ export const memberApplications = [
     initialShareCapital: 5000,
     status: "Pending Approval",
     createdBy: "membership"
+  }
+];
+
+export const loanProducts = [
+  {
+    id: 1,
+    code: "REGULAR",
+    name: "Regular Loan",
+    description: "General-purpose member loan with monthly flat interest.",
+    minimumPrincipal: 5000,
+    maximumPrincipal: 100000,
+    minimumTermMonths: 3,
+    maximumTermMonths: 24,
+    annualInterestRateBps: 1200,
+    interestMethod: "Flat Interest",
+    paymentFrequency: "Monthly",
+    processingFee: 250,
+    penaltyRateBps: 200,
+    loansReceivableAccount: "1050",
+    interestIncomeAccount: "4010",
+    processingFeeAccount: "4030",
+    penaltyIncomeAccount: "4040",
+    cashAccount: "1010",
+    status: "Active"
+  },
+  {
+    id: 2,
+    code: "EMERGENCY",
+    name: "Emergency Loan",
+    description: "Short-term loan for urgent member needs.",
+    minimumPrincipal: 1000,
+    maximumPrincipal: 20000,
+    minimumTermMonths: 1,
+    maximumTermMonths: 6,
+    annualInterestRateBps: 800,
+    interestMethod: "Flat Interest",
+    paymentFrequency: "Monthly",
+    processingFee: 100,
+    penaltyRateBps: 200,
+    loansReceivableAccount: "1050",
+    interestIncomeAccount: "4010",
+    processingFeeAccount: "4030",
+    penaltyIncomeAccount: "4040",
+    cashAccount: "1010",
+    status: "Active"
+  },
+  {
+    id: 3,
+    code: "SMALL-BIZ",
+    name: "Small Business Loan",
+    description: "Working-capital loan for qualified member enterprises.",
+    minimumPrincipal: 10000,
+    maximumPrincipal: 250000,
+    minimumTermMonths: 6,
+    maximumTermMonths: 36,
+    annualInterestRateBps: 1500,
+    interestMethod: "Flat Interest",
+    paymentFrequency: "Monthly",
+    processingFee: 500,
+    penaltyRateBps: 300,
+    loansReceivableAccount: "1050",
+    interestIncomeAccount: "4010",
+    processingFeeAccount: "4030",
+    penaltyIncomeAccount: "4040",
+    cashAccount: "1010",
+    status: "Active"
   }
 ];
 

@@ -1798,6 +1798,100 @@ async function run() {
       throw new Error("Admin should not record teller initial member payments in this spike.");
     }
 
+    const adminLoanProducts = await fetch(`${baseUrl}/api/loan-products`, {
+      headers: { Cookie: adminCookie }
+    });
+    const adminLoanProductRows = await adminLoanProducts.json();
+
+    if (
+      !adminLoanProducts.ok ||
+      !adminLoanProductRows.some((product) => product.code === "REGULAR") ||
+      !adminLoanProductRows.some((product) => product.code === "EMERGENCY")
+    ) {
+      throw new Error("Admin should see seeded loan products.");
+    }
+
+    const smokeLoanProductInput = {
+      code: "SMOKE-LOAN",
+      name: "Smoke Test Loan",
+      description: "Loan product created by the smoke test.",
+      minimumPrincipal: 2000,
+      maximumPrincipal: 30000,
+      minimumTermMonths: 2,
+      maximumTermMonths: 12,
+      annualInterestRateBps: 1000,
+      interestMethod: "Flat Interest",
+      paymentFrequency: "Monthly",
+      processingFee: 150,
+      penaltyRateBps: 200,
+      loansReceivableAccount: "1050",
+      interestIncomeAccount: "4010",
+      processingFeeAccount: "4030",
+      penaltyIncomeAccount: "4040",
+      cashAccount: "1010",
+      status: "Active"
+    };
+    const createLoanProduct = await fetch(`${baseUrl}/api/loan-products`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify(smokeLoanProductInput)
+    });
+    const createLoanProductBody = await createLoanProduct.json();
+
+    if (
+      !createLoanProduct.ok ||
+      createLoanProductBody.product.code !== "SMOKE-LOAN" ||
+      createLoanProductBody.product.annualInterestRateBps !== 1000
+    ) {
+      throw new Error("Admin should create validated loan products.");
+    }
+
+    const duplicateLoanProduct = await fetch(`${baseUrl}/api/loan-products`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify(smokeLoanProductInput)
+    });
+
+    if (duplicateLoanProduct.status !== 409) {
+      throw new Error("Duplicate loan product codes should be rejected.");
+    }
+
+    const updateLoanProduct = await fetch(`${baseUrl}/api/loan-products/SMOKE-LOAN`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify({
+        ...smokeLoanProductInput,
+        maximumPrincipal: 40000,
+        status: "Inactive"
+      })
+    });
+    const updateLoanProductBody = await updateLoanProduct.json();
+
+    if (
+      !updateLoanProduct.ok ||
+      updateLoanProductBody.product.maximumPrincipal !== 40000 ||
+      updateLoanProductBody.product.status !== "Inactive"
+    ) {
+      throw new Error("Admin should update loan product rules and status.");
+    }
+
+    const forbiddenMembershipLoanProducts = await fetch(`${baseUrl}/api/loan-products`, {
+      headers: { Cookie: cookie }
+    });
+
+    if (forbiddenMembershipLoanProducts.status !== 403) {
+      throw new Error("Membership Officer should not receive loan product access.");
+    }
+
     const loanOfficerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1806,8 +1900,13 @@ async function run() {
     const loanOfficerCookie = loanOfficerLogin.headers.get("set-cookie")?.split(";")[0];
     const loanOfficerBody = await loanOfficerLogin.json();
 
-    if (!loanOfficerLogin.ok || !loanOfficerBody.user.allowedViews.includes("members")) {
-      throw new Error("Loan officer should still be allowed to view members.");
+    if (
+      !loanOfficerLogin.ok ||
+      !loanOfficerBody.user.allowedViews.includes("members") ||
+      !loanOfficerBody.user.permissions.includes("loans:products:view") ||
+      loanOfficerBody.user.permissions.includes("loans:products:manage")
+    ) {
+      throw new Error("Loan Officer should view members and loan products without maintenance permission.");
     }
 
     if (loanOfficerBody.user.permissions.includes("members:applications:create")) {
@@ -1830,6 +1929,31 @@ async function run() {
 
     if (forbiddenCreate.status !== 403) {
       throw new Error("Loan officer should be denied member application creation.");
+    }
+
+    const loanOfficerProducts = await fetch(`${baseUrl}/api/loan-products`, {
+      headers: { Cookie: loanOfficerCookie }
+    });
+    const loanOfficerProductRows = await loanOfficerProducts.json();
+
+    if (!loanOfficerProducts.ok || !loanOfficerProductRows.some((product) => product.code === "REGULAR")) {
+      throw new Error("Loan Officer should see loan product rules.");
+    }
+
+    const forbiddenLoanProductCreate = await fetch(`${baseUrl}/api/loan-products`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: loanOfficerCookie
+      },
+      body: JSON.stringify({
+        ...smokeLoanProductInput,
+        code: "OFFICER-BLOCKED"
+      })
+    });
+
+    if (forbiddenLoanProductCreate.status !== 403) {
+      throw new Error("Loan Officer should not create loan products.");
     }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
