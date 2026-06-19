@@ -1892,6 +1892,46 @@ async function run() {
       throw new Error("Membership Officer should not receive loan product access.");
     }
 
+    const forbiddenMembershipLoanApplications = await fetch(`${baseUrl}/api/loan-applications`, {
+      headers: { Cookie: cookie }
+    });
+
+    if (forbiddenMembershipLoanApplications.status !== 403) {
+      throw new Error("Membership Officer should not receive loan application access.");
+    }
+
+    const adminLoanApplications = await fetch(`${baseUrl}/api/loan-applications`, {
+      headers: { Cookie: adminCookie }
+    });
+    const adminLoanApplicationRows = await adminLoanApplications.json();
+
+    if (
+      !adminLoanApplications.ok ||
+      !adminLoanApplicationRows.some((application) => application.applicationNo === "LA-2026-0001")
+    ) {
+      throw new Error("Admin should have read-only access to submitted loan applications.");
+    }
+
+    const forbiddenAdminLoanApplicationCreate = await fetch(`${baseUrl}/api/loan-applications`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie
+      },
+      body: JSON.stringify({
+        memberNo: "M-000517",
+        productCode: "REGULAR",
+        requestedPrincipal: 10000,
+        requestedTermMonths: 6,
+        purpose: "Admin must not originate loans",
+        applicationDate: "2026-06-19"
+      })
+    });
+
+    if (forbiddenAdminLoanApplicationCreate.status !== 403) {
+      throw new Error("Admin should not create loan applications.");
+    }
+
     const loanOfficerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1904,9 +1944,12 @@ async function run() {
       !loanOfficerLogin.ok ||
       !loanOfficerBody.user.allowedViews.includes("members") ||
       !loanOfficerBody.user.permissions.includes("loans:products:view") ||
+      !loanOfficerBody.user.permissions.includes("loans:applications:create") ||
+      !loanOfficerBody.user.permissions.includes("loans:applications:edit") ||
+      !loanOfficerBody.user.permissions.includes("loans:applications:submit") ||
       loanOfficerBody.user.permissions.includes("loans:products:manage")
     ) {
-      throw new Error("Loan Officer should view members and loan products without maintenance permission.");
+      throw new Error("Loan Officer should own loan application drafting and submission.");
     }
 
     if (loanOfficerBody.user.permissions.includes("members:applications:create")) {
@@ -1954,6 +1997,154 @@ async function run() {
 
     if (forbiddenLoanProductCreate.status !== 403) {
       throw new Error("Loan Officer should not create loan products.");
+    }
+
+    const invalidLoanApplication = await fetch(`${baseUrl}/api/loan-applications`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: loanOfficerCookie
+      },
+      body: JSON.stringify({
+        memberNo: "M-000517",
+        productCode: "REGULAR",
+        requestedPrincipal: 100,
+        requestedTermMonths: 6,
+        purpose: "Amount below the configured product minimum",
+        applicationDate: "2026-06-19"
+      })
+    });
+
+    if (invalidLoanApplication.status !== 400) {
+      throw new Error("Loan applications outside product amount limits should be rejected.");
+    }
+
+    const createLoanApplication = await fetch(`${baseUrl}/api/loan-applications`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: loanOfficerCookie
+      },
+      body: JSON.stringify({
+        memberNo: "M-000517",
+        productCode: "REGULAR",
+        requestedPrincipal: 12000,
+        requestedTermMonths: 6,
+        purpose: "Smoke test livelihood supplies",
+        applicationDate: "2026-06-19"
+      })
+    });
+    const createLoanApplicationBody = await createLoanApplication.json();
+    const smokeApplicationNo = createLoanApplicationBody.application?.applicationNo;
+
+    if (
+      !createLoanApplication.ok ||
+      !smokeApplicationNo ||
+      createLoanApplicationBody.application.status !== "Draft" ||
+      createLoanApplicationBody.application.annualInterestRateBps !== 1200
+    ) {
+      throw new Error("Loan Officer should create a draft with snapshotted product terms.");
+    }
+
+    const updateLoanApplication = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({
+          memberNo: "M-000517",
+          productCode: "REGULAR",
+          requestedPrincipal: 15000,
+          requestedTermMonths: 9,
+          purpose: "Updated smoke test livelihood supplies",
+          applicationDate: "2026-06-19"
+        })
+      }
+    );
+    const updateLoanApplicationBody = await updateLoanApplication.json();
+
+    if (
+      !updateLoanApplication.ok ||
+      updateLoanApplicationBody.application.requestedPrincipal !== 15000 ||
+      updateLoanApplicationBody.application.status !== "Draft"
+    ) {
+      throw new Error("Loan Officer should edit their own draft application.");
+    }
+
+    const submitLoanApplication = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/submit`,
+      {
+        method: "POST",
+        headers: { Cookie: loanOfficerCookie }
+      }
+    );
+    const submitLoanApplicationBody = await submitLoanApplication.json();
+
+    if (
+      !submitLoanApplication.ok ||
+      submitLoanApplicationBody.application.status !== "Submitted" ||
+      submitLoanApplicationBody.application.submittedBy !== "loanofficer"
+    ) {
+      throw new Error("Loan Officer should submit their own validated draft.");
+    }
+
+    const duplicateLoanApplicationSubmit = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/submit`,
+      {
+        method: "POST",
+        headers: { Cookie: loanOfficerCookie }
+      }
+    );
+
+    if (duplicateLoanApplicationSubmit.status !== 409) {
+      throw new Error("Submitted loan applications should not be submitted twice.");
+    }
+
+    const immutableSubmittedApplication = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({
+          memberNo: "M-000517",
+          productCode: "REGULAR",
+          requestedPrincipal: 16000,
+          requestedTermMonths: 9,
+          purpose: "Submitted records must be immutable",
+          applicationDate: "2026-06-19"
+        })
+      }
+    );
+
+    if (immutableSubmittedApplication.status !== 409) {
+      throw new Error("Submitted loan applications should be immutable.");
+    }
+
+    const approverLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "approver", password: "p@55@LL" })
+    });
+    const approverCookie = approverLogin.headers.get("set-cookie")?.split(";")[0];
+    const approverLoanApplications = await fetch(`${baseUrl}/api/loan-applications`, {
+      headers: { Cookie: approverCookie }
+    });
+    const approverApplicationRows = await approverLoanApplications.json();
+
+    if (
+      !approverLogin.ok ||
+      !approverLoanApplications.ok ||
+      !approverApplicationRows.some(
+        (application) => application.applicationNo === smokeApplicationNo && application.status === "Submitted"
+      )
+    ) {
+      throw new Error("Credit Committee / Approver should see the submitted application queue.");
     }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);

@@ -107,7 +107,8 @@ export const rolePermissions = {
     "reports:view",
     "users:view",
     "loans:products:view",
-    "loans:products:manage"
+    "loans:products:manage",
+    "loans:applications:view"
   ],
   "General Manager": [
     "members:view",
@@ -120,7 +121,8 @@ export const rolePermissions = {
     "teller-batches:view",
     "ledger:view",
     "reports:view",
-    "loans:products:view"
+    "loans:products:view",
+    "loans:applications:view"
   ],
   "Accountant / Bookkeeper": [
     "ledger:view",
@@ -131,12 +133,20 @@ export const rolePermissions = {
     "teller-batches:view",
     "reports:view"
   ],
-  "Loan Officer": ["members:view", "loans:products:view"],
+  "Loan Officer": [
+    "members:view",
+    "loans:products:view",
+    "loans:applications:view",
+    "loans:applications:create",
+    "loans:applications:edit",
+    "loans:applications:submit"
+  ],
   "Credit Committee / Approver": [
     "members:view",
     "members:applications:view",
     "reports:view",
-    "loans:products:view"
+    "loans:products:view",
+    "loans:applications:view"
   ],
   "Teller / Cashier": [
     "members:view",
@@ -171,7 +181,8 @@ export const rolePermissions = {
     "ledger:view",
     "reports:view",
     "users:view",
-    "loans:products:view"
+    "loans:products:view",
+    "loans:applications:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
 };
@@ -296,6 +307,37 @@ export const loanProducts = [
     penaltyIncomeAccount: "4040",
     cashAccount: "1010",
     status: "Active"
+  }
+];
+
+export const loanApplications = [
+  {
+    id: "LA-2026-0001",
+    applicationNo: "LA-2026-0001",
+    memberNo: "M-000517",
+    memberName: "Benito P. Cruz",
+    productCode: "REGULAR",
+    productName: "Regular Loan",
+    requestedPrincipal: 30000,
+    requestedTermMonths: 12,
+    purpose: "Farm inputs for the next planting season",
+    applicationDate: "2026-06-15",
+    annualInterestRateBps: 1200,
+    interestMethod: "Flat Interest",
+    paymentFrequency: "Monthly",
+    processingFee: 250,
+    penaltyRateBps: 200,
+    loansReceivableAccount: "1050",
+    interestIncomeAccount: "4010",
+    processingFeeAccount: "4030",
+    penaltyIncomeAccount: "4040",
+    cashAccount: "1010",
+    status: "Submitted",
+    createdBy: "loanofficer",
+    submittedBy: "loanofficer",
+    submittedAt: "2026-06-15T02:00:00.000Z",
+    createdAt: "2026-06-15T01:30:00.000Z",
+    updatedAt: "2026-06-15T02:00:00.000Z"
   }
 ];
 

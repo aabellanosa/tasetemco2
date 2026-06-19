@@ -88,6 +88,40 @@ ON CONFLICT (product_code) DO UPDATE SET
   status = EXCLUDED.status,
   updated_at = CURRENT_TIMESTAMP;
 
+INSERT INTO loan_applications (
+  application_no, member_no, member_name, product_code, product_name,
+  requested_principal, requested_term_months, purpose, application_date,
+  annual_interest_rate_bps, interest_method, payment_frequency,
+  processing_fee, penalty_rate_bps, loans_receivable_account,
+  interest_income_account, processing_fee_account, penalty_income_account,
+  cash_account, status, created_by, submitted_by, submitted_at
+) VALUES
+  (
+    'LA-2026-0001', 'M-000517', 'Benito P. Cruz', 'REGULAR', 'Regular Loan',
+    30000, 12, 'Farm inputs for the next planting season', '2026-06-15',
+    1200, 'Flat Interest', 'Monthly', 250, 200, '1050', '4010', '4030', '4040',
+    '1010', 'Submitted', 'loanofficer', 'loanofficer', '2026-06-15 10:00:00+08'
+  )
+ON CONFLICT (application_no) DO UPDATE SET
+  member_no = EXCLUDED.member_no,
+  member_name = EXCLUDED.member_name,
+  product_code = EXCLUDED.product_code,
+  product_name = EXCLUDED.product_name,
+  requested_principal = EXCLUDED.requested_principal,
+  requested_term_months = EXCLUDED.requested_term_months,
+  purpose = EXCLUDED.purpose,
+  application_date = EXCLUDED.application_date,
+  annual_interest_rate_bps = EXCLUDED.annual_interest_rate_bps,
+  interest_method = EXCLUDED.interest_method,
+  payment_frequency = EXCLUDED.payment_frequency,
+  processing_fee = EXCLUDED.processing_fee,
+  penalty_rate_bps = EXCLUDED.penalty_rate_bps,
+  status = EXCLUDED.status,
+  created_by = EXCLUDED.created_by,
+  submitted_by = EXCLUDED.submitted_by,
+  submitted_at = EXCLUDED.submitted_at,
+  updated_at = CURRENT_TIMESTAMP;
+
 INSERT INTO member_applications (
   application_no, full_name, cluster_name, contact_number,
   initial_share_capital, status, created_by

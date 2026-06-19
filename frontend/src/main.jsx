@@ -4854,7 +4854,7 @@ function formatRateBps(value) {
   return `${(Number(value || 0) / 100).toFixed(2)}%`;
 }
 
-function Loans({ user }) {
+function LoanProducts({ user }) {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(defaultLoanProductForm);
   const [editingCode, setEditingCode] = useState("");
@@ -5112,6 +5112,331 @@ function Loans({ user }) {
         </Text>
       </Box>
     </VStack>
+  );
+}
+
+const defaultLoanApplicationForm = {
+  memberNo: "",
+  productCode: "",
+  requestedPrincipal: 5000,
+  requestedTermMonths: 3,
+  purpose: "",
+  applicationDate: new Date().toISOString().slice(0, 10)
+};
+
+function LoanApplications({ user }) {
+  const [applications, setApplications] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [form, setForm] = useState(defaultLoanApplicationForm);
+  const [editingNo, setEditingNo] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busyAction, setBusyAction] = useState("");
+  const canCreate = user.permissions.includes("loans:applications:create");
+  const canEdit = user.permissions.includes("loans:applications:edit");
+  const canSubmit = user.permissions.includes("loans:applications:submit");
+  const activeProducts = products.filter((product) => product.status === "Active");
+  const selectedProduct = products.find((product) => product.code === form.productCode);
+
+  const loadWorkspace = useCallback(async () => {
+    setError("");
+    try {
+      const [applicationRows, memberRows, productRows] = await Promise.all([
+        api("/api/loan-applications"),
+        api("/api/members"),
+        api("/api/loan-products")
+      ]);
+      setApplications(applicationRows);
+      setMembers(memberRows.filter((member) => member.status === "Active"));
+      setProducts(productRows);
+      setForm((current) => {
+        if (current.productCode || !productRows.length) {
+          return current;
+        }
+        const firstActive = productRows.find((product) => product.status === "Active");
+        return firstActive
+          ? {
+              ...current,
+              productCode: firstActive.code,
+              requestedPrincipal: firstActive.minimumPrincipal,
+              requestedTermMonths: firstActive.minimumTermMonths
+            }
+          : current;
+      });
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWorkspace();
+  }, [loadWorkspace]);
+
+  function updateForm(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function selectProduct(code) {
+    const product = products.find((item) => item.code === code);
+    setForm((current) => ({
+      ...current,
+      productCode: code,
+      requestedPrincipal: product?.minimumPrincipal || current.requestedPrincipal,
+      requestedTermMonths: product?.minimumTermMonths || current.requestedTermMonths
+    }));
+  }
+
+  function startEdit(application) {
+    setEditingNo(application.applicationNo);
+    setForm({
+      memberNo: application.memberNo,
+      productCode: application.productCode,
+      requestedPrincipal: application.requestedPrincipal,
+      requestedTermMonths: application.requestedTermMonths,
+      purpose: application.purpose,
+      applicationDate: application.applicationDate
+    });
+    setMessage("");
+    setError("");
+  }
+
+  function resetForm() {
+    const firstActive = activeProducts[0];
+    setEditingNo("");
+    setForm({
+      ...defaultLoanApplicationForm,
+      productCode: firstActive?.code || "",
+      requestedPrincipal: firstActive?.minimumPrincipal || 5000,
+      requestedTermMonths: firstActive?.minimumTermMonths || 3
+    });
+  }
+
+  async function saveApplication(event) {
+    event.preventDefault();
+    setBusyAction("save");
+    setMessage("");
+    setError("");
+    try {
+      const result = await api(
+        editingNo ? `/api/loan-applications/${editingNo}` : "/api/loan-applications",
+        {
+          method: editingNo ? "PATCH" : "POST",
+          body: JSON.stringify(form)
+        }
+      );
+      setMessage(`${result.application.applicationNo} saved as Draft.`);
+      resetForm();
+      await loadWorkspace();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function submitApplication(applicationNo) {
+    setBusyAction(applicationNo);
+    setMessage("");
+    setError("");
+    try {
+      const result = await api(`/api/loan-applications/${applicationNo}/submit`, {
+        method: "POST"
+      });
+      setMessage(`${result.application.applicationNo} submitted for credit review.`);
+      if (editingNo === applicationNo) {
+        resetForm();
+      }
+      await loadWorkspace();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  return (
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
+      <Flex justify="space-between" gap={4} align="center" wrap="wrap">
+        <Box>
+          <Heading size="md">Loan Applications</Heading>
+          <Text color="gray.600" mt={1}>
+            Loan Officers prepare a draft and submit it for review. Approval and release come in later spikes.
+          </Text>
+        </Box>
+        <Button size="sm" variant="outline" onClick={loadWorkspace}>
+          Refresh
+        </Button>
+      </Flex>
+
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      {canCreate ? (
+        <Box as="form" onSubmit={saveApplication} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm" mb={4}>
+            {editingNo ? `Edit Draft - ${editingNo}` : "New Loan Application"}
+          </Heading>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4}>
+            <FormControl isRequired>
+              <FormLabel>Active Member</FormLabel>
+              <Select value={form.memberNo} onChange={(event) => updateForm("memberNo", event.target.value)}>
+                <option value="">Select member</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>{member.id} - {member.name}</option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Loan Product</FormLabel>
+              <Select value={form.productCode} onChange={(event) => selectProduct(event.target.value)}>
+                <option value="">Select product</option>
+                {activeProducts.map((product) => (
+                  <option key={product.code} value={product.code}>{product.code} - {product.name}</option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Requested Principal</FormLabel>
+              <NumberInput
+                min={selectedProduct?.minimumPrincipal || 1}
+                max={selectedProduct?.maximumPrincipal}
+                value={form.requestedPrincipal}
+                onChange={(value) => updateForm("requestedPrincipal", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Term (months)</FormLabel>
+              <NumberInput
+                min={selectedProduct?.minimumTermMonths || 1}
+                max={selectedProduct?.maximumTermMonths}
+                value={form.requestedTermMonths}
+                onChange={(value) => updateForm("requestedTermMonths", Number(value || 0))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Application Date</FormLabel>
+              <Input type="date" value={form.applicationDate} onChange={(event) => updateForm("applicationDate", event.target.value)} />
+            </FormControl>
+            <FormControl isRequired gridColumn={{ md: "span 2", xl: "span 3" }}>
+              <FormLabel>Loan Purpose</FormLabel>
+              <Input value={form.purpose} onChange={(event) => updateForm("purpose", event.target.value)} />
+            </FormControl>
+          </Grid>
+          {selectedProduct ? (
+            <Text color="gray.600" fontSize="sm" mt={4}>
+              Limits: {formatMoney(selectedProduct.minimumPrincipal)} to {formatMoney(selectedProduct.maximumPrincipal)};
+              {" "}{selectedProduct.minimumTermMonths}-{selectedProduct.maximumTermMonths} months;
+              {" "}{formatRateBps(selectedProduct.annualInterestRateBps)} annual {selectedProduct.interestMethod.toLowerCase()}.
+            </Text>
+          ) : null}
+          <Flex justify="flex-end" gap={3} mt={5}>
+            {editingNo ? <Button variant="outline" onClick={resetForm}>Cancel</Button> : null}
+            <Button type="submit" colorScheme="green" isLoading={busyAction === "save"}>
+              {editingNo ? "Save Draft" : "Create Draft"}
+            </Button>
+          </Flex>
+        </Box>
+      ) : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Application</Th>
+                <Th>Member</Th>
+                <Th>Product</Th>
+                <Th isNumeric>Principal</Th>
+                <Th>Term</Th>
+                <Th>Purpose</Th>
+                <Th>Status</Th>
+                <Th>Prepared By</Th>
+                {(canEdit || canSubmit) ? <Th>Action</Th> : null}
+              </Tr>
+            </Thead>
+            <Tbody>
+              {applications.map((application) => {
+                const ownsDraft =
+                  application.status === "Draft" && application.createdBy === user.username;
+                return (
+                  <Tr key={application.applicationNo}>
+                    <Td minW="150px">
+                      <Text fontWeight="bold">{application.applicationNo}</Text>
+                      <Text color="gray.500" fontSize="xs">{application.applicationDate}</Text>
+                    </Td>
+                    <Td minW="190px">
+                      <Text>{application.memberName}</Text>
+                      <Text color="gray.500" fontSize="xs">{application.memberNo}</Text>
+                    </Td>
+                    <Td minW="180px">
+                      <Text>{application.productName}</Text>
+                      <Text color="gray.500" fontSize="xs">
+                        {formatRateBps(application.annualInterestRateBps)} / {application.interestMethod}
+                      </Text>
+                    </Td>
+                    <Td isNumeric>{formatMoney(application.requestedPrincipal)}</Td>
+                    <Td>{application.requestedTermMonths} months</Td>
+                    <Td minW="220px">{application.purpose}</Td>
+                    <Td>
+                      <Badge colorScheme={application.status === "Submitted" ? "blue" : "yellow"}>
+                        {application.status}
+                      </Badge>
+                    </Td>
+                    <Td>{application.createdBy}</Td>
+                    {(canEdit || canSubmit) ? (
+                      <Td>
+                        {ownsDraft ? (
+                          <HStack spacing={2}>
+                            {canEdit ? <Button size="sm" onClick={() => startEdit(application)}>Edit</Button> : null}
+                            {canSubmit ? (
+                              <Button
+                                size="sm"
+                                colorScheme="green"
+                                onClick={() => submitApplication(application.applicationNo)}
+                                isLoading={busyAction === application.applicationNo}
+                              >
+                                Submit
+                              </Button>
+                            ) : null}
+                          </HStack>
+                        ) : <Text color="gray.500">Read only</Text>}
+                      </Td>
+                    ) : null}
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+    </VStack>
+  );
+}
+
+function Loans({ user }) {
+  const canViewApplications = user.permissions.includes("loans:applications:view");
+  const canViewProducts = user.permissions.includes("loans:products:view");
+
+  if (!canViewApplications && !canViewProducts) {
+    return <Placeholder view="loans" />;
+  }
+
+  return (
+    <Tabs colorScheme="green" variant="enclosed" isLazy>
+      <TabList overflowX="auto" overflowY="hidden">
+        {canViewApplications ? <Tab flexShrink={0}>Applications</Tab> : null}
+        {canViewProducts ? <Tab flexShrink={0}>Loan Products</Tab> : null}
+      </TabList>
+      <TabPanels>
+        {canViewApplications ? <TabPanel px={0}><LoanApplications user={user} /></TabPanel> : null}
+        {canViewProducts ? <TabPanel px={0}><LoanProducts user={user} /></TabPanel> : null}
+      </TabPanels>
+    </Tabs>
   );
 }
 

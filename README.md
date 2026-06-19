@@ -199,6 +199,18 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
+Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, and application date, then saves a Draft. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application. The originating Loan Officer may edit and submit their own Draft; Submitted applications are read-only. Approval, loan computation, release, repayment schedules, collections, and accounting entries remain later spikes.
+
+| Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Approve |
+| --- | --- | --- | --- | --- |
+| System Administrator | Yes | No | No | No |
+| General Manager | Yes | No | No | No |
+| Loan Officer | Yes | Yes | Yes | No |
+| Credit Committee / Approver | Yes | No | No | No |
+| Auditor / Compliance Officer | Yes | No | No | No |
+| Teller / Cashier | No | No | No | No |
+| Membership Officer | No | No | No | No |
+
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.

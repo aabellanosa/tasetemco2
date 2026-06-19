@@ -25,6 +25,7 @@ const tables = [
   "teller_batches",
   "opening_balance_import_rows",
   "opening_balance_import_batches",
+  "loan_applications",
   "loan_products",
   "member_import_rows",
   "member_import_batches",

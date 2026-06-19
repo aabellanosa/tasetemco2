@@ -10,6 +10,7 @@ import {
   defaultPassword,
   initialPayments,
   journalEntries,
+  loanApplications,
   loanProducts,
   memberApplications,
   memberImportBatches,
@@ -65,6 +66,7 @@ const persistedTables = [
   "teller_batches",
   "opening_balance_import_rows",
   "opening_balance_import_batches",
+  "loan_applications",
   "loan_products",
   "member_import_rows",
   "member_import_batches",
@@ -161,6 +163,33 @@ const requiredSchemaColumns = {
     "penalty_income_account",
     "cash_account",
     "status",
+    "created_at",
+    "updated_at"
+  ],
+  loan_applications: [
+    "application_no",
+    "member_no",
+    "member_name",
+    "product_code",
+    "product_name",
+    "requested_principal",
+    "requested_term_months",
+    "purpose",
+    "application_date",
+    "annual_interest_rate_bps",
+    "interest_method",
+    "payment_frequency",
+    "processing_fee",
+    "penalty_rate_bps",
+    "loans_receivable_account",
+    "interest_income_account",
+    "processing_fee_account",
+    "penalty_income_account",
+    "cash_account",
+    "status",
+    "created_by",
+    "submitted_by",
+    "submitted_at",
     "created_at",
     "updated_at"
   ]
@@ -598,6 +627,355 @@ async function updateLoanProduct(code, input) {
 
   const products = await listLoanProducts();
   return { product: products.find((product) => product.code === normalizedCode) };
+}
+
+function mapLoanApplication(row) {
+  return {
+    id: row.applicationNo || row.id,
+    applicationNo: row.applicationNo || row.id,
+    memberNo: row.memberNo,
+    memberName: row.memberName,
+    productCode: row.productCode,
+    productName: row.productName,
+    requestedPrincipal: Number(row.requestedPrincipal || 0),
+    requestedTermMonths: Number(row.requestedTermMonths || 0),
+    purpose: row.purpose,
+    applicationDate: formatDateOnly(row.applicationDate),
+    annualInterestRateBps: Number(row.annualInterestRateBps || 0),
+    interestMethod: row.interestMethod,
+    paymentFrequency: row.paymentFrequency,
+    processingFee: Number(row.processingFee || 0),
+    penaltyRateBps: Number(row.penaltyRateBps || 0),
+    loansReceivableAccount: row.loansReceivableAccount,
+    interestIncomeAccount: row.interestIncomeAccount,
+    processingFeeAccount: row.processingFeeAccount,
+    penaltyIncomeAccount: row.penaltyIncomeAccount,
+    cashAccount: row.cashAccount,
+    status: row.status,
+    createdBy: row.createdBy,
+    submittedBy: row.submittedBy || "",
+    submittedAt: row.submittedAt || "",
+    createdAt: row.createdAt || "",
+    updatedAt: row.updatedAt || ""
+  };
+}
+
+async function listLoanApplications() {
+  const db = await getPool();
+
+  if (!db) {
+    return loanApplications.map(mapLoanApplication);
+  }
+
+  const [rows] = await db.execute(
+    `SELECT application_no AS applicationNo, member_no AS memberNo, member_name AS memberName,
+            product_code AS productCode, product_name AS productName,
+            requested_principal AS requestedPrincipal,
+            requested_term_months AS requestedTermMonths, purpose,
+            application_date AS applicationDate,
+            annual_interest_rate_bps AS annualInterestRateBps,
+            interest_method AS interestMethod, payment_frequency AS paymentFrequency,
+            processing_fee AS processingFee, penalty_rate_bps AS penaltyRateBps,
+            loans_receivable_account AS loansReceivableAccount,
+            interest_income_account AS interestIncomeAccount,
+            processing_fee_account AS processingFeeAccount,
+            penalty_income_account AS penaltyIncomeAccount, cash_account AS cashAccount,
+            status, created_by AS createdBy, submitted_by AS submittedBy,
+            submitted_at AS submittedAt, created_at AS createdAt, updated_at AS updatedAt
+     FROM loan_applications
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows.map(mapLoanApplication);
+}
+
+async function nextLoanApplicationNo(connection = null) {
+  const db = connection || (await getPool());
+
+  if (!db) {
+    return `LA-${new Date().getFullYear()}-${String(loanApplications.length + 1).padStart(4, "0")}`;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS countValue
+     FROM loan_applications
+     WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+  );
+  return `LA-${new Date().getFullYear()}-${String(Number(rows[0].countValue) + 1).padStart(4, "0")}`;
+}
+
+async function validateLoanApplicationInput(body) {
+  const memberNo = String(body.memberNo || "").trim();
+  const productCode = String(body.productCode || "").trim().toUpperCase();
+  const requestedPrincipal = Number(body.requestedPrincipal);
+  const requestedTermMonths = Number(body.requestedTermMonths);
+  const purpose = String(body.purpose || "").trim();
+  const applicationDate = formatDateOnly(body.applicationDate || new Date());
+  const memberRows = await listMembers();
+  const products = await listLoanProducts();
+  const member = memberRows.find((item) => item.id === memberNo && item.status === "Active");
+  const product = products.find((item) => item.code === productCode && item.status === "Active");
+
+  if (!member) {
+    return { error: "Active member was not found." };
+  }
+
+  if (!product) {
+    return { error: "Active loan product was not found." };
+  }
+
+  if (
+    !Number.isInteger(requestedPrincipal) ||
+    requestedPrincipal < product.minimumPrincipal ||
+    requestedPrincipal > product.maximumPrincipal
+  ) {
+    return {
+      error: `Requested principal must be between ${product.minimumPrincipal} and ${product.maximumPrincipal}.`
+    };
+  }
+
+  if (
+    !Number.isInteger(requestedTermMonths) ||
+    requestedTermMonths < product.minimumTermMonths ||
+    requestedTermMonths > product.maximumTermMonths
+  ) {
+    return {
+      error: `Requested term must be between ${product.minimumTermMonths} and ${product.maximumTermMonths} months.`
+    };
+  }
+
+  if (purpose.length < 5) {
+    return { error: "Loan purpose is required." };
+  }
+
+  if (!isValidIsoDate(applicationDate)) {
+    return { error: "Application date must be a valid YYYY-MM-DD date." };
+  }
+
+  return {
+    value: {
+      memberNo: member.id,
+      memberName: member.name,
+      productCode: product.code,
+      productName: product.name,
+      requestedPrincipal,
+      requestedTermMonths,
+      purpose: purpose.slice(0, 1000),
+      applicationDate,
+      annualInterestRateBps: product.annualInterestRateBps,
+      interestMethod: product.interestMethod,
+      paymentFrequency: product.paymentFrequency,
+      processingFee: product.processingFee,
+      penaltyRateBps: product.penaltyRateBps,
+      loansReceivableAccount: product.loansReceivableAccount,
+      interestIncomeAccount: product.interestIncomeAccount,
+      processingFeeAccount: product.processingFeeAccount,
+      penaltyIncomeAccount: product.penaltyIncomeAccount,
+      cashAccount: product.cashAccount
+    }
+  };
+}
+
+async function createLoanApplication(input, user) {
+  const db = await getPool();
+  const applicationNo = await nextLoanApplicationNo();
+
+  if (!db) {
+    const application = {
+      id: applicationNo,
+      applicationNo,
+      ...input,
+      status: "Draft",
+      createdBy: user.username,
+      submittedBy: "",
+      submittedAt: "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    loanApplications.unshift(application);
+    return { application: mapLoanApplication(application) };
+  }
+
+  await db.execute(
+    `INSERT INTO loan_applications (
+       application_no, member_no, member_name, product_code, product_name,
+       requested_principal, requested_term_months, purpose, application_date,
+       annual_interest_rate_bps, interest_method, payment_frequency,
+       processing_fee, penalty_rate_bps, loans_receivable_account,
+       interest_income_account, processing_fee_account, penalty_income_account,
+       cash_account, status, created_by
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
+    [
+      applicationNo,
+      input.memberNo,
+      input.memberName,
+      input.productCode,
+      input.productName,
+      input.requestedPrincipal,
+      input.requestedTermMonths,
+      input.purpose,
+      input.applicationDate,
+      input.annualInterestRateBps,
+      input.interestMethod,
+      input.paymentFrequency,
+      input.processingFee,
+      input.penaltyRateBps,
+      input.loansReceivableAccount,
+      input.interestIncomeAccount,
+      input.processingFeeAccount,
+      input.penaltyIncomeAccount,
+      input.cashAccount,
+      user.username
+    ]
+  );
+
+  return { application: (await listLoanApplications()).find((item) => item.applicationNo === applicationNo) };
+}
+
+async function updateLoanApplication(applicationNo, input, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const application = loanApplications.find((item) => item.applicationNo === applicationNo || item.id === applicationNo);
+    if (!application) {
+      return { error: "Loan application was not found.", statusCode: 404 };
+    }
+    if (application.status !== "Draft") {
+      return { error: "Only draft loan applications can be edited.", statusCode: 409 };
+    }
+    if (application.createdBy !== user.username) {
+      return { error: "Loan Officer can edit only their own draft applications.", statusCode: 403 };
+    }
+    Object.assign(application, input, { updatedAt: new Date().toISOString() });
+    return { application: mapLoanApplication(application) };
+  }
+
+  const [existingRows] = await db.execute(
+    `SELECT status, created_by AS createdBy
+     FROM loan_applications
+     WHERE application_no = ?
+     LIMIT 1`,
+    [applicationNo]
+  );
+  if (existingRows.length === 0) {
+    return { error: "Loan application was not found.", statusCode: 404 };
+  }
+  if (existingRows[0].status !== "Draft") {
+    return { error: "Only draft loan applications can be edited.", statusCode: 409 };
+  }
+  if (existingRows[0].createdBy !== user.username) {
+    return { error: "Loan Officer can edit only their own draft applications.", statusCode: 403 };
+  }
+
+  await db.execute(
+    `UPDATE loan_applications
+     SET member_no = ?, member_name = ?, product_code = ?, product_name = ?,
+         requested_principal = ?, requested_term_months = ?, purpose = ?, application_date = ?,
+         annual_interest_rate_bps = ?, interest_method = ?, payment_frequency = ?,
+         processing_fee = ?, penalty_rate_bps = ?, loans_receivable_account = ?,
+         interest_income_account = ?, processing_fee_account = ?, penalty_income_account = ?,
+         cash_account = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE application_no = ?`,
+    [
+      input.memberNo,
+      input.memberName,
+      input.productCode,
+      input.productName,
+      input.requestedPrincipal,
+      input.requestedTermMonths,
+      input.purpose,
+      input.applicationDate,
+      input.annualInterestRateBps,
+      input.interestMethod,
+      input.paymentFrequency,
+      input.processingFee,
+      input.penaltyRateBps,
+      input.loansReceivableAccount,
+      input.interestIncomeAccount,
+      input.processingFeeAccount,
+      input.penaltyIncomeAccount,
+      input.cashAccount,
+      applicationNo
+    ]
+  );
+
+  return { application: (await listLoanApplications()).find((item) => item.applicationNo === applicationNo) };
+}
+
+async function submitLoanApplication(applicationNo, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const application = loanApplications.find((item) => item.applicationNo === applicationNo || item.id === applicationNo);
+    if (!application) {
+      return { error: "Loan application was not found.", statusCode: 404 };
+    }
+    if (application.status !== "Draft") {
+      return { error: "Only draft loan applications can be submitted.", statusCode: 409 };
+    }
+    if (application.createdBy !== user.username) {
+      return { error: "Loan Officer can submit only their own draft applications.", statusCode: 403 };
+    }
+    const validation = await validateLoanApplicationInput(application);
+    if (validation.error) {
+      return { error: validation.error, statusCode: 400 };
+    }
+    application.status = "Submitted";
+    application.submittedBy = user.username;
+    application.submittedAt = new Date().toISOString();
+    application.updatedAt = application.submittedAt;
+    return { application: mapLoanApplication(application) };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT application_no AS applicationNo, member_no AS memberNo,
+              product_code AS productCode, requested_principal AS requestedPrincipal,
+              requested_term_months AS requestedTermMonths, purpose,
+              application_date AS applicationDate, status, created_by AS createdBy
+       FROM loan_applications
+       WHERE application_no = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [applicationNo]
+    );
+    const application = rows[0];
+    if (!application) {
+      await connection.rollback();
+      return { error: "Loan application was not found.", statusCode: 404 };
+    }
+    if (application.status !== "Draft") {
+      await connection.rollback();
+      return { error: "Only draft loan applications can be submitted.", statusCode: 409 };
+    }
+    if (application.createdBy !== user.username) {
+      await connection.rollback();
+      return { error: "Loan Officer can submit only their own draft applications.", statusCode: 403 };
+    }
+    const validation = await validateLoanApplicationInput(application);
+    if (validation.error) {
+      await connection.rollback();
+      return { error: validation.error, statusCode: 400 };
+    }
+
+    await connection.execute(
+      `UPDATE loan_applications
+       SET status = 'Submitted', submitted_by = ?, submitted_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE application_no = ?`,
+      [user.username, applicationNo]
+    );
+    await connection.commit();
+    return { application: (await listLoanApplications()).find((item) => item.applicationNo === applicationNo) };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 function validateSystemUserInput(body) {
@@ -5584,6 +5962,95 @@ app.patch("/api/loan-products/:code", async (request, response) => {
   }
 
   const result = await updateLoanProduct(request.params.code, validation.value);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.get("/api/loan-applications", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:applications:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listLoanApplications());
+});
+
+app.post("/api/loan-applications", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:applications:create")) {
+    response.status(403).json({ error: "Loan Officer access required" });
+    return;
+  }
+
+  const validation = await validateLoanApplicationInput(request.body);
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await createLoanApplication(validation.value, user);
+  response.status(201).json(result);
+});
+
+app.patch("/api/loan-applications/:applicationNo", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:applications:edit")) {
+    response.status(403).json({ error: "Loan Officer access required" });
+    return;
+  }
+
+  const validation = await validateLoanApplicationInput(request.body);
+  if (validation.error) {
+    response.status(400).json({ error: validation.error });
+    return;
+  }
+
+  const result = await updateLoanApplication(request.params.applicationNo, validation.value, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/loan-applications/:applicationNo/submit", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:applications:submit")) {
+    response.status(403).json({ error: "Loan Officer access required" });
+    return;
+  }
+
+  const result = await submitLoanApplication(request.params.applicationNo, user);
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });
     return;
