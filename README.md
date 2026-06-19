@@ -201,7 +201,9 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 
 Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, and application date, then saves a Draft. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application.
 
-Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the member's requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable. No loan release, schedule, collection, or accounting entry is created yet.
+Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the member's requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable.
+
+Loan Computation and Amortization Preview v1 lets the originating Loan Officer compute an Approved application using its snapshotted Flat Interest terms. The Loan Officer selects the first payment date, previews principal, interest, processing fee, net proceeds, total payable, maturity, and every installment, then saves the schedule once as `For Release`. Whole-peso rounding differences are placed in the final installment. Monthly, semi-monthly, and weekly schedules are supported. Saving creates an immutable loan header and installment rows but does not release cash or create journal entries.
 
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
@@ -212,6 +214,16 @@ Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted
 | Auditor / Compliance Officer | Yes | No | No | No |
 | Teller / Cashier | No | No | No | No |
 | Membership Officer | No | No | No | No |
+
+| Loan Computation Access | View Schedule | Preview / Save |
+| --- | --- | --- |
+| System Administrator | Yes | No |
+| General Manager | Yes | No |
+| Loan Officer | Yes | Own approved applications |
+| Credit Committee / Approver | Yes | No |
+| Auditor / Compliance Officer | Yes | No |
+| Teller / Cashier | No | No |
+| Membership Officer | No | No |
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 

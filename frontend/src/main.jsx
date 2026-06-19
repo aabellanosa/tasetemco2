@@ -5314,7 +5314,8 @@ function LoanApplications({ user }) {
       Submitted: "blue",
       Approved: "green",
       Rejected: "red",
-      Returned: "orange"
+      Returned: "orange",
+      "For Release": "purple"
     }[status] || "gray";
   }
 
@@ -5614,11 +5615,343 @@ function LoanApplications({ user }) {
   );
 }
 
+function defaultFirstPaymentDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  return date.toISOString().slice(0, 10);
+}
+
+function LoanComputations({ user }) {
+  const [applications, setApplications] = useState([]);
+  const [loans, setLoans] = useState([]);
+  const [selectedApplication, setSelectedApplication] = useState(null);
+  const [selectedLoan, setSelectedLoan] = useState(null);
+  const [firstPaymentDate, setFirstPaymentDate] = useState(defaultFirstPaymentDate());
+  const [preview, setPreview] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busyAction, setBusyAction] = useState("");
+  const computationModal = useDisclosure();
+  const scheduleModal = useDisclosure();
+  const canCreate = user.permissions.includes("loans:computations:create");
+
+  const loadComputations = useCallback(async () => {
+    setError("");
+    try {
+      const [applicationRows, loanRows] = await Promise.all([
+        api("/api/loan-applications"),
+        api("/api/loans")
+      ]);
+      setApplications(applicationRows);
+      setLoans(loanRows);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadComputations();
+  }, [loadComputations]);
+
+  function startComputation(application) {
+    setSelectedApplication(application);
+    setFirstPaymentDate(defaultFirstPaymentDate());
+    setPreview(null);
+    setMessage("");
+    setError("");
+    computationModal.onOpen();
+  }
+
+  async function previewComputation() {
+    if (!selectedApplication) {
+      return;
+    }
+    setBusyAction("preview");
+    setError("");
+    try {
+      const result = await api(
+        `/api/loan-applications/${selectedApplication.applicationNo}/computation-preview`,
+        {
+          method: "POST",
+          body: JSON.stringify({ firstPaymentDate })
+        }
+      );
+      setPreview(result.computation);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function saveComputation() {
+    if (!selectedApplication || !preview) {
+      return;
+    }
+    setBusyAction("save");
+    setError("");
+    try {
+      const result = await api(
+        `/api/loan-applications/${selectedApplication.applicationNo}/computation`,
+        {
+          method: "POST",
+          body: JSON.stringify({ firstPaymentDate })
+        }
+      );
+      setMessage(`${result.loan.loanNo} saved as For Release.`);
+      computationModal.onClose();
+      setSelectedApplication(null);
+      setPreview(null);
+      await loadComputations();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  function viewSchedule(loan) {
+    setSelectedLoan(loan);
+    scheduleModal.onOpen();
+  }
+
+  function scheduleTable(schedule) {
+    return (
+      <TableContainer>
+        <Table size="sm">
+          <Thead>
+            <Tr>
+              <Th>Installment</Th>
+              <Th>Due Date</Th>
+              <Th isNumeric>Principal</Th>
+              <Th isNumeric>Interest</Th>
+              <Th isNumeric>Total Due</Th>
+              <Th>Status</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {schedule.map((installment) => (
+              <Tr key={installment.installmentNo}>
+                <Td>{installment.installmentNo}</Td>
+                <Td>{installment.dueDate}</Td>
+                <Td isNumeric>{formatMoney(installment.principalDue)}</Td>
+                <Td isNumeric>{formatMoney(installment.interestDue)}</Td>
+                <Td isNumeric fontWeight="bold">{formatMoney(installment.totalDue)}</Td>
+                <Td><Badge>{installment.status}</Badge></Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    );
+  }
+
+  function computationSummary(computation) {
+    return (
+      <Grid templateColumns={{ base: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" }} gap={4}>
+        {[
+          ["Principal", formatMoney(computation.principal)],
+          ["Total Interest", formatMoney(computation.totalInterest)],
+          ["Total Payable", formatMoney(computation.totalPayable)],
+          ["Net Proceeds", formatMoney(computation.netProceeds)],
+          ["Processing Fee", formatMoney(computation.processingFee)],
+          ["Installments", computation.installmentCount],
+          ["First Payment", computation.firstPaymentDate],
+          ["Maturity", computation.maturityDate]
+        ].map(([label, value]) => (
+          <Box key={label}>
+            <Text color="gray.500" fontSize="xs">{label}</Text>
+            <Text fontWeight="bold">{value}</Text>
+          </Box>
+        ))}
+      </Grid>
+    );
+  }
+
+  const approvedApplications = applications.filter(
+    (application) =>
+      application.status === "Approved" &&
+      application.createdBy === user.username &&
+      !loans.some((loan) => loan.applicationNo === application.applicationNo)
+  );
+
+  return (
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
+      <Flex justify="space-between" gap={4} align="center" wrap="wrap">
+        <Box>
+          <Heading size="md">Loan Computations</Heading>
+          <Text color="gray.600" mt={1}>
+            Preview and save repayment schedules for approved applications before loan release.
+          </Text>
+        </Box>
+        <Button size="sm" variant="outline" onClick={loadComputations}>Refresh</Button>
+      </Flex>
+
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      {canCreate && approvedApplications.length ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm" mb={4}>Approved Applications Ready for Computation</Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Application</Th>
+                  <Th>Member</Th>
+                  <Th>Product</Th>
+                  <Th isNumeric>Approved Principal</Th>
+                  <Th>Term</Th>
+                  <Th>Action</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {approvedApplications.map((application) => (
+                  <Tr key={application.applicationNo}>
+                    <Td>{application.applicationNo}</Td>
+                    <Td>{application.memberName}</Td>
+                    <Td>{application.productName}</Td>
+                    <Td isNumeric>{formatMoney(application.recommendedPrincipal)}</Td>
+                    <Td>{application.recommendedTermMonths} months</Td>
+                    <Td>
+                      <Button size="sm" colorScheme="green" onClick={() => startComputation(application)}>
+                        Compute
+                      </Button>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="sm" mb={4}>Saved Computations</Heading>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Loan</Th>
+                <Th>Member</Th>
+                <Th>Product</Th>
+                <Th isNumeric>Principal</Th>
+                <Th isNumeric>Total Payable</Th>
+                <Th>Maturity</Th>
+                <Th>Status</Th>
+                <Th>Action</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {loans.map((loan) => (
+                <Tr key={loan.loanNo}>
+                  <Td>
+                    <Text fontWeight="bold">{loan.loanNo}</Text>
+                    <Text color="gray.500" fontSize="xs">{loan.applicationNo}</Text>
+                  </Td>
+                  <Td>{loan.memberName}</Td>
+                  <Td>{loan.productName}</Td>
+                  <Td isNumeric>{formatMoney(loan.principal)}</Td>
+                  <Td isNumeric>{formatMoney(loan.totalPayable)}</Td>
+                  <Td>{loan.maturityDate}</Td>
+                  <Td><Badge colorScheme="purple">{loan.status}</Badge></Td>
+                  <Td><Button size="sm" onClick={() => viewSchedule(loan)}>View Schedule</Button></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+        {!loans.length ? <Text color="gray.500">No saved loan computations yet.</Text> : null}
+      </Box>
+
+      <Modal isOpen={computationModal.isOpen} onClose={computationModal.onClose} size="6xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            Amortization Preview {selectedApplication ? `- ${selectedApplication.applicationNo}` : ""}
+          </ModalHeader>
+          <ModalBody>
+            {selectedApplication ? (
+              <VStack align="stretch" spacing={5}>
+                <Grid templateColumns={{ base: "1fr", md: "2fr 1fr" }} gap={4}>
+                  <Box>
+                    <Text fontWeight="bold">{selectedApplication.memberName}</Text>
+                    <Text color="gray.600">
+                      {selectedApplication.productName} / {formatMoney(selectedApplication.recommendedPrincipal)} /
+                      {" "}{selectedApplication.recommendedTermMonths} months
+                    </Text>
+                    <Text color="gray.600">
+                      {formatRateBps(selectedApplication.annualInterestRateBps)} annual /
+                      {" "}{selectedApplication.interestMethod} / {selectedApplication.paymentFrequency}
+                    </Text>
+                  </Box>
+                  <FormControl isRequired>
+                    <FormLabel>First Payment Date</FormLabel>
+                    <Input
+                      type="date"
+                      value={firstPaymentDate}
+                      onChange={(event) => {
+                        setFirstPaymentDate(event.target.value);
+                        setPreview(null);
+                      }}
+                    />
+                  </FormControl>
+                </Grid>
+                <Flex justify="flex-end">
+                  <Button onClick={previewComputation} isLoading={busyAction === "preview"}>
+                    Preview Schedule
+                  </Button>
+                </Flex>
+                {preview ? (
+                  <>
+                    {computationSummary(preview)}
+                    {scheduleTable(preview.installments)}
+                  </>
+                ) : null}
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={computationModal.onClose}>Cancel</Button>
+            <Button
+              colorScheme="green"
+              onClick={saveComputation}
+              isDisabled={!preview}
+              isLoading={busyAction === "save"}
+            >
+              Save for Release
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={scheduleModal.isOpen} onClose={scheduleModal.onClose} size="6xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>{selectedLoan ? `${selectedLoan.loanNo} Repayment Schedule` : "Repayment Schedule"}</ModalHeader>
+          <ModalBody>
+            {selectedLoan ? (
+              <VStack align="stretch" spacing={5}>
+                {computationSummary(selectedLoan)}
+                {scheduleTable(selectedLoan.installments)}
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button onClick={scheduleModal.onClose}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </VStack>
+  );
+}
+
 function Loans({ user }) {
   const canViewApplications = user.permissions.includes("loans:applications:view");
+  const canViewComputations = user.permissions.includes("loans:computations:view");
   const canViewProducts = user.permissions.includes("loans:products:view");
 
-  if (!canViewApplications && !canViewProducts) {
+  if (!canViewApplications && !canViewComputations && !canViewProducts) {
     return <Placeholder view="loans" />;
   }
 
@@ -5626,10 +5959,12 @@ function Loans({ user }) {
     <Tabs colorScheme="green" variant="enclosed" isLazy>
       <TabList overflowX="auto" overflowY="hidden">
         {canViewApplications ? <Tab flexShrink={0}>Applications</Tab> : null}
+        {canViewComputations ? <Tab flexShrink={0}>Computations</Tab> : null}
         {canViewProducts ? <Tab flexShrink={0}>Loan Products</Tab> : null}
       </TabList>
       <TabPanels>
         {canViewApplications ? <TabPanel px={0}><LoanApplications user={user} /></TabPanel> : null}
+        {canViewComputations ? <TabPanel px={0}><LoanComputations user={user} /></TabPanel> : null}
         {canViewProducts ? <TabPanel px={0}><LoanProducts user={user} /></TabPanel> : null}
       </TabPanels>
     </Tabs>

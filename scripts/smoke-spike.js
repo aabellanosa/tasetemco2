@@ -2338,6 +2338,147 @@ async function run() {
       throw new Error("Loan Officer should not record credit decisions.");
     }
 
+    const invalidComputationDate = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/computation-preview`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({ firstPaymentDate: "2026-06-19" })
+      }
+    );
+
+    if (invalidComputationDate.status !== 400) {
+      throw new Error("First payment date should be after the credit decision date.");
+    }
+
+    const previewLoanComputation = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/computation-preview`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({ firstPaymentDate: "2026-07-19" })
+      }
+    );
+    const previewLoanComputationBody = await previewLoanComputation.json();
+    const previewSchedule = previewLoanComputationBody.computation;
+
+    if (
+      !previewLoanComputation.ok ||
+      previewSchedule.principal !== 13000 ||
+      previewSchedule.totalInterest !== 1040 ||
+      previewSchedule.totalPayable !== 14040 ||
+      previewSchedule.netProceeds !== 12750 ||
+      previewSchedule.installmentCount !== 8 ||
+      previewSchedule.installments.length !== 8 ||
+      previewSchedule.maturityDate !== "2027-02-19" ||
+      previewSchedule.installments.reduce((sum, item) => sum + item.totalDue, 0) !== 14040
+    ) {
+      throw new Error("Flat-interest preview should produce a balanced whole-peso amortization schedule.");
+    }
+
+    const saveLoanComputation = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/computation`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({ firstPaymentDate: "2026-07-19" })
+      }
+    );
+    const saveLoanComputationBody = await saveLoanComputation.json();
+    const smokeLoanNo = saveLoanComputationBody.loan?.loanNo;
+
+    if (
+      !saveLoanComputation.ok ||
+      !smokeLoanNo ||
+      saveLoanComputationBody.loan.status !== "For Release" ||
+      saveLoanComputationBody.loan.installments.length !== 8
+    ) {
+      throw new Error("Loan Officer should save one immutable computation for release.");
+    }
+
+    const duplicateLoanComputation = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/computation`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({ firstPaymentDate: "2026-07-19" })
+      }
+    );
+
+    if (duplicateLoanComputation.status !== 409) {
+      throw new Error("An application should not receive a duplicate saved computation.");
+    }
+
+    const loanOfficerLoans = await fetch(`${baseUrl}/api/loans`, {
+      headers: { Cookie: loanOfficerCookie }
+    });
+    const loanOfficerLoanRows = await loanOfficerLoans.json();
+
+    if (
+      !loanOfficerLoans.ok ||
+      !loanOfficerLoanRows.some(
+        (loan) => loan.loanNo === smokeLoanNo && loan.applicationNo === smokeApplicationNo
+      )
+    ) {
+      throw new Error("Loan Officer should see saved computations and installment schedules.");
+    }
+
+    const approverLoans = await fetch(`${baseUrl}/api/loans`, {
+      headers: { Cookie: approverCookie }
+    });
+    const approverLoanRows = await approverLoans.json();
+
+    if (
+      !approverLoans.ok ||
+      !approverLoanRows.some((loan) => loan.loanNo === smokeLoanNo && loan.status === "For Release")
+    ) {
+      throw new Error("Approver should have read-only visibility of saved loan computations.");
+    }
+
+    const forbiddenApproverComputation = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/computation-preview`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: approverCookie
+        },
+        body: JSON.stringify({ firstPaymentDate: "2026-07-19" })
+      }
+    );
+
+    if (forbiddenApproverComputation.status !== 403) {
+      throw new Error("Approver should not create loan computations.");
+    }
+
+    const adminLoans = await fetch(`${baseUrl}/api/loans`, {
+      headers: { Cookie: adminCookie }
+    });
+
+    if (!adminLoans.ok) {
+      throw new Error("Admin should have read-only visibility of loan computations.");
+    }
+
+    const forbiddenMembershipLoans = await fetch(`${baseUrl}/api/loans`, {
+      headers: { Cookie: cookie }
+    });
+
+    if (forbiddenMembershipLoans.status !== 403) {
+      throw new Error("Membership Officer should not receive loan computation access.");
+    }
+
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
   } catch (error) {
     error.message = `${error.message}\n\nServer output:\n${output}`;

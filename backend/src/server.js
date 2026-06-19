@@ -11,7 +11,9 @@ import {
   initialPayments,
   journalEntries,
   loanApplications,
+  loanInstallments,
   loanProducts,
+  loans,
   memberApplications,
   memberImportBatches,
   memberImportRows,
@@ -58,6 +60,8 @@ let pool = null;
 const persistedTables = [
   "journal_entry_lines",
   "journal_entries",
+  "loan_installments",
+  "loans",
   "teller_cash_counts",
   "initial_member_payments",
   "savings_deposits",
@@ -200,6 +204,40 @@ const requiredSchemaColumns = {
     "decided_at",
     "created_at",
     "updated_at"
+  ],
+  loans: [
+    "loan_no",
+    "application_no",
+    "member_no",
+    "member_name",
+    "product_code",
+    "product_name",
+    "principal",
+    "term_months",
+    "annual_interest_rate_bps",
+    "interest_method",
+    "payment_frequency",
+    "processing_fee",
+    "total_interest",
+    "total_payable",
+    "net_proceeds",
+    "installment_count",
+    "first_payment_date",
+    "maturity_date",
+    "status",
+    "computed_by",
+    "computed_at",
+    "created_at"
+  ],
+  loan_installments: [
+    "loan_no",
+    "installment_no",
+    "due_date",
+    "principal_due",
+    "interest_due",
+    "total_due",
+    "status",
+    "created_at"
   ]
 };
 
@@ -1132,6 +1170,314 @@ async function decideLoanApplication(applicationNo, body, user) {
     return { application: (await listLoanApplications()).find((item) => item.applicationNo === applicationNo) };
   } catch (error) {
     await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+function mapLoan(row) {
+  return {
+    loanNo: row.loanNo,
+    applicationNo: row.applicationNo,
+    memberNo: row.memberNo,
+    memberName: row.memberName,
+    productCode: row.productCode,
+    productName: row.productName,
+    principal: Number(row.principal || 0),
+    termMonths: Number(row.termMonths || 0),
+    annualInterestRateBps: Number(row.annualInterestRateBps || 0),
+    interestMethod: row.interestMethod,
+    paymentFrequency: row.paymentFrequency,
+    processingFee: Number(row.processingFee || 0),
+    totalInterest: Number(row.totalInterest || 0),
+    totalPayable: Number(row.totalPayable || 0),
+    netProceeds: Number(row.netProceeds || 0),
+    installmentCount: Number(row.installmentCount || 0),
+    firstPaymentDate: formatDateOnly(row.firstPaymentDate),
+    maturityDate: formatDateOnly(row.maturityDate),
+    status: row.status,
+    computedBy: row.computedBy,
+    computedAt: row.computedAt || "",
+    installments: Array.isArray(row.installments)
+      ? row.installments.map((item) => ({
+          installmentNo: Number(item.installmentNo),
+          dueDate: formatDateOnly(item.dueDate),
+          principalDue: Number(item.principalDue || 0),
+          interestDue: Number(item.interestDue || 0),
+          totalDue: Number(item.totalDue || 0),
+          status: item.status || "Scheduled"
+        }))
+      : []
+  };
+}
+
+async function listLoans() {
+  const db = await getPool();
+
+  if (!db) {
+    return loans.map((loan) => mapLoan({
+      ...loan,
+      installments: loanInstallments.filter((item) => item.loanNo === loan.loanNo)
+    }));
+  }
+
+  const [loanRows] = await db.execute(
+    `SELECT loan_no AS loanNo, application_no AS applicationNo,
+            member_no AS memberNo, member_name AS memberName,
+            product_code AS productCode, product_name AS productName,
+            principal, term_months AS termMonths,
+            annual_interest_rate_bps AS annualInterestRateBps,
+            interest_method AS interestMethod, payment_frequency AS paymentFrequency,
+            processing_fee AS processingFee, total_interest AS totalInterest,
+            total_payable AS totalPayable, net_proceeds AS netProceeds,
+            installment_count AS installmentCount, first_payment_date AS firstPaymentDate,
+            maturity_date AS maturityDate, status, computed_by AS computedBy,
+            computed_at AS computedAt
+     FROM loans
+     ORDER BY computed_at DESC, id DESC`
+  );
+  const [installmentRows] = await db.execute(
+    `SELECT loan_no AS loanNo, installment_no AS installmentNo, due_date AS dueDate,
+            principal_due AS principalDue, interest_due AS interestDue,
+            total_due AS totalDue, status
+     FROM loan_installments
+     ORDER BY loan_no, installment_no`
+  );
+
+  return loanRows.map((loan) => mapLoan({
+    ...loan,
+    installments: installmentRows.filter((item) => item.loanNo === loan.loanNo)
+  }));
+}
+
+function addUtcDays(dateString, days) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function addUtcMonths(dateString, months) {
+  const source = new Date(`${dateString}T00:00:00.000Z`);
+  const day = source.getUTCDate();
+  const target = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+function installmentCountFor(termMonths, paymentFrequency) {
+  if (paymentFrequency === "Monthly") {
+    return termMonths;
+  }
+  if (paymentFrequency === "Semi-monthly") {
+    return termMonths * 2;
+  }
+  if (paymentFrequency === "Weekly") {
+    return Math.max(1, Math.round((termMonths * 52) / 12));
+  }
+  return 0;
+}
+
+function installmentDate(firstPaymentDate, paymentFrequency, index) {
+  if (paymentFrequency === "Monthly") {
+    return addUtcMonths(firstPaymentDate, index);
+  }
+  if (paymentFrequency === "Semi-monthly") {
+    return addUtcDays(firstPaymentDate, index * 15);
+  }
+  return addUtcDays(firstPaymentDate, index * 7);
+}
+
+function allocateWholePesos(total, count) {
+  const base = Math.floor(total / count);
+  return Array.from({ length: count }, (_, index) =>
+    index === count - 1 ? total - base * (count - 1) : base
+  );
+}
+
+function computeFlatLoanSchedule(application, firstPaymentDate) {
+  if (application.interestMethod !== "Flat Interest") {
+    return { error: "This spike currently supports Flat Interest computations only." };
+  }
+
+  if (!isValidIsoDate(firstPaymentDate) || !firstPaymentDate) {
+    return { error: "First payment date must be a valid YYYY-MM-DD date." };
+  }
+
+  if (application.decisionDate && firstPaymentDate <= application.decisionDate) {
+    return { error: "First payment date must be after the credit decision date." };
+  }
+
+  const principal = Number(application.recommendedPrincipal);
+  const termMonths = Number(application.recommendedTermMonths);
+  const installmentCount = installmentCountFor(termMonths, application.paymentFrequency);
+  if (!installmentCount) {
+    return { error: "Payment frequency is not supported." };
+  }
+  if (Number(application.processingFee) >= principal) {
+    return { error: "Processing fee must be less than the approved principal." };
+  }
+
+  const totalInterest = Math.round(
+    (principal * Number(application.annualInterestRateBps) * termMonths) / (10000 * 12)
+  );
+  const totalPayable = principal + totalInterest;
+  const principalParts = allocateWholePesos(principal, installmentCount);
+  const interestParts = allocateWholePesos(totalInterest, installmentCount);
+  const installments = principalParts.map((principalDue, index) => {
+    const interestDue = interestParts[index];
+    return {
+      installmentNo: index + 1,
+      dueDate: installmentDate(firstPaymentDate, application.paymentFrequency, index),
+      principalDue,
+      interestDue,
+      totalDue: principalDue + interestDue,
+      status: "Scheduled"
+    };
+  });
+
+  return {
+    value: {
+      applicationNo: application.applicationNo,
+      memberNo: application.memberNo,
+      memberName: application.memberName,
+      productCode: application.productCode,
+      productName: application.productName,
+      principal,
+      termMonths,
+      annualInterestRateBps: application.annualInterestRateBps,
+      interestMethod: application.interestMethod,
+      paymentFrequency: application.paymentFrequency,
+      processingFee: application.processingFee,
+      totalInterest,
+      totalPayable,
+      netProceeds: Math.max(0, principal - application.processingFee),
+      installmentCount,
+      firstPaymentDate,
+      maturityDate: installments[installments.length - 1].dueDate,
+      status: "For Release",
+      installments
+    }
+  };
+}
+
+async function previewLoanComputation(applicationNo, body, user) {
+  const applications = await listLoanApplications();
+  const application = applications.find((item) => item.applicationNo === applicationNo);
+  if (!application) {
+    return { error: "Loan application was not found.", statusCode: 404 };
+  }
+  if (application.status !== "Approved") {
+    return { error: "Only approved applications can be computed.", statusCode: 409 };
+  }
+  if (application.createdBy !== user.username) {
+    return { error: "Loan Officer can compute only their own approved applications.", statusCode: 403 };
+  }
+  const existingLoans = await listLoans();
+  if (existingLoans.some((loan) => loan.applicationNo === applicationNo)) {
+    return { error: "A loan computation already exists for this application.", statusCode: 409 };
+  }
+
+  const computation = computeFlatLoanSchedule(application, formatDateOnly(body.firstPaymentDate));
+  if (computation.error) {
+    return { error: computation.error, statusCode: 400 };
+  }
+  return { computation: computation.value };
+}
+
+async function nextLoanNo(connection = null) {
+  const db = connection || (await getPool());
+  if (!db) {
+    return `LN-${new Date().getFullYear()}-${String(loans.length + 1).padStart(4, "0")}`;
+  }
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS countValue FROM loans WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+  );
+  return `LN-${new Date().getFullYear()}-${String(Number(rows[0].countValue) + 1).padStart(4, "0")}`;
+}
+
+async function saveLoanComputation(applicationNo, body, user) {
+  const preview = await previewLoanComputation(applicationNo, body, user);
+  if (preview.error) {
+    return preview;
+  }
+  const computation = preview.computation;
+  const db = await getPool();
+  const loanNo = await nextLoanNo();
+
+  if (!db) {
+    const now = new Date().toISOString();
+    loans.unshift({
+      ...computation,
+      loanNo,
+      computedBy: user.username,
+      computedAt: now
+    });
+    loanInstallments.push(...computation.installments.map((item) => ({ ...item, loanNo })));
+    const application = loanApplications.find((item) => item.applicationNo === applicationNo);
+    application.status = "For Release";
+    application.updatedAt = now;
+    return { loan: mapLoan({ ...loans[0], installments: computation.installments }) };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [applicationRows] = await connection.execute(
+      `SELECT status, created_by AS createdBy
+       FROM loan_applications WHERE application_no = ? LIMIT 1 FOR UPDATE`,
+      [applicationNo]
+    );
+    if (!applicationRows[0] || applicationRows[0].status !== "Approved") {
+      await connection.rollback();
+      return { error: "Only approved applications can be computed.", statusCode: 409 };
+    }
+    if (applicationRows[0].createdBy !== user.username) {
+      await connection.rollback();
+      return { error: "Loan Officer can compute only their own approved applications.", statusCode: 403 };
+    }
+
+    await connection.execute(
+      `INSERT INTO loans (
+         loan_no, application_no, member_no, member_name, product_code, product_name,
+         principal, term_months, annual_interest_rate_bps, interest_method,
+         payment_frequency, processing_fee, total_interest, total_payable,
+         net_proceeds, installment_count, first_payment_date, maturity_date,
+         status, computed_by
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'For Release', ?)`,
+      [
+        loanNo, applicationNo, computation.memberNo, computation.memberName,
+        computation.productCode, computation.productName, computation.principal,
+        computation.termMonths, computation.annualInterestRateBps, computation.interestMethod,
+        computation.paymentFrequency, computation.processingFee, computation.totalInterest,
+        computation.totalPayable, computation.netProceeds, computation.installmentCount,
+        computation.firstPaymentDate, computation.maturityDate, user.username
+      ]
+    );
+    for (const installment of computation.installments) {
+      await connection.execute(
+        `INSERT INTO loan_installments (
+           loan_no, installment_no, due_date, principal_due, interest_due, total_due, status
+         ) VALUES (?, ?, ?, ?, ?, ?, 'Scheduled')`,
+        [
+          loanNo, installment.installmentNo, installment.dueDate,
+          installment.principalDue, installment.interestDue, installment.totalDue
+        ]
+      );
+    }
+    await connection.execute(
+      `UPDATE loan_applications SET status = 'For Release', updated_at = CURRENT_TIMESTAMP
+       WHERE application_no = ?`,
+      [applicationNo]
+    );
+    await connection.commit();
+    return { loan: (await listLoans()).find((loan) => loan.loanNo === loanNo) };
+  } catch (error) {
+    await connection.rollback();
+    if (String(error.code) === "23505") {
+      return { error: "A loan computation already exists for this application.", statusCode: 409 };
+    }
     throw error;
   } finally {
     connection.release();
@@ -6239,6 +6585,66 @@ app.post("/api/loan-applications/:applicationNo/decision", async (request, respo
   }
 
   response.json(result);
+});
+
+app.get("/api/loans", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:computations:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  response.json(await listLoans());
+});
+
+app.post("/api/loan-applications/:applicationNo/computation-preview", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:computations:create")) {
+    response.status(403).json({ error: "Loan Officer access required" });
+    return;
+  }
+
+  const result = await previewLoanComputation(request.params.applicationNo, request.body, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/loan-applications/:applicationNo/computation", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:computations:create")) {
+    response.status(403).json({ error: "Loan Officer access required" });
+    return;
+  }
+
+  const result = await saveLoanComputation(request.params.applicationNo, request.body, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.status(201).json(result);
 });
 
 app.get("/api/admin/users", async (request, response) => {
