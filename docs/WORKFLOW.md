@@ -220,6 +220,8 @@ Opening Balance Import Finalization v1d.1 lets the System Administrator finalize
 
 Opening Balance Accounting Entries v1d.2 now creates one balanced journal automatically during finalization: debit `1090 Opening Balance Clearing`, credit `3010 Share Capital`, and credit `2020 Savings Deposits Payable`. Only finalized rows are included. The journal is linked to the batch, appears in Posted Entries and reports, and brings opening balances into Control Account Reconciliation. Older finalized batches without a journal expose an Admin-only `Post Missing Journal` repair action.
 
+Opening Balance Visibility v1e adds finalized opening balances to each member statement with batch number, cutover date, source reference, amounts, and linked journal number. The Member Subsidiary Ledger separately shows opening share capital and opening savings beside normal transaction movements and current balances.
+
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
@@ -606,6 +608,8 @@ Opening Balance Import Details v1 adds row-level batch inspection and Admin-only
 Opening Balance Import Finalization v1d.1 applies ready staged rows to member share capital and savings balances with Admin confirmation and transactional persistence. Issue rows remain unapplied. The following accounting spike must create balanced opening journal entries so these subsidiary balances reconcile to the general ledger.
 
 Opening Balance Accounting Entries v1d.2 completes that accounting link. Opening Balance Clearing is a temporary bridge for historical balances whose underlying asset accounts have not yet been mapped; it does not represent current Teller/Cashier receipts. A future full opening-trial-balance migration should reconcile this clearing amount to the cooperative's confirmed accounts.
+
+Opening Balance Visibility v1e makes the audit trail readable from member-facing operational screens. Finalized opening rows are immutable evidence and remain cross-referenced to their import batch, source reference, cutover date, and opening journal.
 
 ## 7. Audit Trail Requirements
 
