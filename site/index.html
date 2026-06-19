@@ -203,8 +203,12 @@
           limits enforced. Product rates, methods, fees, penalties, and accounting mappings
           are copied into the application as an audit snapshot. Submitting makes the record
           read-only and visible to Admin, Manager, Credit Committee / Approver, and Auditor.
-          The current build stops at Submitted; approval, release, repayment schedules,
-          collections, and accounting entries remain later workflow steps.
+          Loan Credit Review lets the Credit Committee / Approver record assessment notes,
+          recommended amount and term, decision date, and remarks before choosing Approved,
+          Rejected, or Returned. Returned applications go back to the originating Loan Officer
+          for revision and resubmission. Approval cannot exceed the member's request, and
+          decided applications are immutable. Release, repayment schedules, collections, and
+          accounting entries remain later workflow steps.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -290,8 +294,10 @@
               <li>System validates requested principal and term against product limits.</li>
               <li>Loan Officer saves and may edit their own Draft.</li>
               <li>Loan Officer submits the Draft, making it read-only.</li>
-              <li>Admin, Manager, Approver, and Auditor can inspect the Submitted queue.</li>
-              <li>Approval and release remain the next planned workflow stages.</li>
+              <li>Credit Committee / Approver records assessment notes and a decision.</li>
+              <li>Returned applications go back to Draft for Loan Officer revision.</li>
+              <li>Approved and Rejected applications retain immutable decision evidence.</li>
+              <li>Loan release remains the next planned workflow stage.</li>
             </ol>
           </article>
 

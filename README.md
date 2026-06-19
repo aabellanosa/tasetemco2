@@ -173,14 +173,16 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
-Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, and application date, then saves a Draft. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application. The originating Loan Officer may edit and submit their own Draft; Submitted applications are read-only. Approval, loan computation, release, repayment schedules, collections, and accounting entries remain later spikes.
+Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, and application date, then saves a Draft. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application.
 
-| Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Approve |
+Loan Credit Review v1 lets the Credit Committee / Approver review Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable. No loan release, schedule, collection, or accounting entry is created yet.
+
+| Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
-| System Administrator | Yes | No | No | Not yet |
-| General Manager | Yes | No | No | Not yet |
+| System Administrator | Yes | No | No | No |
+| General Manager | Yes | No | No | No |
 | Loan Officer | Yes | Yes | Yes | No |
-| Credit Committee / Approver | Yes | No | No | Not yet |
+| Credit Committee / Approver | Yes | No | No | Yes |
 | Auditor / Compliance Officer | Yes | No | No | No |
 | Teller / Cashier | No | No | No | No |
 | Membership Officer | No | No | No | No |
