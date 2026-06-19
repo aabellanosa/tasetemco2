@@ -3672,6 +3672,29 @@ function buildSavingsWithdrawalJournalLines(withdrawal) {
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
 
+function buildLoanReleaseJournalLines(release) {
+  return [
+    {
+      accountCode: release.loansReceivableAccount,
+      accountName: "Loans Receivable",
+      debit: release.principal,
+      credit: 0
+    },
+    {
+      accountCode: release.cashAccount,
+      accountName: "Cash on Hand",
+      debit: 0,
+      credit: release.netProceeds
+    },
+    {
+      accountCode: release.processingFeeAccount,
+      accountName: "Processing Fee Income",
+      debit: 0,
+      credit: release.processingFee
+    }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
 async function approveMemberApplication(applicationId, user) {
   const db = await getPool();
 
@@ -5911,6 +5934,148 @@ async function postSavingsWithdrawal(withdrawalId, user) {
   }
 }
 
+async function postLoanRelease(releaseId, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const release = loanReleases.find((item) => item.releaseNo === releaseId);
+    if (!release) {
+      return { error: "Loan release was not found.", statusCode: 404 };
+    }
+    if (release.status !== "Teller Batch") {
+      return { error: "Only teller batch loan releases can be posted.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(release.batchId);
+    if (batchResult.error) {
+      return batchResult;
+    }
+    const loan = loans.find((item) => item.loanNo === release.loanNo);
+    const application = loanApplications.find((item) => item.applicationNo === loan?.applicationNo);
+    if (!loan || !application) {
+      return { error: "Loan accounting snapshot was not found.", statusCode: 409 };
+    }
+    const accountingRelease = {
+      ...release,
+      loansReceivableAccount: application.loansReceivableAccount,
+      processingFeeAccount: application.processingFeeAccount,
+      cashAccount: application.cashAccount
+    };
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "Loan Release",
+      sourceNo: release.releaseNo,
+      description: `Loan release - ${release.memberName} (${release.loanNo})`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildLoanReleaseJournalLines(accountingRelease)
+    };
+    release.status = "Posted";
+    release.postedBy = user.username;
+    release.postedEntryNo = entry.id;
+    release.postedAt = entry.postedAt;
+    loan.status = "Posted";
+    application.status = "Posted";
+    application.updatedAt = entry.postedAt;
+    journalEntries.unshift(entry);
+    return { release: mapLoanRelease(release), entry };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [releaseRows] = await connection.execute(
+      `SELECT lr.release_no AS releaseNo, lr.loan_no AS loanNo,
+              lr.batch_no AS batchId, lr.member_no AS memberNo,
+              lr.member_name AS memberName, lr.principal,
+              lr.processing_fee AS processingFee,
+              lr.net_proceeds AS netProceeds,
+              lr.cash_released AS cashReleased, lr.reference_no AS referenceNo,
+              lr.status, loan.application_no AS applicationNo,
+              application.loans_receivable_account AS loansReceivableAccount,
+              application.processing_fee_account AS processingFeeAccount,
+              application.cash_account AS cashAccount
+       FROM loan_releases lr
+       JOIN loans loan ON loan.loan_no = lr.loan_no
+       JOIN loan_applications application ON application.application_no = loan.application_no
+       WHERE lr.release_no = ?
+       LIMIT 1
+       FOR UPDATE OF lr`,
+      [releaseId]
+    );
+    const release = releaseRows[0];
+    if (!release) {
+      await connection.rollback();
+      return { error: "Loan release was not found.", statusCode: 404 };
+    }
+    if (release.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Only teller batch loan releases can be posted.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(release.batchId, connection);
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
+    }
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM journal_entries
+       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+    );
+    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    await connection.execute(
+      `INSERT INTO journal_entries (
+         entry_no, source_type, source_no, description, posted_by
+       ) VALUES (?, 'Loan Release', ?, ?, ?)`,
+      [entryNo, release.releaseNo, `Loan release - ${release.memberName} (${release.loanNo})`, user.username]
+    );
+    const lines = buildLoanReleaseJournalLines(release);
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (
+           entry_no, account_code, account_name, debit, credit
+         ) VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+    await connection.execute(
+      `UPDATE loan_releases
+       SET status = 'Posted', posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE release_no = ?`,
+      [user.username, entryNo, release.releaseNo]
+    );
+    await connection.execute(`UPDATE loans SET status = 'Posted' WHERE loan_no = ?`, [release.loanNo]);
+    await connection.execute(
+      `UPDATE loan_applications SET status = 'Posted', updated_at = CURRENT_TIMESTAMP
+       WHERE application_no = ?`,
+      [release.applicationNo]
+    );
+    await connection.commit();
+    return {
+      release: {
+        ...mapLoanRelease(release),
+        status: "Posted",
+        postedBy: user.username,
+        postedEntryNo: entryNo,
+        postedAt: new Date().toISOString()
+      },
+      entry: {
+        id: entryNo,
+        sourceType: "Loan Release",
+        sourceNo: release.releaseNo,
+        description: `Loan release - ${release.memberName} (${release.loanNo})`,
+        postedBy: user.username,
+        postedAt: new Date().toISOString(),
+        lines
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function postTellerBatchRow(row, user) {
   if (row.batchType === "Savings Deposit") {
     return postSavingsDeposit(row.id, user);
@@ -5922,6 +6087,10 @@ async function postTellerBatchRow(row, user) {
 
   if (row.batchType === "Savings Withdrawal") {
     return postSavingsWithdrawal(row.id, user);
+  }
+
+  if (row.batchType === "Loan Release") {
+    return postLoanRelease(row.id, user);
   }
 
   return postInitialPayment(row.id, user);

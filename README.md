@@ -207,6 +207,8 @@ Loan Computation and Amortization Preview v1 lets the originating Loan Officer c
 
 Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Teller confirms the release date, unique voucher/reference number, and cash released, which must exactly equal computed net proceeds. The release is immutable, linked to the current Open teller batch, counted as cash-out, and changes the loan and application status to `Released`. Loan Officer, Approver, Admin, Manager, and Auditor have read-only release visibility. Bookkeeper journal posting remains Loan Release v1b.
 
+Loan Release v1b brings released loans into the existing reviewed-batch posting control. After Teller submits cash count and Bookkeeper marks the batch Reviewed, one-button posting creates a balanced journal from the frozen application mappings: debit Loans Receivable for principal, credit Cash on Hand for net proceeds, and credit Processing Fee Income for the deducted fee. The release, loan, and application become `Posted`, and release history and batch details retain the linked journal number. Reposting is idempotent.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |

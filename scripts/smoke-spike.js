@@ -2638,6 +2638,121 @@ async function run() {
       throw new Error("Loan release net proceeds should increase teller batch cash-out.");
     }
 
+    const releaseCashCount = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({ actualCash: 0 })
+    });
+    const releaseCashCountBody = await releaseCashCount.json();
+
+    if (
+      !releaseCashCount.ok ||
+      releaseCashCountBody.batch.status !== "Submitted" ||
+      releaseCashCountBody.cashCount.expectedCash !== -12750 ||
+      releaseCashCountBody.cashCount.variance !== 12750
+    ) {
+      throw new Error("Loan release batch should submit its net proceeds as teller cash-out.");
+    }
+
+    const reviewReleaseBatch = await fetch(
+      `${baseUrl}/api/teller-batches/${releaseLoanBody.release.batchId}/review`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: bookkeeperCookie
+        },
+        body: JSON.stringify({
+          varianceNote: "Prototype has no opening teller cash float; loan proceeds are confirmed by release voucher."
+        })
+      }
+    );
+
+    if (!reviewReleaseBatch.ok) {
+      throw new Error("Bookkeeper should review the teller batch containing the loan release.");
+    }
+
+    const postReleaseBatch = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${releaseLoanBody.release.batchId}/post-reviewed`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const postReleaseBatchBody = await postReleaseBatch.json();
+    const postedReleaseResult = postReleaseBatchBody.results?.find(
+      (result) => result.id === smokeReleaseNo && result.batchType === "Loan Release"
+    );
+    const releaseDebitTotal = postedReleaseResult?.entry.lines.reduce(
+      (sum, line) => sum + Number(line.debit || 0),
+      0
+    );
+    const releaseCreditTotal = postedReleaseResult?.entry.lines.reduce(
+      (sum, line) => sum + Number(line.credit || 0),
+      0
+    );
+    const releaseReceivableLine = postedReleaseResult?.entry.lines.find(
+      (line) => line.accountCode === "1050" && line.debit === 13000
+    );
+    const releaseCashLine = postedReleaseResult?.entry.lines.find(
+      (line) => line.accountCode === "1010" && line.credit === 12750
+    );
+    const releaseFeeLine = postedReleaseResult?.entry.lines.find(
+      (line) => line.accountCode === "4030" && line.credit === 250
+    );
+
+    if (
+      !postReleaseBatch.ok ||
+      postReleaseBatchBody.postedCount !== 1 ||
+      !postedReleaseResult ||
+      releaseDebitTotal !== 13000 ||
+      releaseCreditTotal !== 13000 ||
+      !releaseReceivableLine ||
+      !releaseCashLine ||
+      !releaseFeeLine
+    ) {
+      throw new Error("Bookkeeper should post a balanced loan release journal from the reviewed batch.");
+    }
+
+    const postedLoanReleases = await fetch(`${baseUrl}/api/loan-releases`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const postedLoanReleaseRows = await postedLoanReleases.json();
+    const postedRelease = postedLoanReleaseRows.find((release) => release.releaseNo === smokeReleaseNo);
+
+    if (
+      !postedLoanReleases.ok ||
+      postedRelease?.status !== "Posted" ||
+      postedRelease?.postedEntryNo !== postedReleaseResult.entry.id
+    ) {
+      throw new Error("Loan release history should expose its posted journal evidence.");
+    }
+
+    const postedLoanRows = await (await fetch(`${baseUrl}/api/loans`, {
+      headers: { Cookie: loanOfficerCookie }
+    })).json();
+    const postedLoan = postedLoanRows.find((loan) => loan.loanNo === smokeLoanNo);
+
+    if (postedLoan?.status !== "Posted") {
+      throw new Error("Posted loan release should move the loan to Posted status.");
+    }
+
+    const repostReleaseBatch = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${releaseLoanBody.release.batchId}/post-reviewed`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const repostReleaseBatchBody = await repostReleaseBatch.json();
+
+    if (!repostReleaseBatch.ok || repostReleaseBatchBody.postedCount !== 0) {
+      throw new Error("A posted loan release should not create a duplicate journal entry.");
+    }
+
     const forbiddenLoanOfficerRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
       method: "POST",
       headers: {

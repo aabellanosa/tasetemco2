@@ -503,7 +503,8 @@ function buildTellerBatchSummary(rows) {
         shareCapitalContributionCount:
           summary.shareCapitalContributionCount + (row.batchType === "Share Capital Contribution" ? 1 : 0),
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
-        savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0)
+        savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0),
+        loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0)
       };
     },
     {
@@ -513,7 +514,8 @@ function buildTellerBatchSummary(rows) {
       initialPaymentCount: 0,
       shareCapitalContributionCount: 0,
       savingsDepositCount: 0,
-      savingsWithdrawalCount: 0
+      savingsWithdrawalCount: 0,
+      loanReleaseCount: 0
     }
   );
 }
@@ -2573,6 +2575,7 @@ function Members({ user }) {
                   </Text>
                   <Text fontWeight="bold">Deposits: {tellerBatchSummary.savingsDepositCount}</Text>
                   <Text fontWeight="bold">Withdrawals: {tellerBatchSummary.savingsWithdrawalCount}</Text>
+                  <Text fontWeight="bold">Loan releases: {tellerBatchSummary.loanReleaseCount}</Text>
                 </VStack>
               </Box>
             </Grid>
@@ -6081,6 +6084,7 @@ function LoanReleases({ user }) {
                 <Th isNumeric>Cash Released</Th>
                 <Th>Date</Th>
                 <Th>Status</Th>
+                <Th>Journal</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -6094,6 +6098,7 @@ function LoanReleases({ user }) {
                   <Td isNumeric>{formatMoney(release.cashReleased)}</Td>
                   <Td>{release.releaseDate}</Td>
                   <Td><Badge colorScheme={release.status === "Posted" ? "green" : "orange"}>{release.status}</Badge></Td>
+                  <Td>{release.postedEntryNo || "-"}</Td>
                 </Tr>
               ))}
             </Tbody>
