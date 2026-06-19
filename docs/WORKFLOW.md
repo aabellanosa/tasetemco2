@@ -236,19 +236,21 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
-Loan Application v1 adds a separate Applications tab beside Loan Products. The Loan Officer selects an active member and active product, enters requested principal, term, purpose, and application date, and saves a Draft. The system validates the amount and term against the selected product and snapshots the product rules into the application so later product edits do not silently change an existing request. Only the originating Loan Officer can edit or submit their Draft. Submitted applications are immutable and become a read-only queue for the System Administrator, General Manager, Credit Committee / Approver, and Auditor / Compliance Officer.
+Loan Application v1 adds a separate Applications tab beside Loan Products. The Loan Officer selects an active member and active product, enters requested principal, term, purpose, and application date, and saves a Draft. The system validates the amount and term against the selected product and snapshots the product rules into the application so later product edits do not silently change an existing request. Only the originating Loan Officer can edit or submit their Draft.
 
-| Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Approve |
+Loan Credit Review v1 makes Submitted applications actionable for the Credit Committee / Approver. The reviewer records credit assessment notes, recommended principal, recommended term, decision date, and decision remarks, then chooses `Approved`, `Rejected`, or `Returned`. Approval recommendations cannot exceed the requested amount or term. Rejection and return require remarks. Returned applications remain visible with their review evidence and become editable by the originating Loan Officer; saving moves them back to Draft for resubmission. Approved and Rejected applications cannot receive another decision.
+
+| Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
 | General Manager | Yes | No | No | No |
 | Loan Officer | Yes | Yes | Yes | No |
-| Credit Committee / Approver | Yes | No | No | No |
+| Credit Committee / Approver | Yes | No | No | Yes |
 | Auditor / Compliance Officer | Yes | No | No | No |
 | Teller / Cashier | No | No | No | No |
 | Membership Officer | No | No | No | No |
 
-This slice intentionally stops at `Draft -> Submitted`. Credit evaluation, committee approval or rejection, loan computation, release, amortization schedules, collections, and general-ledger entries are not yet implemented.
+The implemented status flow is `Draft -> Submitted -> Approved`, `Rejected`, or `Returned`. A returned application follows `Returned -> Draft -> Submitted`. Loan computation, release, amortization schedules, collections, and general-ledger entries are not yet implemented.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
@@ -670,6 +672,8 @@ Opening Balance Visibility v1e makes the audit trail readable from member-facing
 Loan Product Foundation v1 adds the `loan_products` Postgres table and seeded lending rules. Run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying this app build to a local or hosted Postgres target. The product-only seed is safe to run without resetting unrelated demo data. Products define future application constraints but do not create loans, schedules, releases, repayments, or journal entries yet.
 
 Loan Application v1 adds the `loan_applications` Postgres table. Run `npm run pg:migrate` before starting or deploying this build. Full demo reset/seed includes one Submitted sample application; ordinary operation starts with the existing database contents and does not require adding fictitious applications. Product terms are copied into each application as an audit snapshot. No loan account, release, schedule, collection, or journal entry is created by this slice.
+
+Loan Credit Review v1 adds decision columns to `loan_applications`, including assessment notes, recommendations, decision, remarks, date, actor, and timestamp. Run `npm run pg:migrate` before starting or deploying this build. The migration preserves existing applications and initializes the new review fields without seeding or resetting hosted tester data.
 
 ## 7. Audit Trail Requirements
 

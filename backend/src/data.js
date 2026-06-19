@@ -146,7 +146,8 @@ export const rolePermissions = {
     "members:applications:view",
     "reports:view",
     "loans:products:view",
-    "loans:applications:view"
+    "loans:applications:view",
+    "loans:applications:decide"
   ],
   "Teller / Cashier": [
     "members:view",
@@ -336,6 +337,14 @@ export const loanApplications = [
     createdBy: "loanofficer",
     submittedBy: "loanofficer",
     submittedAt: "2026-06-15T02:00:00.000Z",
+    creditAssessmentNotes: "",
+    recommendedPrincipal: 0,
+    recommendedTermMonths: 0,
+    decision: "",
+    decisionRemarks: "",
+    decisionDate: "",
+    decidedBy: "",
+    decidedAt: "",
     createdAt: "2026-06-15T01:30:00.000Z",
     updatedAt: "2026-06-15T02:00:00.000Z"
   }

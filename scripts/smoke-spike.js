@@ -2132,6 +2132,7 @@ async function run() {
       body: JSON.stringify({ username: "approver", password: "p@55@LL" })
     });
     const approverCookie = approverLogin.headers.get("set-cookie")?.split(";")[0];
+    const approverLoginBody = await approverLogin.json();
     const approverLoanApplications = await fetch(`${baseUrl}/api/loan-applications`, {
       headers: { Cookie: approverCookie }
     });
@@ -2139,12 +2140,202 @@ async function run() {
 
     if (
       !approverLogin.ok ||
+      !approverLoginBody.user.permissions.includes("loans:applications:decide") ||
       !approverLoanApplications.ok ||
+      !approverApplicationRows.length ||
       !approverApplicationRows.some(
         (application) => application.applicationNo === smokeApplicationNo && application.status === "Submitted"
       )
     ) {
       throw new Error("Credit Committee / Approver should see the submitted application queue.");
+    }
+
+    const invalidReturnDecision = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: approverCookie
+        },
+        body: JSON.stringify({
+          decision: "Returned",
+          creditAssessmentNotes: "Income evidence needs clarification.",
+          recommendedPrincipal: 0,
+          recommendedTermMonths: 0,
+          decisionRemarks: "",
+          decisionDate: "2026-06-19"
+        })
+      }
+    );
+
+    if (invalidReturnDecision.status !== 400) {
+      throw new Error("Returned applications should require decision remarks.");
+    }
+
+    const returnLoanApplication = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: approverCookie
+        },
+        body: JSON.stringify({
+          decision: "Returned",
+          creditAssessmentNotes: "Income evidence needs clarification.",
+          recommendedPrincipal: 0,
+          recommendedTermMonths: 0,
+          decisionRemarks: "Add the latest livelihood income details.",
+          decisionDate: "2026-06-19"
+        })
+      }
+    );
+    const returnLoanApplicationBody = await returnLoanApplication.json();
+
+    if (
+      !returnLoanApplication.ok ||
+      returnLoanApplicationBody.application.status !== "Returned" ||
+      returnLoanApplicationBody.application.decidedBy !== "approver"
+    ) {
+      throw new Error("Approver should return a submitted application with recorded review evidence.");
+    }
+
+    const editReturnedApplication = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({
+          memberNo: "M-000517",
+          productCode: "REGULAR",
+          requestedPrincipal: 14000,
+          requestedTermMonths: 8,
+          purpose: "Livelihood supplies with updated income details",
+          applicationDate: "2026-06-19"
+        })
+      }
+    );
+    const editReturnedApplicationBody = await editReturnedApplication.json();
+
+    if (
+      !editReturnedApplication.ok ||
+      editReturnedApplicationBody.application.status !== "Draft" ||
+      editReturnedApplicationBody.application.decision !== "Returned"
+    ) {
+      throw new Error("Loan Officer should revise a returned application back into Draft while retaining review evidence.");
+    }
+
+    const resubmitLoanApplication = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/submit`,
+      {
+        method: "POST",
+        headers: { Cookie: loanOfficerCookie }
+      }
+    );
+    const resubmitLoanApplicationBody = await resubmitLoanApplication.json();
+
+    if (!resubmitLoanApplication.ok || resubmitLoanApplicationBody.application.status !== "Submitted") {
+      throw new Error("Loan Officer should resubmit a revised returned application.");
+    }
+
+    const excessiveApproval = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: approverCookie
+        },
+        body: JSON.stringify({
+          decision: "Approved",
+          creditAssessmentNotes: "Updated income details are acceptable.",
+          recommendedPrincipal: 15000,
+          recommendedTermMonths: 8,
+          decisionRemarks: "Recommended within repayment capacity.",
+          decisionDate: "2026-06-19"
+        })
+      }
+    );
+
+    if (excessiveApproval.status !== 400) {
+      throw new Error("Approved principal should not exceed the revised requested principal.");
+    }
+
+    const approveLoanApplication = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: approverCookie
+        },
+        body: JSON.stringify({
+          decision: "Approved",
+          creditAssessmentNotes: "Updated income details support the requested repayment plan.",
+          recommendedPrincipal: 13000,
+          recommendedTermMonths: 8,
+          decisionRemarks: "Recommended for the next computation stage.",
+          decisionDate: "2026-06-19"
+        })
+      }
+    );
+    const approveLoanApplicationBody = await approveLoanApplication.json();
+
+    if (
+      !approveLoanApplication.ok ||
+      approveLoanApplicationBody.application.status !== "Approved" ||
+      approveLoanApplicationBody.application.recommendedPrincipal !== 13000 ||
+      approveLoanApplicationBody.application.recommendedTermMonths !== 8
+    ) {
+      throw new Error("Approver should approve a resubmitted application within requested limits.");
+    }
+
+    const duplicateCreditDecision = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: approverCookie
+        },
+        body: JSON.stringify({
+          decision: "Rejected",
+          creditAssessmentNotes: "This second decision must not be accepted.",
+          decisionRemarks: "Already decided.",
+          decisionDate: "2026-06-19"
+        })
+      }
+    );
+
+    if (duplicateCreditDecision.status !== 409) {
+      throw new Error("Approved applications should not receive another credit decision.");
+    }
+
+    const forbiddenLoanOfficerDecision = await fetch(
+      `${baseUrl}/api/loan-applications/LA-2026-0001/decision`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({
+          decision: "Approved",
+          creditAssessmentNotes: "Loan Officer cannot decide applications.",
+          recommendedPrincipal: 30000,
+          recommendedTermMonths: 12,
+          decisionRemarks: "",
+          decisionDate: "2026-06-19"
+        })
+      }
+    );
+
+    if (forbiddenLoanOfficerDecision.status !== 403) {
+      throw new Error("Loan Officer should not record credit decisions.");
     }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);

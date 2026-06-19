@@ -5133,9 +5133,20 @@ function LoanApplications({ user }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
+  const [reviewApplication, setReviewApplication] = useState(null);
+  const [reviewForm, setReviewForm] = useState({
+    creditAssessmentNotes: "",
+    recommendedPrincipal: 0,
+    recommendedTermMonths: 0,
+    decision: "Approved",
+    decisionRemarks: "",
+    decisionDate: new Date().toISOString().slice(0, 10)
+  });
+  const reviewModal = useDisclosure();
   const canCreate = user.permissions.includes("loans:applications:create");
   const canEdit = user.permissions.includes("loans:applications:edit");
   const canSubmit = user.permissions.includes("loans:applications:submit");
+  const canDecide = user.permissions.includes("loans:applications:decide");
   const activeProducts = products.filter((product) => product.status === "Active");
   const selectedProduct = products.find((product) => product.code === form.productCode);
 
@@ -5201,6 +5212,21 @@ function LoanApplications({ user }) {
     setError("");
   }
 
+  function startReview(application) {
+    setReviewApplication(application);
+    setReviewForm({
+      creditAssessmentNotes: application.creditAssessmentNotes || "",
+      recommendedPrincipal: application.requestedPrincipal,
+      recommendedTermMonths: application.requestedTermMonths,
+      decision: "Approved",
+      decisionRemarks: "",
+      decisionDate: new Date().toISOString().slice(0, 10)
+    });
+    setMessage("");
+    setError("");
+    reviewModal.onOpen();
+  }
+
   function resetForm() {
     const firstActive = activeProducts[0];
     setEditingNo("");
@@ -5255,13 +5281,50 @@ function LoanApplications({ user }) {
     }
   }
 
+  async function submitDecision() {
+    if (!reviewApplication) {
+      return;
+    }
+
+    setBusyAction("decision");
+    setMessage("");
+    setError("");
+    try {
+      const result = await api(
+        `/api/loan-applications/${reviewApplication.applicationNo}/decision`,
+        {
+          method: "POST",
+          body: JSON.stringify(reviewForm)
+        }
+      );
+      setMessage(`${result.application.applicationNo} marked ${result.application.status}.`);
+      reviewModal.onClose();
+      setReviewApplication(null);
+      await loadWorkspace();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  function statusColor(status) {
+    return {
+      Draft: "yellow",
+      Submitted: "blue",
+      Approved: "green",
+      Rejected: "red",
+      Returned: "orange"
+    }[status] || "gray";
+  }
+
   return (
     <VStack align="stretch" spacing={5} minW={0} maxW="100%">
       <Flex justify="space-between" gap={4} align="center" wrap="wrap">
         <Box>
           <Heading size="md">Loan Applications</Heading>
           <Text color="gray.600" mt={1}>
-            Loan Officers prepare a draft and submit it for review. Approval and release come in later spikes.
+            Loan Officers prepare and submit applications. Credit Committee / Approver records the credit decision.
           </Text>
         </Box>
         <Button size="sm" variant="outline" onClick={loadWorkspace}>
@@ -5356,13 +5419,16 @@ function LoanApplications({ user }) {
                 <Th>Purpose</Th>
                 <Th>Status</Th>
                 <Th>Prepared By</Th>
-                {(canEdit || canSubmit) ? <Th>Action</Th> : null}
+                <Th>Latest Review</Th>
+                {(canEdit || canSubmit || canDecide) ? <Th>Action</Th> : null}
               </Tr>
             </Thead>
             <Tbody>
               {applications.map((application) => {
-                const ownsDraft =
-                  application.status === "Draft" && application.createdBy === user.username;
+                const ownsEditable =
+                  ["Draft", "Returned"].includes(application.status) &&
+                  application.createdBy === user.username;
+                const ownsDraft = application.status === "Draft" && application.createdBy === user.username;
                 return (
                   <Tr key={application.applicationNo}>
                     <Td minW="150px">
@@ -5383,17 +5449,33 @@ function LoanApplications({ user }) {
                     <Td>{application.requestedTermMonths} months</Td>
                     <Td minW="220px">{application.purpose}</Td>
                     <Td>
-                      <Badge colorScheme={application.status === "Submitted" ? "blue" : "yellow"}>
+                      <Badge colorScheme={statusColor(application.status)}>
                         {application.status}
                       </Badge>
                     </Td>
                     <Td>{application.createdBy}</Td>
-                    {(canEdit || canSubmit) ? (
+                    <Td minW="220px">
+                      {application.decision ? (
+                        <>
+                          <Text fontWeight="bold">{application.decision} by {application.decidedBy}</Text>
+                          <Text color="gray.500" fontSize="xs">
+                            {application.decisionDate}
+                            {application.decisionRemarks ? ` - ${application.decisionRemarks}` : ""}
+                          </Text>
+                          {application.decision === "Approved" ? (
+                            <Text color="gray.500" fontSize="xs">
+                              Recommended: {formatMoney(application.recommendedPrincipal)} / {application.recommendedTermMonths} months
+                            </Text>
+                          ) : null}
+                        </>
+                      ) : <Text color="gray.500">Awaiting decision</Text>}
+                    </Td>
+                    {(canEdit || canSubmit || canDecide) ? (
                       <Td>
-                        {ownsDraft ? (
+                        {ownsEditable ? (
                           <HStack spacing={2}>
                             {canEdit ? <Button size="sm" onClick={() => startEdit(application)}>Edit</Button> : null}
-                            {canSubmit ? (
+                            {canSubmit && ownsDraft ? (
                               <Button
                                 size="sm"
                                 colorScheme="green"
@@ -5404,6 +5486,10 @@ function LoanApplications({ user }) {
                               </Button>
                             ) : null}
                           </HStack>
+                        ) : canDecide && application.status === "Submitted" ? (
+                          <Button size="sm" colorScheme="green" onClick={() => startReview(application)}>
+                            Review
+                          </Button>
                         ) : <Text color="gray.500">Read only</Text>}
                       </Td>
                     ) : null}
@@ -5414,6 +5500,116 @@ function LoanApplications({ user }) {
           </Table>
         </TableContainer>
       </Box>
+
+      <Modal isOpen={reviewModal.isOpen} onClose={reviewModal.onClose} size="xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            Credit Review {reviewApplication ? `- ${reviewApplication.applicationNo}` : ""}
+          </ModalHeader>
+          <ModalBody>
+            {reviewApplication ? (
+              <VStack align="stretch" spacing={4}>
+                <Box>
+                  <Text fontWeight="bold">{reviewApplication.memberName}</Text>
+                  <Text color="gray.600">
+                    Requested {formatMoney(reviewApplication.requestedPrincipal)} for {reviewApplication.requestedTermMonths} months
+                  </Text>
+                  <Text color="gray.600">{reviewApplication.productName} - {reviewApplication.purpose}</Text>
+                </Box>
+                <FormControl isRequired>
+                  <FormLabel>Credit Assessment Notes</FormLabel>
+                  <Textarea
+                    value={reviewForm.creditAssessmentNotes}
+                    onChange={(event) => setReviewForm((current) => ({
+                      ...current,
+                      creditAssessmentNotes: event.target.value
+                    }))}
+                  />
+                </FormControl>
+                <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>
+                  <FormControl isRequired>
+                    <FormLabel>Decision</FormLabel>
+                    <Select
+                      value={reviewForm.decision}
+                      onChange={(event) => setReviewForm((current) => ({
+                        ...current,
+                        decision: event.target.value
+                      }))}
+                    >
+                      <option>Approved</option>
+                      <option>Rejected</option>
+                      <option>Returned</option>
+                    </Select>
+                  </FormControl>
+                  <FormControl isRequired>
+                    <FormLabel>Decision Date</FormLabel>
+                    <Input
+                      type="date"
+                      value={reviewForm.decisionDate}
+                      onChange={(event) => setReviewForm((current) => ({
+                        ...current,
+                        decisionDate: event.target.value
+                      }))}
+                    />
+                  </FormControl>
+                  <FormControl isRequired={reviewForm.decision === "Approved"}>
+                    <FormLabel>Recommended Principal</FormLabel>
+                    <NumberInput
+                      min={1}
+                      max={reviewApplication.requestedPrincipal}
+                      value={reviewForm.recommendedPrincipal}
+                      isDisabled={reviewForm.decision !== "Approved"}
+                      onChange={(value) => setReviewForm((current) => ({
+                        ...current,
+                        recommendedPrincipal: Number(value || 0)
+                      }))}
+                    >
+                      <NumberInputField />
+                    </NumberInput>
+                  </FormControl>
+                  <FormControl isRequired={reviewForm.decision === "Approved"}>
+                    <FormLabel>Recommended Term (months)</FormLabel>
+                    <NumberInput
+                      min={1}
+                      max={reviewApplication.requestedTermMonths}
+                      value={reviewForm.recommendedTermMonths}
+                      isDisabled={reviewForm.decision !== "Approved"}
+                      onChange={(value) => setReviewForm((current) => ({
+                        ...current,
+                        recommendedTermMonths: Number(value || 0)
+                      }))}
+                    >
+                      <NumberInputField />
+                    </NumberInput>
+                  </FormControl>
+                </Grid>
+                <FormControl isRequired={["Rejected", "Returned"].includes(reviewForm.decision)}>
+                  <FormLabel>Decision Remarks</FormLabel>
+                  <Textarea
+                    value={reviewForm.decisionRemarks}
+                    onChange={(event) => setReviewForm((current) => ({
+                      ...current,
+                      decisionRemarks: event.target.value
+                    }))}
+                  />
+                </FormControl>
+                <Text color="gray.500" fontSize="sm">
+                  This decision does not release cash or create accounting entries.
+                </Text>
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={reviewModal.onClose}>
+              Cancel
+            </Button>
+            <Button colorScheme="green" onClick={submitDecision} isLoading={busyAction === "decision"}>
+              Record Decision
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </VStack>
   );
 }

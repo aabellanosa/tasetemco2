@@ -68,9 +68,26 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   created_by VARCHAR(80) NOT NULL,
   submitted_by VARCHAR(80),
   submitted_at TIMESTAMP NULL,
+  credit_assessment_notes TEXT NOT NULL DEFAULT '',
+  recommended_principal INT NOT NULL DEFAULT 0,
+  recommended_term_months INT NOT NULL DEFAULT 0,
+  decision VARCHAR(30),
+  decision_remarks TEXT NOT NULL DEFAULT '',
+  decision_date DATE,
+  decided_by VARCHAR(80),
+  decided_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS credit_assessment_notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS recommended_principal INT NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS recommended_term_months INT NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision VARCHAR(30);
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision_remarks TEXT NOT NULL DEFAULT '';
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision_date DATE;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decided_by VARCHAR(80);
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decided_at TIMESTAMP NULL;
 
 CREATE TABLE IF NOT EXISTS member_applications (
   id INT AUTO_INCREMENT PRIMARY KEY,

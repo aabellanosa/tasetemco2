@@ -94,13 +94,16 @@ INSERT INTO loan_applications (
   annual_interest_rate_bps, interest_method, payment_frequency,
   processing_fee, penalty_rate_bps, loans_receivable_account,
   interest_income_account, processing_fee_account, penalty_income_account,
-  cash_account, status, created_by, submitted_by, submitted_at
+  cash_account, status, created_by, submitted_by, submitted_at,
+  credit_assessment_notes, recommended_principal, recommended_term_months,
+  decision, decision_remarks, decision_date, decided_by, decided_at
 ) VALUES
   (
     'LA-2026-0001', 'M-000517', 'Benito P. Cruz', 'REGULAR', 'Regular Loan',
     30000, 12, 'Farm inputs for the next planting season', '2026-06-15',
     1200, 'Flat Interest', 'Monthly', 250, 200, '1050', '4010', '4030', '4040',
-    '1010', 'Submitted', 'loanofficer', 'loanofficer', '2026-06-15 10:00:00+08'
+    '1010', 'Submitted', 'loanofficer', 'loanofficer', '2026-06-15 10:00:00+08',
+    '', 0, 0, NULL, '', NULL, NULL, NULL
   )
 ON CONFLICT (application_no) DO UPDATE SET
   member_no = EXCLUDED.member_no,
@@ -120,6 +123,14 @@ ON CONFLICT (application_no) DO UPDATE SET
   created_by = EXCLUDED.created_by,
   submitted_by = EXCLUDED.submitted_by,
   submitted_at = EXCLUDED.submitted_at,
+  credit_assessment_notes = EXCLUDED.credit_assessment_notes,
+  recommended_principal = EXCLUDED.recommended_principal,
+  recommended_term_months = EXCLUDED.recommended_term_months,
+  decision = EXCLUDED.decision,
+  decision_remarks = EXCLUDED.decision_remarks,
+  decision_date = EXCLUDED.decision_date,
+  decided_by = EXCLUDED.decided_by,
+  decided_at = EXCLUDED.decided_at,
   updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO member_applications (

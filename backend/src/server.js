@@ -190,6 +190,14 @@ const requiredSchemaColumns = {
     "created_by",
     "submitted_by",
     "submitted_at",
+    "credit_assessment_notes",
+    "recommended_principal",
+    "recommended_term_months",
+    "decision",
+    "decision_remarks",
+    "decision_date",
+    "decided_by",
+    "decided_at",
     "created_at",
     "updated_at"
   ]
@@ -655,6 +663,14 @@ function mapLoanApplication(row) {
     createdBy: row.createdBy,
     submittedBy: row.submittedBy || "",
     submittedAt: row.submittedAt || "",
+    creditAssessmentNotes: row.creditAssessmentNotes || "",
+    recommendedPrincipal: Number(row.recommendedPrincipal || 0),
+    recommendedTermMonths: Number(row.recommendedTermMonths || 0),
+    decision: row.decision || "",
+    decisionRemarks: row.decisionRemarks || "",
+    decisionDate: formatDateOnly(row.decisionDate),
+    decidedBy: row.decidedBy || "",
+    decidedAt: row.decidedAt || "",
     createdAt: row.createdAt || "",
     updatedAt: row.updatedAt || ""
   };
@@ -681,7 +697,13 @@ async function listLoanApplications() {
             processing_fee_account AS processingFeeAccount,
             penalty_income_account AS penaltyIncomeAccount, cash_account AS cashAccount,
             status, created_by AS createdBy, submitted_by AS submittedBy,
-            submitted_at AS submittedAt, created_at AS createdAt, updated_at AS updatedAt
+            submitted_at AS submittedAt,
+            credit_assessment_notes AS creditAssessmentNotes,
+            recommended_principal AS recommendedPrincipal,
+            recommended_term_months AS recommendedTermMonths,
+            decision, decision_remarks AS decisionRemarks,
+            decision_date AS decisionDate, decided_by AS decidedBy,
+            decided_at AS decidedAt, created_at AS createdAt, updated_at AS updatedAt
      FROM loan_applications
      ORDER BY created_at DESC, id DESC`
   );
@@ -841,13 +863,16 @@ async function updateLoanApplication(applicationNo, input, user) {
     if (!application) {
       return { error: "Loan application was not found.", statusCode: 404 };
     }
-    if (application.status !== "Draft") {
-      return { error: "Only draft loan applications can be edited.", statusCode: 409 };
+    if (!["Draft", "Returned"].includes(application.status)) {
+      return { error: "Only draft or returned loan applications can be edited.", statusCode: 409 };
     }
     if (application.createdBy !== user.username) {
       return { error: "Loan Officer can edit only their own draft applications.", statusCode: 403 };
     }
-    Object.assign(application, input, { updatedAt: new Date().toISOString() });
+    Object.assign(application, input, {
+      status: "Draft",
+      updatedAt: new Date().toISOString()
+    });
     return { application: mapLoanApplication(application) };
   }
 
@@ -861,8 +886,8 @@ async function updateLoanApplication(applicationNo, input, user) {
   if (existingRows.length === 0) {
     return { error: "Loan application was not found.", statusCode: 404 };
   }
-  if (existingRows[0].status !== "Draft") {
-    return { error: "Only draft loan applications can be edited.", statusCode: 409 };
+  if (!["Draft", "Returned"].includes(existingRows[0].status)) {
+    return { error: "Only draft or returned loan applications can be edited.", statusCode: 409 };
   }
   if (existingRows[0].createdBy !== user.username) {
     return { error: "Loan Officer can edit only their own draft applications.", statusCode: 403 };
@@ -875,7 +900,7 @@ async function updateLoanApplication(applicationNo, input, user) {
          annual_interest_rate_bps = ?, interest_method = ?, payment_frequency = ?,
          processing_fee = ?, penalty_rate_bps = ?, loans_receivable_account = ?,
          interest_income_account = ?, processing_fee_account = ?, penalty_income_account = ?,
-         cash_account = ?, updated_at = CURRENT_TIMESTAMP
+         cash_account = ?, status = 'Draft', updated_at = CURRENT_TIMESTAMP
      WHERE application_no = ?`,
     [
       input.memberNo,
@@ -967,6 +992,141 @@ async function submitLoanApplication(applicationNo, user) {
            updated_at = CURRENT_TIMESTAMP
        WHERE application_no = ?`,
       [user.username, applicationNo]
+    );
+    await connection.commit();
+    return { application: (await listLoanApplications()).find((item) => item.applicationNo === applicationNo) };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+function validateLoanCreditDecision(body, application) {
+  const decision = String(body.decision || "").trim();
+  const creditAssessmentNotes = String(body.creditAssessmentNotes || "").trim();
+  const decisionRemarks = String(body.decisionRemarks || "").trim();
+  const decisionDate = formatDateOnly(body.decisionDate || new Date());
+  const recommendedPrincipal = Number(body.recommendedPrincipal || 0);
+  const recommendedTermMonths = Number(body.recommendedTermMonths || 0);
+
+  if (!["Approved", "Rejected", "Returned"].includes(decision)) {
+    return { error: "Decision must be Approved, Rejected, or Returned." };
+  }
+
+  if (creditAssessmentNotes.length < 5) {
+    return { error: "Credit assessment notes are required." };
+  }
+
+  if (!isValidIsoDate(decisionDate)) {
+    return { error: "Decision date must be a valid YYYY-MM-DD date." };
+  }
+
+  if (["Rejected", "Returned"].includes(decision) && decisionRemarks.length < 5) {
+    return { error: "Decision remarks are required when rejecting or returning an application." };
+  }
+
+  if (decision === "Approved") {
+    if (
+      !Number.isInteger(recommendedPrincipal) ||
+      recommendedPrincipal <= 0 ||
+      recommendedPrincipal > application.requestedPrincipal
+    ) {
+      return { error: "Recommended principal must be positive and cannot exceed the requested principal." };
+    }
+
+    if (
+      !Number.isInteger(recommendedTermMonths) ||
+      recommendedTermMonths <= 0 ||
+      recommendedTermMonths > application.requestedTermMonths
+    ) {
+      return { error: "Recommended term must be positive and cannot exceed the requested term." };
+    }
+  }
+
+  return {
+    value: {
+      decision,
+      creditAssessmentNotes: creditAssessmentNotes.slice(0, 2000),
+      recommendedPrincipal: decision === "Approved" ? recommendedPrincipal : 0,
+      recommendedTermMonths: decision === "Approved" ? recommendedTermMonths : 0,
+      decisionRemarks: decisionRemarks.slice(0, 2000),
+      decisionDate
+    }
+  };
+}
+
+async function decideLoanApplication(applicationNo, body, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const application = loanApplications.find((item) => item.applicationNo === applicationNo || item.id === applicationNo);
+    if (!application) {
+      return { error: "Loan application was not found.", statusCode: 404 };
+    }
+    if (application.status !== "Submitted") {
+      return { error: "Only submitted loan applications can receive a credit decision.", statusCode: 409 };
+    }
+    const validation = validateLoanCreditDecision(body, application);
+    if (validation.error) {
+      return { error: validation.error, statusCode: 400 };
+    }
+    Object.assign(application, validation.value, {
+      status: validation.value.decision,
+      decidedBy: user.username,
+      decidedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    return { application: mapLoanApplication(application) };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT application_no AS applicationNo,
+              requested_principal AS requestedPrincipal,
+              requested_term_months AS requestedTermMonths, status
+       FROM loan_applications
+       WHERE application_no = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [applicationNo]
+    );
+    const application = rows[0];
+    if (!application) {
+      await connection.rollback();
+      return { error: "Loan application was not found.", statusCode: 404 };
+    }
+    if (application.status !== "Submitted") {
+      await connection.rollback();
+      return { error: "Only submitted loan applications can receive a credit decision.", statusCode: 409 };
+    }
+    const validation = validateLoanCreditDecision(body, application);
+    if (validation.error) {
+      await connection.rollback();
+      return { error: validation.error, statusCode: 400 };
+    }
+
+    await connection.execute(
+      `UPDATE loan_applications
+       SET status = ?, credit_assessment_notes = ?, recommended_principal = ?,
+           recommended_term_months = ?, decision = ?, decision_remarks = ?,
+           decision_date = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE application_no = ?`,
+      [
+        validation.value.decision,
+        validation.value.creditAssessmentNotes,
+        validation.value.recommendedPrincipal,
+        validation.value.recommendedTermMonths,
+        validation.value.decision,
+        validation.value.decisionRemarks,
+        validation.value.decisionDate,
+        user.username,
+        applicationNo
+      ]
     );
     await connection.commit();
     return { application: (await listLoanApplications()).find((item) => item.applicationNo === applicationNo) };
@@ -6051,6 +6211,28 @@ app.post("/api/loan-applications/:applicationNo/submit", async (request, respons
   }
 
   const result = await submitLoanApplication(request.params.applicationNo, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.post("/api/loan-applications/:applicationNo/decision", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:applications:decide")) {
+    response.status(403).json({ error: "Credit Committee / Approver access required" });
+    return;
+  }
+
+  const result = await decideLoanApplication(request.params.applicationNo, request.body, user);
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });
     return;
