@@ -103,6 +103,8 @@ The current spike uses one shared prototype password in code. Production behavio
 
 The `admin` user can manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; per-user password storage belongs to a later security spike.
 
+The Auditor / Compliance Officer has read-only User / Security access. Auditor can inspect usernames, roles, default screens, and account status, but cannot see the shared password, create or update users, download backups, or reset demo data.
+
 | Username | Role | Default Screen |
 | --- | --- | --- |
 | `admin` | System Administrator | Users and Roles |
