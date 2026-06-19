@@ -198,6 +198,13 @@
           limits, rates, fees, penalties, status, and accounting mappings. Manager, Loan
           Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only
           product access.
+          Loan Application v1 adds a separate Applications tab. The Loan Officer can create
+          and edit their own Draft, with active-member checks and product amount and term
+          limits enforced. Product rates, methods, fees, penalties, and accounting mappings
+          are copied into the application as an audit snapshot. Submitting makes the record
+          read-only and visible to Admin, Manager, Credit Committee / Approver, and Auditor.
+          The current build stops at Submitted; approval, release, repayment schedules,
+          collections, and accounting entries remain later workflow steps.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -279,10 +286,12 @@
           <article>
             <h3>Loan Application</h3>
             <ol>
-              <li>Loan Officer prepares application.</li>
-              <li>Credit standing and existing balances are reviewed.</li>
-              <li>Approver approves, rejects, or returns application.</li>
-              <li>Approved loans move to release workflow.</li>
+              <li>Loan Officer selects an active member and active loan product.</li>
+              <li>System validates requested principal and term against product limits.</li>
+              <li>Loan Officer saves and may edit their own Draft.</li>
+              <li>Loan Officer submits the Draft, making it read-only.</li>
+              <li>Admin, Manager, Approver, and Auditor can inspect the Submitted queue.</li>
+              <li>Approval and release remain the next planned workflow stages.</li>
             </ol>
           </article>
 
