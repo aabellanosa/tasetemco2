@@ -2863,6 +2863,7 @@ function Members({ user }) {
                   <Th>Reference</Th>
                   <Th isNumeric>Share Capital</Th>
                   <Th isNumeric>Savings</Th>
+                  <Th>Batch / Date</Th>
                   <Th>Status</Th>
                   <Th>Journal Entry</Th>
                 </Tr>
@@ -2875,6 +2876,16 @@ function Members({ user }) {
                     <Td isNumeric>{formatMoney(transaction.shareCapitalAmount)}</Td>
                     <Td isNumeric>{formatMoney(transaction.savingsDepositAmount)}</Td>
                     <Td>
+                      {transaction.type === "Opening Balance" ? (
+                        <>
+                          <Text>{transaction.batchNo}</Text>
+                          <Text color="gray.500" fontSize="xs">{formatDate(transaction.cutoverDate)}</Text>
+                        </>
+                      ) : (
+                        "-"
+                      )}
+                    </Td>
+                    <Td>
                       <Badge colorScheme={transaction.status === "Posted" ? "green" : "blue"}>
                         {transaction.status}
                       </Badge>
@@ -2884,7 +2895,7 @@ function Members({ user }) {
                 ))}
                 {statement.transactions.length === 0 ? (
                   <Tr>
-                    <Td colSpan={6} color="gray.500">
+                    <Td colSpan={7} color="gray.500">
                       No member transactions recorded.
                     </Td>
                   </Tr>
@@ -4077,13 +4088,13 @@ function Reports() {
             <Box>
               <Heading size="md">Member Subsidiary Ledger</Heading>
               <Text color="gray.600" mt={1}>
-                Read-only member balance and movement summary for share capital and savings.
+                Read-only balances split between finalized opening imports and normal member transactions.
               </Text>
             </Box>
             <Text color="gray.500" fontSize="sm">Generated {formatDateTime(memberLedgerReport.generatedAt)}</Text>
           </Flex>
 
-          <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={5}>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)", xl: "repeat(6, 1fr)" }} gap={4} mb={5}>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">Members</Text>
               <Text fontWeight="bold">{memberSummary.totalMembers}</Text>
@@ -4095,6 +4106,14 @@ function Reports() {
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">Savings</Text>
               <Text fontWeight="bold">{formatMoney(memberSummary.totalSavings)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Opening Share</Text>
+              <Text fontWeight="bold">{formatMoney(memberSummary.totalOpeningShareCapital)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Opening Savings</Text>
+              <Text fontWeight="bold">{formatMoney(memberSummary.totalOpeningSavings)}</Text>
             </Box>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">Transactions</Text>
@@ -4112,6 +4131,8 @@ function Reports() {
                   <Th>Status</Th>
                   <Th isNumeric>Share Balance</Th>
                   <Th isNumeric>Savings Balance</Th>
+                  <Th isNumeric>Opening Share</Th>
+                  <Th isNumeric>Opening Savings</Th>
                   <Th isNumeric>Initial Share</Th>
                   <Th isNumeric>Share Adds</Th>
                   <Th isNumeric>Savings Deposits</Th>
@@ -4130,6 +4151,8 @@ function Reports() {
                     </Td>
                     <Td isNumeric>{formatMoney(member.shareCapitalBalance)}</Td>
                     <Td isNumeric>{formatMoney(member.savingsBalance)}</Td>
+                    <Td isNumeric>{formatMoney(member.openingShareCapitalTotal)}</Td>
+                    <Td isNumeric>{formatMoney(member.openingSavingsTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.initialPaymentTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.shareCapitalContributionTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.savingsDepositTotal)}</Td>
@@ -4140,7 +4163,7 @@ function Reports() {
                 ))}
                 {memberLedgerReport.members.length === 0 ? (
                   <Tr>
-                    <Td colSpan={11} color="gray.500">No member subsidiary rows found.</Td>
+                    <Td colSpan={13} color="gray.500">No member subsidiary rows found.</Td>
                   </Tr>
                 ) : null}
               </Tbody>

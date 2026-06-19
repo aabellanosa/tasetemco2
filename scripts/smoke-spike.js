@@ -880,6 +880,30 @@ async function run() {
       throw new Error("Opening balance finalization should create the expected balanced journal entry.");
     }
 
+    const openingBalanceMemberStatement = await fetch(`${baseUrl}/api/members/M-000482/statement`, {
+      headers: { Cookie: adminCookie }
+    });
+    const openingBalanceMemberStatementBody = await openingBalanceMemberStatement.json();
+    const openingBalanceStatementRow = openingBalanceMemberStatementBody.transactions.find(
+      (transaction) => transaction.type === "Opening Balance"
+    );
+
+    if (
+      !openingBalanceMemberStatement.ok ||
+      !openingBalanceStatementRow ||
+      openingBalanceStatementRow.batchNo !== finalizableOpeningBalanceBody.batch.importNo ||
+      openingBalanceStatementRow.cutoverDate !== "2026-06-30" ||
+      openingBalanceStatementRow.sourceReference !== "Smoke Finalization" ||
+      openingBalanceStatementRow.shareCapitalAmount !== 1000 ||
+      openingBalanceStatementRow.savingsDepositAmount !== 500 ||
+      openingBalanceStatementRow.journalEntryNo !== finalizedOpeningBalanceBody.batch.postedEntryNo ||
+      openingBalanceStatementRow.status !== "Posted"
+    ) {
+      throw new Error(
+        `Member statement should expose finalized opening balance audit evidence. Received: ${JSON.stringify(openingBalanceStatementRow)}`
+      );
+    }
+
     const duplicateOpeningJournal = await fetch(
       `${baseUrl}/api/ledger/opening-balance-import-batches/${finalizableOpeningBalanceBody.batch.importNo}/post-journal`,
       {
@@ -1597,10 +1621,16 @@ async function run() {
     });
     const memberSubsidiaryLedgerBody = await memberSubsidiaryLedger.json();
     const reportMember = memberSubsidiaryLedgerBody.members.find((member) => member.id === approvalBody.member.id);
+    const openingBalanceReportMember = memberSubsidiaryLedgerBody.members.find((member) => member.id === "M-000482");
 
     if (
       !memberSubsidiaryLedger.ok ||
       !reportMember ||
+      !openingBalanceReportMember ||
+      openingBalanceReportMember.openingShareCapitalTotal !== 1000 ||
+      openingBalanceReportMember.openingSavingsTotal !== 500 ||
+      memberSubsidiaryLedgerBody.summary.totalOpeningShareCapital !== 1000 ||
+      memberSubsidiaryLedgerBody.summary.totalOpeningSavings !== 500 ||
       reportMember.shareCapitalBalance !== 7000 ||
       reportMember.savingsBalance !== 1800 ||
       reportMember.initialPaymentTotal !== 5000 ||

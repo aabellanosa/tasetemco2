@@ -543,6 +543,22 @@ function isValidIsoDate(value) {
   return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day;
 }
 
+function formatDateOnly(value) {
+  if (!value) {
+    return "";
+  }
+
+  if (!(value instanceof Date)) {
+    return String(value).slice(0, 10);
+  }
+
+  return [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, "0"),
+    String(value.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
 function validateMemberProfileInput(body) {
   const name = String(body.name || "").trim();
   const clusterName = String(body.group || body.clusterName || "").trim();
@@ -1371,11 +1387,7 @@ async function createOpeningBalanceJournalInDatabase(connection, importNo, user)
      WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
   );
   const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
-  const cutoverDate = totals.cutoverDate
-    ? totals.cutoverDate instanceof Date
-      ? totals.cutoverDate.toISOString().slice(0, 10)
-      : String(totals.cutoverDate).slice(0, 10)
-    : "";
+  const cutoverDate = formatDateOnly(totals.cutoverDate);
   const postedAt = cutoverDate ? `${cutoverDate} 00:00:00+08` : new Date();
 
   await connection.execute(
@@ -2507,19 +2519,39 @@ async function listFinalizedOpeningBalanceRows() {
   const db = await getPool();
 
   if (!db) {
-    return openingBalanceImportRows.filter((row) => row.rowStatus === "Finalized" && row.finalizedAt);
+    return openingBalanceImportRows
+      .filter((row) => row.rowStatus === "Finalized" && row.finalizedAt)
+      .map((row) => ({
+        ...row,
+        importNo: row.importNo,
+        journalEntryNo:
+          journalEntries.find(
+            (entry) => entry.sourceType === "Opening Balance Import" && entry.sourceNo === row.importNo
+          )?.id || ""
+      }));
   }
 
   const [rows] = await db.execute(
-    `SELECT member_no AS memberNo,
-            share_capital_opening_balance AS shareCapitalAmount,
-            savings_opening_balance AS savingsAmount
-     FROM opening_balance_import_rows
-     WHERE row_status = 'Finalized'
-       AND finalized_at IS NOT NULL`
+    `SELECT row.id, row.import_no AS importNo, row.row_no AS rowNumber,
+            row.member_no AS memberNo, row.member_name AS memberName,
+            row.share_capital_opening_balance AS shareCapitalAmount,
+            row.savings_opening_balance AS savingsAmount,
+            row.cutover_date AS cutoverDate, row.source_reference AS sourceReference,
+            row.row_status AS rowStatus, row.finalized_at AS finalizedAt,
+            COALESCE(journal.entry_no, '') AS journalEntryNo
+     FROM opening_balance_import_rows row
+     LEFT JOIN journal_entries journal
+       ON journal.source_type = 'Opening Balance Import'
+      AND journal.source_no = row.import_no
+     WHERE row.row_status = 'Finalized'
+       AND row.finalized_at IS NOT NULL
+     ORDER BY row.finalized_at DESC, row.id DESC`
   );
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    cutoverDate: formatDateOnly(row.cutoverDate)
+  }));
 }
 
 async function listTellerBatchRows(batchId = "") {
@@ -2776,8 +2808,12 @@ async function getMemberSubsidiaryLedgerReport() {
   const shareCapitalContributionRows = await listShareCapitalContributions();
   const savingsDepositRows = await listSavingsDeposits();
   const savingsWithdrawalRows = await listSavingsWithdrawals();
+  const openingBalanceRows = await listFinalizedOpeningBalanceRows();
 
   const membersWithSubsidiary = memberRows.map((member) => {
+    const memberOpeningBalanceRows = openingBalanceRows.filter(
+      (row) => normalizeImportMemberNo(row.memberNo) === normalizeImportMemberNo(member.id)
+    );
     const memberInitialPayments = initialPaymentRows.filter((payment) => payment.memberId === member.id);
     const memberShareCapitalContributions = shareCapitalContributionRows.filter(
       (contribution) => contribution.memberId === member.id
@@ -2785,6 +2821,7 @@ async function getMemberSubsidiaryLedgerReport() {
     const memberSavingsDeposits = savingsDepositRows.filter((deposit) => deposit.memberId === member.id);
     const memberSavingsWithdrawals = savingsWithdrawalRows.filter((withdrawal) => withdrawal.memberId === member.id);
     const transactions = [
+      ...memberOpeningBalanceRows,
       ...memberInitialPayments,
       ...memberShareCapitalContributions,
       ...memberSavingsDeposits,
@@ -2797,6 +2834,14 @@ async function getMemberSubsidiaryLedgerReport() {
       status: member.status,
       shareCapitalBalance: Number(member.share || 0),
       savingsBalance: Number(member.savings || 0),
+      openingShareCapitalTotal: memberOpeningBalanceRows.reduce(
+        (sum, row) => sum + Number(row.shareCapitalAmount || 0),
+        0
+      ),
+      openingSavingsTotal: memberOpeningBalanceRows.reduce(
+        (sum, row) => sum + Number(row.savingsAmount || 0),
+        0
+      ),
       initialPaymentTotal: memberInitialPayments.reduce(
         (sum, payment) => sum + Number(payment.shareCapitalAmount || 0),
         0
@@ -2812,7 +2857,9 @@ async function getMemberSubsidiaryLedgerReport() {
         (sum, withdrawal) => sum + Number(withdrawal.amount || 0),
         0
       ),
-      postedTransactionCount: transactions.filter((transaction) => transaction.status === "Posted").length,
+      postedTransactionCount: transactions.filter(
+        (transaction) => transaction.status === "Posted" || transaction.rowStatus === "Finalized"
+      ).length,
       unpostedTransactionCount: transactions.filter((transaction) => transaction.status === "Teller Batch").length
     };
   });
@@ -2822,6 +2869,8 @@ async function getMemberSubsidiaryLedgerReport() {
       totalMembers: totals.totalMembers + 1,
       totalShareCapital: totals.totalShareCapital + member.shareCapitalBalance,
       totalSavings: totals.totalSavings + member.savingsBalance,
+      totalOpeningShareCapital: totals.totalOpeningShareCapital + member.openingShareCapitalTotal,
+      totalOpeningSavings: totals.totalOpeningSavings + member.openingSavingsTotal,
       totalPostedTransactions: totals.totalPostedTransactions + member.postedTransactionCount,
       totalUnpostedTransactions: totals.totalUnpostedTransactions + member.unpostedTransactionCount
     }),
@@ -2829,6 +2878,8 @@ async function getMemberSubsidiaryLedgerReport() {
       totalMembers: 0,
       totalShareCapital: 0,
       totalSavings: 0,
+      totalOpeningShareCapital: 0,
+      totalOpeningSavings: 0,
       totalPostedTransactions: 0,
       totalUnpostedTransactions: 0
     }
@@ -3205,7 +3256,25 @@ async function getMemberStatement(memberId) {
       return { error: "Member was not found.", statusCode: 404 };
     }
 
-    const transactions = initialPayments
+    const openingTransactions = (await listFinalizedOpeningBalanceRows())
+      .filter((row) => normalizeImportMemberNo(row.memberNo) === normalizeImportMemberNo(member.id))
+      .map((row) => ({
+        id: `${row.importNo}-${row.id}`,
+        type: "Opening Balance",
+        referenceNo: row.sourceReference || row.importNo,
+        shareCapitalAmount: row.shareCapitalAmount,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: row.savingsAmount,
+        cashReceived: 0,
+        status: "Posted",
+        journalEntryNo: row.journalEntryNo || "",
+        receivedBy: "Opening Balance Import",
+        batchNo: row.importNo,
+        cutoverDate: row.cutoverDate,
+        sourceReference: row.sourceReference,
+        createdAt: row.finalizedAt
+      }));
+    const transactions = openingTransactions.concat(initialPayments
       .filter((payment) => payment.memberId === member.id)
       .map((payment) => ({
         id: payment.id,
@@ -3266,7 +3335,7 @@ async function getMemberStatement(memberId) {
             journalEntryNo: withdrawal.postedEntryNo || "",
             receivedBy: withdrawal.releasedBy
           }))
-      );
+      ));
 
     return { member, transactions };
   }
@@ -3336,10 +3405,29 @@ async function getMemberStatement(memberId) {
      ORDER BY created_at DESC, id DESC`,
     [memberId]
   );
+  const openingBalanceRows = (await listFinalizedOpeningBalanceRows())
+    .filter((row) => normalizeImportMemberNo(row.memberNo) === normalizeImportMemberNo(member.id))
+    .map((row) => ({
+      id: `${row.importNo}-${row.id}`,
+      type: "Opening Balance",
+      referenceNo: row.sourceReference || row.importNo,
+      shareCapitalAmount: row.shareCapitalAmount,
+      membershipFeeAmount: 0,
+      savingsDepositAmount: row.savingsAmount,
+      cashReceived: 0,
+      status: "Posted",
+      journalEntryNo: row.journalEntryNo || "",
+      receivedBy: "Opening Balance Import",
+      batchNo: row.importNo,
+      cutoverDate: row.cutoverDate,
+      sourceReference: row.sourceReference,
+      createdAt: row.finalizedAt
+    }));
 
   return {
     member,
     transactions: [
+      ...openingBalanceRows,
       ...initialPaymentRows,
       ...shareCapitalContributionRows,
       ...savingsDepositRows,
