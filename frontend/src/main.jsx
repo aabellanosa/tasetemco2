@@ -1728,6 +1728,8 @@ function Members({ user }) {
   const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
+  const [loanReleases, setLoanReleases] = useState([]);
+  const [openingFunding, setOpeningFunding] = useState(0);
   const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [statement, setStatement] = useState(null);
@@ -1796,6 +1798,7 @@ function Members({ user }) {
   const canCreateSavingsDeposit = user.permissions.includes("members:savings-deposits:create");
   const canViewSavingsWithdrawals = user.permissions.includes("members:savings-withdrawals:view");
   const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
+  const canViewLoanReleases = user.permissions.includes("loans:releases:view");
   const canViewTellerCashCount = user.permissions.includes("teller-cash-counts:view");
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
@@ -1840,6 +1843,20 @@ function Members({ user }) {
         shareCapitalAmount: 0,
         membershipFeeAmount: 0,
         savingsDepositAmount: -withdrawal.amount
+      })),
+    ...loanReleases
+      .filter((release) => release.status === "Teller Batch")
+      .map((release) => ({
+        id: release.releaseNo,
+        memberName: release.memberName,
+        batchId: release.batchId,
+        batchType: "Loan Release",
+        cashReceived: 0,
+        cashOut: release.cashReleased,
+        shareCapitalAmount: 0,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: 0,
+        status: release.status
       }))
   ];
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatchRows);
@@ -1856,6 +1873,7 @@ function Members({ user }) {
           contributionRows,
           savingsRows,
           withdrawalRows,
+          loanReleaseRows,
           cashCountData
         ] =
           await Promise.all([
@@ -1865,6 +1883,7 @@ function Members({ user }) {
           canViewShareCapitalContributions ? api("/api/share-capital-contributions") : [],
           canViewSavingsDeposits ? api("/api/savings-deposits") : [],
           canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : [],
+          canViewLoanReleases ? api("/api/loan-releases") : [],
           canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
@@ -1873,7 +1892,9 @@ function Members({ user }) {
         setShareCapitalContributions(contributionRows);
         setSavingsDeposits(savingsRows);
         setSavingsWithdrawals(withdrawalRows);
+        setLoanReleases(loanReleaseRows);
         setActiveBatch(cashCountData.activeBatch);
+        setOpeningFunding(Number(cashCountData.expected?.openingFunding || 0));
         setLatestCashCount(cashCountData.latestCashCount);
         setLastRefreshedAt(new Date());
 
@@ -1894,6 +1915,7 @@ function Members({ user }) {
       canViewShareCapitalContributions,
       canViewSavingsDeposits,
       canViewSavingsWithdrawals,
+      canViewLoanReleases,
       canViewTellerCashCount
     ]
   );
@@ -2545,7 +2567,13 @@ function Members({ user }) {
                 </Badge>
               </HStack>
             </Flex>
-            <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4} mb={4}>
+            <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={4} mb={4}>
+              <Box borderWidth="1px" borderRadius="md" p={4}>
+                <Text color="gray.500" fontSize="sm">
+                  Opening Funding
+                </Text>
+                <Text fontWeight="bold">{formatMoney(openingFunding)}</Text>
+              </Box>
               <Box borderWidth="1px" borderRadius="md" p={4}>
                 <Text color="gray.500" fontSize="sm">
                   Cash In
@@ -2560,9 +2588,11 @@ function Members({ user }) {
               </Box>
               <Box borderWidth="1px" borderRadius="md" p={4}>
                 <Text color="gray.500" fontSize="sm">
-                  Net Cash
+                  Expected Ending Cash
                 </Text>
-                <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}</Text>
+                <Text fontWeight="bold">
+                  {formatMoney(openingFunding + tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
+                </Text>
               </Box>
               <Box borderWidth="1px" borderRadius="md" p={4}>
                 <Text color="gray.500" fontSize="sm">
@@ -2625,10 +2655,16 @@ function Members({ user }) {
                 </Flex>
                 <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
                   <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text color="gray.500" fontSize="sm">Opening Funding</Text>
+                    <Text fontWeight="bold">{formatMoney(openingFunding)}</Text>
+                  </Box>
+                  <Box borderWidth="1px" borderRadius="md" p={4}>
                     <Text color="gray.500" fontSize="sm">
-                      Expected Net Cash
+                      Expected Ending Cash
                     </Text>
-                    <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}</Text>
+                    <Text fontWeight="bold">
+                      {formatMoney(openingFunding + tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
+                    </Text>
                   </Box>
                   <FormControl isRequired>
                     <FormLabel>Actual cash counted</FormLabel>
@@ -3135,6 +3171,7 @@ function Ledger({ user }) {
   const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
+  const [openingFunding, setOpeningFunding] = useState(0);
   const [memberLookup, setMemberLookup] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -3147,6 +3184,7 @@ function Ledger({ user }) {
   const canPostTellerBatch = user.permissions.includes("ledger:teller-batches:post");
   const canReviewTellerBatch = user.permissions.includes("ledger:teller-batches:review");
   const canCloseTellerBatch = user.permissions.includes("ledger:teller-batches:close");
+  const canViewCashFunding = user.permissions.includes("teller-fundings:view");
   const canPreviewOpeningBalances =
     user.username === "admin" ||
     user.role === "System Administrator" ||
@@ -3173,6 +3211,7 @@ function Ledger({ user }) {
       setTellerBatches(data.tellerBatches || []);
       setLatestCashCount(data.latestCashCount);
       setJournalEntries(data.journalEntries);
+      setOpeningFunding(Number(data.openingFunding || 0));
       setMemberLookup(lookupRows);
       if (!data.activeBatch || data.activeBatch.status !== "Submitted" || data.activeBatch.variance === 0) {
         setVarianceNote("");
@@ -3294,6 +3333,7 @@ function Ledger({ user }) {
       <Tabs variant="enclosed" colorScheme="green" isLazy>
         <TabList overflowX="auto" overflowY="hidden" maxW="100%">
           {canManageTellerBatches ? <Tab flexShrink={0}>Batch Review</Tab> : null}
+          {canViewCashFunding ? <Tab flexShrink={0}>Cash Funding</Tab> : null}
           {canPreviewOpeningBalances ? <Tab flexShrink={0}>Opening Balances</Tab> : null}
           {canViewLedgerHistory ? <Tab flexShrink={0}>Batch History</Tab> : null}
           {canViewPostedEntries ? <Tab flexShrink={0}>Posted Entries</Tab> : null}
@@ -3350,13 +3390,23 @@ function Ledger({ user }) {
                       ) : null}
                     </HStack>
                   </Flex>
-                  <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={4}>
+                    <Box borderWidth="1px" borderRadius="md" p={4}>
+                      <Text color="gray.500" fontSize="sm">
+                        Opening Funding
+                      </Text>
+                      <Text fontWeight="bold">{formatMoney(openingFunding)}</Text>
+                    </Box>
                     <Box borderWidth="1px" borderRadius="md" p={4}>
                       <Text color="gray.500" fontSize="sm">
                         Expected Cash
                       </Text>
                       <Text fontWeight="bold">
-                        {formatMoney(latestCashCount ? latestCashCount.expectedCash : tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
+                        {formatMoney(
+                          latestCashCount
+                            ? latestCashCount.expectedCash
+                            : openingFunding + tellerBatchSummary.cashIn - tellerBatchSummary.cashOut
+                        )}
                       </Text>
                     </Box>
                     <Box borderWidth="1px" borderRadius="md" p={4}>
@@ -3466,6 +3516,12 @@ function Ledger({ user }) {
                   </TableContainer>
                 </Box>
               </VStack>
+            </TabPanel>
+          ) : null}
+
+          {canViewCashFunding ? (
+            <TabPanel px={0}>
+              <TellerCashFunding user={user} />
             </TabPanel>
           ) : null}
 
@@ -3710,6 +3766,39 @@ function Ledger({ user }) {
                     <Text fontWeight="bold">{formatDateTime(selectedBatchDetails.batch.submittedAt)}</Text>
                   </Box>
                 </Grid>
+
+                <Box>
+                  <Heading size="sm" mb={3}>Acknowledged Funding</Heading>
+                  <TableContainer>
+                    <Table size="sm">
+                      <Thead>
+                        <Tr>
+                          <Th>Funding</Th>
+                          <Th>Reference</Th>
+                          <Th>Source</Th>
+                          <Th isNumeric>Amount</Th>
+                          <Th>Acknowledged By</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {selectedBatchDetails.fundings.map((funding) => (
+                          <Tr key={funding.fundingNo}>
+                            <Td>{funding.fundingNo}</Td>
+                            <Td>{funding.referenceNo}</Td>
+                            <Td>{funding.sourceAccountCode} - {funding.sourceAccountName}</Td>
+                            <Td isNumeric>{formatMoney(funding.amount)}</Td>
+                            <Td>{funding.acknowledgedBy}</Td>
+                          </Tr>
+                        ))}
+                        {!selectedBatchDetails.fundings.length ? (
+                          <Tr>
+                            <Td colSpan={5} color="gray.500">No acknowledged opening funding.</Td>
+                          </Tr>
+                        ) : null}
+                      </Tbody>
+                    </Table>
+                  </TableContainer>
+                </Box>
 
                 <Box borderWidth="1px" borderRadius="md" p={4}>
                   <Text color="gray.500" fontSize="sm">Variance Note</Text>
@@ -5950,6 +6039,273 @@ function LoanComputations({ user }) {
   );
 }
 
+function TellerCashFunding({ user }) {
+  const [fundings, setFundings] = useState([]);
+  const [tellers, setTellers] = useState([]);
+  const [form, setForm] = useState({
+    tellerUsername: "teller01",
+    amount: 20000,
+    sourceAccountCode: "1020",
+    sourceAccountName: "Cash in Bank",
+    referenceNo: "",
+    fundingDate: new Date().toISOString().slice(0, 10)
+  });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busyAction, setBusyAction] = useState("");
+  const canPrepare = user.permissions.includes("teller-fundings:prepare");
+  const canApprove = user.permissions.includes("teller-fundings:approve");
+  const canAcknowledge = user.permissions.includes("teller-fundings:acknowledge");
+
+  const loadFundings = useCallback(async () => {
+    setError("");
+    try {
+      const data = await api("/api/teller-fundings");
+      setFundings(data.fundings);
+      setTellers(data.tellers);
+      setForm((current) => ({
+        ...current,
+        tellerUsername:
+          data.tellers.some((item) => item.username === current.tellerUsername)
+            ? current.tellerUsername
+            : data.tellers[0]?.username || ""
+      }));
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFundings();
+  }, [loadFundings]);
+
+  async function prepareFunding(event) {
+    event.preventDefault();
+    setBusyAction("prepare");
+    setMessage("");
+    setError("");
+    try {
+      const result = await api("/api/teller-fundings", {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setMessage(`${result.funding.fundingNo} prepared for Manager approval.`);
+      setForm((current) => ({ ...current, referenceNo: "" }));
+      await loadFundings();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function changeFundingStatus(fundingNo, action) {
+    setBusyAction(`${action}-${fundingNo}`);
+    setMessage("");
+    setError("");
+    try {
+      const result = await api(`/api/teller-fundings/${fundingNo}/${action}`, {
+        method: "POST"
+      });
+      setMessage(
+        action === "approve"
+          ? `${result.funding.fundingNo} approved for Teller acknowledgment.`
+          : `${result.funding.fundingNo} acknowledged into ${result.funding.batchId}.`
+      );
+      await loadFundings();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  const acknowledgedTotal = fundings
+    .filter((funding) => funding.status === "Acknowledged")
+    .reduce((sum, funding) => sum + funding.amount, 0);
+
+  return (
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
+      <Box>
+        <Heading size="md">Teller Cash Funding</Heading>
+        <Text color="gray.600" mt={1}>
+          Establish controlled Teller custody before cash payouts. Accounting transfer posting follows in v1c.
+        </Text>
+      </Box>
+
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      {canPrepare ? (
+        <Box as="form" onSubmit={prepareFunding} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm" mb={4}>Prepare Funding</Heading>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" }} gap={4}>
+            <FormControl isRequired>
+              <FormLabel>Teller</FormLabel>
+              <Select
+                value={form.tellerUsername}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  tellerUsername: event.target.value
+                }))}
+              >
+                {tellers.map((teller) => (
+                  <option key={teller.username} value={teller.username}>
+                    {teller.name} (@{teller.username})
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Funding Amount</FormLabel>
+              <NumberInput
+                min={1}
+                value={form.amount}
+                onChange={(value) => setForm((current) => ({ ...current, amount: Number(value || 0) }))}
+              >
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Funding Date</FormLabel>
+              <Input
+                type="date"
+                value={form.fundingDate}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  fundingDate: event.target.value
+                }))}
+              />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Source Account Code</FormLabel>
+              <Input
+                value={form.sourceAccountCode}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  sourceAccountCode: event.target.value
+                }))}
+              />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Source Account Name</FormLabel>
+              <Input
+                value={form.sourceAccountName}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  sourceAccountName: event.target.value
+                }))}
+              />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Funding Reference</FormLabel>
+              <Input
+                value={form.referenceNo}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  referenceNo: event.target.value.toUpperCase()
+                }))}
+              />
+            </FormControl>
+          </Grid>
+          <Flex justify="flex-end" mt={5}>
+            <Button type="submit" colorScheme="green" isLoading={busyAction === "prepare"}>
+              Prepare Funding
+            </Button>
+          </Flex>
+        </Box>
+      ) : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+          <Heading size="sm">Funding Lifecycle</Heading>
+          <HStack>
+            <Badge colorScheme="green">Acknowledged: {formatMoney(acknowledgedTotal)}</Badge>
+            <Button size="sm" variant="outline" onClick={loadFundings}>Refresh</Button>
+          </HStack>
+        </Flex>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Funding</Th>
+                <Th>Teller</Th>
+                <Th isNumeric>Amount</Th>
+                <Th>Source</Th>
+                <Th>Reference</Th>
+                <Th>Date</Th>
+                <Th>Status</Th>
+                <Th>Batch</Th>
+                <Th>Control Evidence</Th>
+                <Th>Action</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {fundings.map((funding) => (
+                <Tr key={funding.fundingNo}>
+                  <Td>{funding.fundingNo}</Td>
+                  <Td>@{funding.tellerUsername}</Td>
+                  <Td isNumeric>{formatMoney(funding.amount)}</Td>
+                  <Td>{funding.sourceAccountCode} - {funding.sourceAccountName}</Td>
+                  <Td>{funding.referenceNo}</Td>
+                  <Td>{funding.fundingDate}</Td>
+                  <Td>
+                    <Badge colorScheme={
+                      funding.status === "Acknowledged"
+                        ? "green"
+                        : funding.status === "Approved"
+                          ? "blue"
+                          : "yellow"
+                    }>
+                      {funding.status}
+                    </Badge>
+                  </Td>
+                  <Td>{funding.batchId || "-"}</Td>
+                  <Td minW="220px">
+                    <Text fontSize="xs">Prepared: {funding.preparedBy}</Text>
+                    <Text fontSize="xs">Approved: {funding.approvedBy || "-"}</Text>
+                    <Text fontSize="xs">Acknowledged: {funding.acknowledgedBy || "-"}</Text>
+                  </Td>
+                  <Td>
+                    {canApprove && funding.status === "Prepared" ? (
+                      <Button
+                        size="sm"
+                        onClick={() => changeFundingStatus(funding.fundingNo, "approve")}
+                        isLoading={busyAction === `approve-${funding.fundingNo}`}
+                      >
+                        Approve
+                      </Button>
+                    ) : null}
+                    {canAcknowledge &&
+                    funding.status === "Approved" &&
+                    funding.tellerUsername === user.username ? (
+                      <Button
+                        size="sm"
+                        colorScheme="green"
+                        onClick={() => changeFundingStatus(funding.fundingNo, "acknowledge")}
+                        isLoading={busyAction === `acknowledge-${funding.fundingNo}`}
+                      >
+                        Acknowledge
+                      </Button>
+                    ) : null}
+                    {!(
+                      (canApprove && funding.status === "Prepared") ||
+                      (canAcknowledge &&
+                        funding.status === "Approved" &&
+                        funding.tellerUsername === user.username)
+                    ) ? <Text color="gray.500">Read only</Text> : null}
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+        {!fundings.length ? <Text color="gray.500">No teller funding prepared yet.</Text> : null}
+      </Box>
+    </VStack>
+  );
+}
+
 function LoanReleases({ user }) {
   const [loans, setLoans] = useState([]);
   const [releases, setReleases] = useState([]);
@@ -6173,9 +6529,10 @@ function Loans({ user }) {
   const canViewApplications = user.permissions.includes("loans:applications:view");
   const canViewComputations = user.permissions.includes("loans:computations:view");
   const canViewReleases = user.permissions.includes("loans:releases:view");
+  const canViewCashFunding = user.permissions.includes("teller-fundings:acknowledge");
   const canViewProducts = user.permissions.includes("loans:products:view");
 
-  if (!canViewApplications && !canViewComputations && !canViewReleases && !canViewProducts) {
+  if (!canViewApplications && !canViewComputations && !canViewReleases && !canViewCashFunding && !canViewProducts) {
     return <Placeholder view="loans" />;
   }
 
@@ -6185,12 +6542,14 @@ function Loans({ user }) {
         {canViewApplications ? <Tab flexShrink={0}>Applications</Tab> : null}
         {canViewComputations ? <Tab flexShrink={0}>Computations</Tab> : null}
         {canViewReleases ? <Tab flexShrink={0}>Releases</Tab> : null}
+        {canViewCashFunding ? <Tab flexShrink={0}>Cash Funding</Tab> : null}
         {canViewProducts ? <Tab flexShrink={0}>Loan Products</Tab> : null}
       </TabList>
       <TabPanels>
         {canViewApplications ? <TabPanel px={0}><LoanApplications user={user} /></TabPanel> : null}
         {canViewComputations ? <TabPanel px={0}><LoanComputations user={user} /></TabPanel> : null}
         {canViewReleases ? <TabPanel px={0}><LoanReleases user={user} /></TabPanel> : null}
+        {canViewCashFunding ? <TabPanel px={0}><TellerCashFunding user={user} /></TabPanel> : null}
         {canViewProducts ? <TabPanel px={0}><LoanProducts user={user} /></TabPanel> : null}
       </TabPanels>
     </Tabs>

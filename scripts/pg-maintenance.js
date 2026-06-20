@@ -20,6 +20,7 @@ const tables = [
   "loan_releases",
   "loan_installments",
   "loans",
+  "teller_fundings",
   "teller_cash_counts",
   "initial_member_payments",
   "savings_deposits",

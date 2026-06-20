@@ -357,3 +357,22 @@ CREATE TABLE IF NOT EXISTS teller_cash_counts (
   status VARCHAR(40) NOT NULL DEFAULT 'Submitted',
   submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS teller_fundings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  funding_no VARCHAR(40) NOT NULL UNIQUE,
+  batch_no VARCHAR(40),
+  teller_username VARCHAR(80) NOT NULL,
+  amount INT NOT NULL DEFAULT 0,
+  source_account_code VARCHAR(40) NOT NULL DEFAULT '1020',
+  source_account_name VARCHAR(160) NOT NULL DEFAULT 'Cash in Bank',
+  reference_no VARCHAR(80) NOT NULL UNIQUE,
+  funding_date DATE NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'Prepared',
+  prepared_by VARCHAR(80) NOT NULL,
+  prepared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  approved_by VARCHAR(80),
+  approved_at TIMESTAMP NULL,
+  acknowledged_by VARCHAR(80),
+  acknowledged_at TIMESTAMP NULL
+);

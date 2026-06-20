@@ -29,6 +29,7 @@ import {
   shareCapitalContributions,
   tellerBatches,
   tellerCashCounts,
+  tellerFundings,
   users
 } from "./data.js";
 
@@ -64,6 +65,7 @@ const persistedTables = [
   "loan_releases",
   "loan_installments",
   "loans",
+  "teller_fundings",
   "teller_cash_counts",
   "initial_member_payments",
   "savings_deposits",
@@ -259,6 +261,23 @@ const requiredSchemaColumns = {
     "posted_entry_no",
     "posted_at",
     "created_at"
+  ],
+  teller_fundings: [
+    "funding_no",
+    "batch_no",
+    "teller_username",
+    "amount",
+    "source_account_code",
+    "source_account_name",
+    "reference_no",
+    "funding_date",
+    "status",
+    "prepared_by",
+    "prepared_at",
+    "approved_by",
+    "approved_at",
+    "acknowledged_by",
+    "acknowledged_at"
   ]
 };
 
@@ -1689,6 +1708,248 @@ async function releaseLoan(loanNo, body, user) {
     if (String(error.code) === "23505") {
       return { error: "Loan release or reference number already exists.", statusCode: 409 };
     }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+function mapTellerFunding(row) {
+  return {
+    fundingNo: row.fundingNo || row.id,
+    batchId: row.batchId || "",
+    tellerUsername: row.tellerUsername,
+    amount: Number(row.amount || 0),
+    sourceAccountCode: row.sourceAccountCode,
+    sourceAccountName: row.sourceAccountName,
+    referenceNo: row.referenceNo,
+    fundingDate: formatDateOnly(row.fundingDate),
+    status: row.status,
+    preparedBy: row.preparedBy,
+    preparedAt: row.preparedAt || "",
+    approvedBy: row.approvedBy || "",
+    approvedAt: row.approvedAt || "",
+    acknowledgedBy: row.acknowledgedBy || "",
+    acknowledgedAt: row.acknowledgedAt || ""
+  };
+}
+
+async function listTellerFundings() {
+  const db = await getPool();
+  if (!db) {
+    return tellerFundings.map(mapTellerFunding);
+  }
+  const [rows] = await db.execute(
+    `SELECT funding_no AS fundingNo, batch_no AS batchId,
+            teller_username AS tellerUsername, amount,
+            source_account_code AS sourceAccountCode,
+            source_account_name AS sourceAccountName,
+            reference_no AS referenceNo, funding_date AS fundingDate, status,
+            prepared_by AS preparedBy, prepared_at AS preparedAt,
+            approved_by AS approvedBy, approved_at AS approvedAt,
+            acknowledged_by AS acknowledgedBy, acknowledged_at AS acknowledgedAt
+     FROM teller_fundings
+     ORDER BY prepared_at DESC, id DESC`
+  );
+  return rows.map(mapTellerFunding);
+}
+
+async function getAcknowledgedFundingTotal(batchId) {
+  if (!batchId) {
+    return 0;
+  }
+  const rows = await listTellerFundings();
+  return rows
+    .filter((funding) => funding.batchId === batchId && funding.status === "Acknowledged")
+    .reduce((sum, funding) => sum + funding.amount, 0);
+}
+
+async function nextTellerFundingNo(connection = null) {
+  const db = connection || (await getPool());
+  if (!db) {
+    return `TF-${new Date().getFullYear()}-${String(tellerFundings.length + 1).padStart(4, "0")}`;
+  }
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS countValue FROM teller_fundings WHERE YEAR(prepared_at) = YEAR(CURRENT_DATE)`
+  );
+  return `TF-${new Date().getFullYear()}-${String(Number(rows[0].countValue) + 1).padStart(4, "0")}`;
+}
+
+async function validateTellerFundingInput(body) {
+  const tellerUsername = String(body.tellerUsername || "").trim().toLowerCase();
+  const amount = Number(body.amount);
+  const sourceAccountCode = String(body.sourceAccountCode || "1020").trim();
+  const sourceAccountName = String(body.sourceAccountName || "Cash in Bank").trim();
+  const referenceNo = String(body.referenceNo || "").trim().toUpperCase();
+  const fundingDate = formatDateOnly(body.fundingDate);
+  const systemUsers = await listSystemUsers();
+  const teller = systemUsers.find(
+    (item) =>
+      item.username === tellerUsername &&
+      item.role === "Teller / Cashier" &&
+      (item.status || "Active") === "Active"
+  );
+
+  if (!teller) {
+    return { error: "An active Teller / Cashier account is required." };
+  }
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return { error: "Funding amount must be a positive whole peso amount." };
+  }
+  if (!sourceAccountCode || !sourceAccountName) {
+    return { error: "Funding source account is required." };
+  }
+  if (!referenceNo) {
+    return { error: "Funding reference number is required." };
+  }
+  if (!isValidIsoDate(fundingDate) || !fundingDate) {
+    return { error: "Funding date must be a valid YYYY-MM-DD date." };
+  }
+
+  return {
+    value: {
+      tellerUsername,
+      amount,
+      sourceAccountCode,
+      sourceAccountName,
+      referenceNo,
+      fundingDate
+    }
+  };
+}
+
+async function prepareTellerFunding(body, user) {
+  const validation = await validateTellerFundingInput(body);
+  if (validation.error) {
+    return { error: validation.error, statusCode: 400 };
+  }
+  const input = validation.value;
+  const db = await getPool();
+  const fundingNo = await nextTellerFundingNo();
+
+  if (!db) {
+    if (tellerFundings.some((item) => normalizeReferenceNo(item.referenceNo) === input.referenceNo)) {
+      return { error: "Funding reference number already exists.", statusCode: 409 };
+    }
+    const funding = {
+      fundingNo,
+      batchId: "",
+      ...input,
+      status: "Prepared",
+      preparedBy: user.username,
+      preparedAt: new Date().toISOString()
+    };
+    tellerFundings.unshift(funding);
+    return { funding: mapTellerFunding(funding) };
+  }
+
+  try {
+    await db.execute(
+      `INSERT INTO teller_fundings (
+         funding_no, teller_username, amount, source_account_code,
+         source_account_name, reference_no, funding_date, status, prepared_by
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Prepared', ?)`,
+      [
+        fundingNo, input.tellerUsername, input.amount, input.sourceAccountCode,
+        input.sourceAccountName, input.referenceNo, input.fundingDate, user.username
+      ]
+    );
+  } catch (error) {
+    if (String(error.code) === "23505") {
+      return { error: "Funding reference number already exists.", statusCode: 409 };
+    }
+    throw error;
+  }
+  return { funding: (await listTellerFundings()).find((item) => item.fundingNo === fundingNo) };
+}
+
+async function approveTellerFunding(fundingNo, user) {
+  const db = await getPool();
+  if (!db) {
+    const funding = tellerFundings.find((item) => item.fundingNo === fundingNo);
+    if (!funding) {
+      return { error: "Teller funding was not found.", statusCode: 404 };
+    }
+    if (funding.status !== "Prepared") {
+      return { error: "Only prepared teller funding can be approved.", statusCode: 409 };
+    }
+    funding.status = "Approved";
+    funding.approvedBy = user.username;
+    funding.approvedAt = new Date().toISOString();
+    return { funding: mapTellerFunding(funding) };
+  }
+  const [result] = await db.execute(
+    `UPDATE teller_fundings
+     SET status = 'Approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP
+     WHERE funding_no = ? AND status = 'Prepared'
+     RETURNING funding_no AS fundingNo`,
+    [user.username, fundingNo]
+  );
+  if (!result.length) {
+    const rows = await listTellerFundings();
+    return rows.some((item) => item.fundingNo === fundingNo)
+      ? { error: "Only prepared teller funding can be approved.", statusCode: 409 }
+      : { error: "Teller funding was not found.", statusCode: 404 };
+  }
+  return { funding: (await listTellerFundings()).find((item) => item.fundingNo === fundingNo) };
+}
+
+async function acknowledgeTellerFunding(fundingNo, user) {
+  const batchResult = await getOpenTellerBatch(user);
+  if (batchResult.error) {
+    return batchResult;
+  }
+  const db = await getPool();
+  if (!db) {
+    const funding = tellerFundings.find((item) => item.fundingNo === fundingNo);
+    if (!funding) {
+      return { error: "Teller funding was not found.", statusCode: 404 };
+    }
+    if (funding.status !== "Approved") {
+      return { error: "Only approved teller funding can be acknowledged.", statusCode: 409 };
+    }
+    if (funding.tellerUsername !== user.username) {
+      return { error: "Teller can acknowledge only funding assigned to their account.", statusCode: 403 };
+    }
+    funding.status = "Acknowledged";
+    funding.batchId = batchResult.batch.id;
+    funding.acknowledgedBy = user.username;
+    funding.acknowledgedAt = new Date().toISOString();
+    return { funding: mapTellerFunding(funding) };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT funding_no AS fundingNo, teller_username AS tellerUsername, status
+       FROM teller_fundings WHERE funding_no = ? LIMIT 1 FOR UPDATE`,
+      [fundingNo]
+    );
+    const funding = rows[0];
+    if (!funding) {
+      await connection.rollback();
+      return { error: "Teller funding was not found.", statusCode: 404 };
+    }
+    if (funding.status !== "Approved") {
+      await connection.rollback();
+      return { error: "Only approved teller funding can be acknowledged.", statusCode: 409 };
+    }
+    if (funding.tellerUsername !== user.username) {
+      await connection.rollback();
+      return { error: "Teller can acknowledge only funding assigned to their account.", statusCode: 403 };
+    }
+    await connection.execute(
+      `UPDATE teller_fundings
+       SET status = 'Acknowledged', batch_no = ?, acknowledged_by = ?,
+           acknowledged_at = CURRENT_TIMESTAMP
+       WHERE funding_no = ?`,
+      [batchResult.batch.id, user.username, fundingNo]
+    );
+    await connection.commit();
+    return { funding: (await listTellerFundings()).find((item) => item.fundingNo === fundingNo) };
+  } catch (error) {
+    await connection.rollback();
     throw error;
   } finally {
     connection.release();
@@ -4175,6 +4436,9 @@ async function getTellerBatchDetails(batchId) {
 
   const cashCounts = (await listTellerCashCounts()).filter((cashCount) => cashCount.batchId === batchId);
   const transactions = await listTellerBatchTransactions(batchId);
+  const fundings = (await listTellerFundings()).filter(
+    (funding) => funding.batchId === batchId && funding.status === "Acknowledged"
+  );
   const postedEntryNos = new Set(
     transactions.map((transaction) => transaction.postedEntryNo).filter((entryNo) => Boolean(entryNo))
   );
@@ -4184,6 +4448,8 @@ async function getTellerBatchDetails(batchId) {
     batch,
     cashCounts,
     latestCashCount: cashCounts[0] || null,
+    fundings,
+    openingFunding: fundings.reduce((sum, funding) => sum + funding.amount, 0),
     transactions,
     journalEntries: linkedJournalEntries
   };
@@ -6145,6 +6411,7 @@ async function submitTellerCashCount(input, user) {
   const batch = await getCurrentTellerBatch(user);
   const tellerBatchRows = await listTellerBatchRows(batch.id);
   const summary = buildTellerBatchSummary(tellerBatchRows);
+  const openingFunding = await getAcknowledgedFundingTotal(batch.id);
 
   if (summary.transactionCount === 0) {
     return { error: "There are no unposted teller transactions to count.", statusCode: 409 };
@@ -6157,9 +6424,9 @@ async function submitTellerCashCount(input, user) {
   const cashCount = {
     id: nextTellerCashCountNumber(),
     batchId: batch.id,
-    expectedCash: summary.netCash,
+    expectedCash: openingFunding + summary.netCash,
     actualCash: input.actualCash,
-    variance: input.actualCash - summary.netCash,
+    variance: input.actualCash - (openingFunding + summary.netCash),
     transactionCount: summary.transactionCount,
     submittedBy: user.username,
     status: "Submitted",
@@ -7103,6 +7370,83 @@ app.post("/api/loans/:loanNo/release", async (request, response) => {
   response.status(201).json(result);
 });
 
+app.get("/api/teller-fundings", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+  if (!hasPermission(user, "teller-fundings:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+  const systemUsers = await listSystemUsers();
+  response.json({
+    fundings: await listTellerFundings(),
+    tellers: systemUsers
+      .filter(
+        (item) =>
+          item.role === "Teller / Cashier" &&
+          (item.status || "Active") === "Active"
+      )
+      .map((item) => ({ username: item.username, name: item.name }))
+  });
+});
+
+app.post("/api/teller-fundings", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+  if (!hasPermission(user, "teller-fundings:prepare")) {
+    response.status(403).json({ error: "Bookkeeper access required" });
+    return;
+  }
+  const result = await prepareTellerFunding(request.body, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+  response.status(201).json(result);
+});
+
+app.post("/api/teller-fundings/:fundingNo/approve", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+  if (!hasPermission(user, "teller-fundings:approve")) {
+    response.status(403).json({ error: "General Manager access required" });
+    return;
+  }
+  const result = await approveTellerFunding(request.params.fundingNo, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+  response.json(result);
+});
+
+app.post("/api/teller-fundings/:fundingNo/acknowledge", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+  if (!hasPermission(user, "teller-fundings:acknowledge")) {
+    response.status(403).json({ error: "Teller / Cashier access required" });
+    return;
+  }
+  const result = await acknowledgeTellerFunding(request.params.fundingNo, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+  response.json(result);
+});
+
 app.get("/api/admin/users", async (request, response) => {
   const user = parseSession(request);
 
@@ -7649,9 +7993,14 @@ app.get("/api/teller-cash-count", async (request, response) => {
 
   const activeBatch = await getCurrentTellerBatch(user);
   const tellerBatch = await listTellerBatchRows(activeBatch.id);
+  const openingFunding = await getAcknowledgedFundingTotal(activeBatch.id);
   response.json({
     activeBatch,
-    expected: buildTellerBatchSummary(tellerBatch),
+    expected: {
+      ...buildTellerBatchSummary(tellerBatch),
+      openingFunding,
+      expectedEndingCash: openingFunding + buildTellerBatchSummary(tellerBatch).netCash
+    },
     latestCashCount: await getLatestTellerCashCount()
   });
 });
@@ -7799,8 +8148,10 @@ app.get("/api/ledger", async (request, response) => {
   }
 
   const activeBatch = hasPermission(user, "teller-batches:view") ? await getCurrentTellerBatch(user) : null;
+  const openingFunding = activeBatch ? await getAcknowledgedFundingTotal(activeBatch.id) : 0;
   response.json({
     activeBatch,
+    openingFunding,
     tellerBatch: activeBatch ? await listTellerBatchRows(activeBatch.id) : await listTellerBatchRows(),
     tellerBatches: hasPermission(user, "teller-batches:view") ? await listTellerBatches() : [],
     latestCashCount: hasPermission(user, "teller-cash-counts:view") ? await getLatestTellerCashCount() : null,

@@ -110,7 +110,8 @@ export const rolePermissions = {
     "loans:products:manage",
     "loans:applications:view",
     "loans:computations:view",
-    "loans:releases:view"
+    "loans:releases:view",
+    "teller-fundings:view"
   ],
   "General Manager": [
     "members:view",
@@ -126,7 +127,9 @@ export const rolePermissions = {
     "loans:products:view",
     "loans:applications:view",
     "loans:computations:view",
-    "loans:releases:view"
+    "loans:releases:view",
+    "teller-fundings:view",
+    "teller-fundings:approve"
   ],
   "Accountant / Bookkeeper": [
     "ledger:view",
@@ -135,7 +138,9 @@ export const rolePermissions = {
     "ledger:teller-batches:close",
     "teller-cash-counts:view",
     "teller-batches:view",
-    "reports:view"
+    "reports:view",
+    "teller-fundings:view",
+    "teller-fundings:prepare"
   ],
   "Loan Officer": [
     "members:view",
@@ -173,7 +178,9 @@ export const rolePermissions = {
     "teller-batches:view",
     "loans:products:view",
     "loans:releases:view",
-    "loans:releases:create"
+    "loans:releases:create",
+    "teller-fundings:view",
+    "teller-fundings:acknowledge"
   ],
   "Membership Officer": [
     "members:view",
@@ -196,7 +203,8 @@ export const rolePermissions = {
     "loans:products:view",
     "loans:applications:view",
     "loans:computations:view",
-    "loans:releases:view"
+    "loans:releases:view",
+    "teller-fundings:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
 };
@@ -402,6 +410,8 @@ export const savingsWithdrawals = [];
 export const journalEntries = [];
 
 export const tellerCashCounts = [];
+
+export const tellerFundings = [];
 
 export const tellerBatches = [
   {

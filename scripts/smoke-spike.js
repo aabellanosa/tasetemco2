@@ -2497,6 +2497,99 @@ async function run() {
       throw new Error("Reviewed teller batch should close before a new loan release transaction.");
     }
 
+    if (
+      !managerLogin.ok ||
+      !managerBody.user.permissions.includes("teller-fundings:approve")
+    ) {
+      throw new Error("General Manager should approve prepared teller funding.");
+    }
+
+    const prepareTellerFunding = await fetch(`${baseUrl}/api/teller-fundings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        tellerUsername: "teller01",
+        amount: 20000,
+        sourceAccountCode: "1020",
+        sourceAccountName: "Cash in Bank",
+        referenceNo: "TF-SMOKE-001",
+        fundingDate: "2026-07-01"
+      })
+    });
+    const prepareTellerFundingBody = await prepareTellerFunding.json();
+    const smokeFundingNo = prepareTellerFundingBody.funding?.fundingNo;
+
+    if (
+      !prepareTellerFunding.ok ||
+      !smokeFundingNo ||
+      prepareTellerFundingBody.funding.status !== "Prepared" ||
+      prepareTellerFundingBody.funding.preparedBy !== "bookkeeper"
+    ) {
+      throw new Error("Bookkeeper should prepare teller funding from an identified source account.");
+    }
+
+    const forbiddenBookkeeperApproval = await fetch(
+      `${baseUrl}/api/teller-fundings/${smokeFundingNo}/approve`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+
+    if (forbiddenBookkeeperApproval.status !== 403) {
+      throw new Error("Bookkeeper should not approve their prepared teller funding.");
+    }
+
+    const approveTellerFunding = await fetch(
+      `${baseUrl}/api/teller-fundings/${smokeFundingNo}/approve`,
+      {
+        method: "POST",
+        headers: { Cookie: managerCookie }
+      }
+    );
+    const approveTellerFundingBody = await approveTellerFunding.json();
+
+    if (
+      !approveTellerFunding.ok ||
+      approveTellerFundingBody.funding.status !== "Approved" ||
+      approveTellerFundingBody.funding.approvedBy !== "manager"
+    ) {
+      throw new Error("General Manager should approve prepared teller funding.");
+    }
+
+    const acknowledgeTellerFunding = await fetch(
+      `${baseUrl}/api/teller-fundings/${smokeFundingNo}/acknowledge`,
+      {
+        method: "POST",
+        headers: { Cookie: tellerCookie }
+      }
+    );
+    const acknowledgeTellerFundingBody = await acknowledgeTellerFunding.json();
+
+    if (
+      !acknowledgeTellerFunding.ok ||
+      acknowledgeTellerFundingBody.funding.status !== "Acknowledged" ||
+      !acknowledgeTellerFundingBody.funding.batchId ||
+      acknowledgeTellerFundingBody.funding.acknowledgedBy !== "teller01"
+    ) {
+      throw new Error("Assigned Teller should acknowledge approved funding into the Open batch.");
+    }
+
+    const duplicateFundingAcknowledgment = await fetch(
+      `${baseUrl}/api/teller-fundings/${smokeFundingNo}/acknowledge`,
+      {
+        method: "POST",
+        headers: { Cookie: tellerCookie }
+      }
+    );
+
+    if (duplicateFundingAcknowledgment.status !== 409) {
+      throw new Error("Acknowledged teller funding should not be acknowledged twice.");
+    }
+
     const tellerLoansBeforeRelease = await fetch(`${baseUrl}/api/loans`, {
       headers: { Cookie: tellerCookie }
     });
@@ -2523,6 +2616,15 @@ async function run() {
       (sum, transaction) => sum + Number(transaction.cashOut || 0),
       0
     );
+
+    if (
+      openBatchDetailsBeforeReleaseBody.openingFunding !== 20000 ||
+      !openBatchDetailsBeforeReleaseBody.fundings.some(
+        (funding) => funding.fundingNo === smokeFundingNo && funding.status === "Acknowledged"
+      )
+    ) {
+      throw new Error("Acknowledged funding should become opening cash evidence for the Open batch.");
+    }
 
     const incorrectCashRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
       method: "POST",
@@ -2644,17 +2746,17 @@ async function run() {
         "Content-Type": "application/json",
         Cookie: tellerCookie
       },
-      body: JSON.stringify({ actualCash: 0 })
+      body: JSON.stringify({ actualCash: 7250 })
     });
     const releaseCashCountBody = await releaseCashCount.json();
 
     if (
       !releaseCashCount.ok ||
       releaseCashCountBody.batch.status !== "Submitted" ||
-      releaseCashCountBody.cashCount.expectedCash !== -12750 ||
-      releaseCashCountBody.cashCount.variance !== 12750
+      releaseCashCountBody.cashCount.expectedCash !== 7250 ||
+      releaseCashCountBody.cashCount.variance !== 0
     ) {
-      throw new Error("Loan release batch should submit its net proceeds as teller cash-out.");
+      throw new Error("Opening funding less loan proceeds should produce the expected ending teller cash.");
     }
 
     const reviewReleaseBatch = await fetch(
@@ -2665,9 +2767,7 @@ async function run() {
           "Content-Type": "application/json",
           Cookie: bookkeeperCookie
         },
-        body: JSON.stringify({
-          varianceNote: "Prototype has no opening teller cash float; loan proceeds are confirmed by release voucher."
-        })
+        body: JSON.stringify({ varianceNote: "" })
       }
     );
 
