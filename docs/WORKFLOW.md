@@ -246,6 +246,8 @@ Loan Release v1b uses the standard teller batch review and posting cycle. Teller
 
 Teller Cash Funding v1a introduces a controlled custody lifecycle before payouts. Accountant / Bookkeeper prepares the assigned Teller, amount, source account, date, and unique reference. General Manager approves it. The assigned Teller acknowledges receipt into the current Open batch. Acknowledged funding becomes Opening Funding, and expected ending cash is `Opening Funding + Cash In - Cash Out`. Batch details retain preparer, approver, acknowledger, source, and reference evidence.
 
+Funding acknowledgment routes Teller directly to the Releases tab. Loan release availability is independent of other teller transactions: the button appears when a computed loan has `For Release` status and the teller batch is Open. If the queue is empty, the loan must first be approved and saved from the Loan Officer's Computations tab.
+
 | Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
