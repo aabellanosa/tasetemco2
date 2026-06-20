@@ -183,6 +183,8 @@ Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Te
 
 Loan Release v1b brings released loans into the reviewed-batch posting control. After Teller submits cash count and Bookkeeper marks the batch Reviewed, one-button posting debits Loans Receivable for principal, credits Cash on Hand for net proceeds, and credits Processing Fee Income for the deducted fee. The release, loan, and application become `Posted`, and release history and batch details retain the journal number. Reposting cannot create a duplicate journal.
 
+Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares funding with assigned Teller, amount, source account, date, and unique reference; General Manager approves it; the assigned Teller acknowledges receipt into the Open batch. Acknowledged funding becomes Opening Funding, so expected ending cash is `Opening Funding + Cash In - Cash Out`. Batch details retain the control evidence. This slice does not yet create the funding journal or block payouts exceeding available cash.
+
 | Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -202,6 +204,15 @@ Loan Release v1b brings released loans into the reviewed-batch posting control. 
 | Auditor / Compliance Officer | Yes | No |
 | Teller / Cashier | No | No |
 | Membership Officer | No | No |
+
+| Teller Cash Funding Access | View | Prepare | Approve | Acknowledge |
+| --- | --- | --- | --- | --- |
+| System Administrator | Yes | No | No | No |
+| General Manager | Yes | No | Yes | No |
+| Accountant / Bookkeeper | Yes | Yes | No | No |
+| Teller / Cashier | Yes | No | No | Assigned funding |
+| Auditor / Compliance Officer | Yes | No | No | No |
+| Other roles | No | No | No | No |
 
 | Loan Release Access | View | Release Cash |
 | --- | --- | --- |

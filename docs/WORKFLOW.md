@@ -244,6 +244,8 @@ Loan Release v1a adds a Releases tab. Teller/Cashier sees loans marked `For Rele
 
 Loan Release v1b uses the standard teller batch review and posting cycle. Teller submits cash count, Bookkeeper records any required variance note and marks the batch Reviewed, then `Post reviewed batch` creates a balanced journal: debit Loans Receivable for principal, credit Cash on Hand for net proceeds, and credit Processing Fee Income for the deducted fee. Frozen application account mappings are used. The release, loan, and application become `Posted`, and release history and batch details retain the journal number.
 
+Teller Cash Funding v1a introduces a controlled custody lifecycle before payouts. Accountant / Bookkeeper prepares the assigned Teller, amount, source account, date, and unique reference. General Manager approves it. The assigned Teller acknowledges receipt into the current Open batch. Acknowledged funding becomes Opening Funding, and expected ending cash is `Opening Funding + Cash In - Cash Out`. Batch details retain preparer, approver, acknowledger, source, and reference evidence.
+
 | Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -263,6 +265,15 @@ Loan Release v1b uses the standard teller batch review and posting cycle. Teller
 | Auditor / Compliance Officer | Yes | No |
 | Teller / Cashier | No | No |
 | Membership Officer | No | No |
+
+| Teller Cash Funding Access | View | Prepare | Approve | Acknowledge |
+| --- | --- | --- | --- | --- |
+| System Administrator | Yes | No | No | No |
+| General Manager | Yes | No | Yes | No |
+| Accountant / Bookkeeper | Yes | Yes | No | No |
+| Teller / Cashier | Yes | No | No | Assigned funding |
+| Auditor / Compliance Officer | Yes | No | No | No |
+| Other roles | No | No | No | No |
 
 | Loan Release Access | View | Release Cash |
 | --- | --- | --- |
@@ -679,7 +690,9 @@ Loan Release v1a adds the `loan_releases` Postgres table. Run `npm run pg:migrat
 
 Loan Release v1b requires no new migration. It uses the journal tables and posting fields already introduced in earlier spikes. A Posted release is excluded from the unposted batch and cannot create a duplicate journal.
 
-The prototype does not yet model teller opening cash or a release funding transfer. A batch containing a large loan cash-out may therefore show an artificial positive cash-count variance. During prototype testing, Bookkeeper records a variance note before review. A later Teller Opening Cash / Cash Fund spike should calculate expected ending cash as opening cash plus receipts minus releases.
+Teller Cash Funding v1a adds the `teller_fundings` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. No seed is required. Funding follows `Prepared -> Approved -> Acknowledged`; only acknowledged funding contributes to Opening Funding.
+
+This removes artificial teller cash-count variance when sufficient funding is acknowledged, but does not yet post the source-account transfer to the general ledger. Teller Cash Funding v1b should block payouts exceeding available acknowledged cash. Teller Cash Funding v1c should post the funding transfer, such as debit Cash on Hand and credit Cash in Bank. Until v1c, batch cash can be correct while GL Cash on Hand can still become negative.
 
 ## 7. Audit Trail Requirements
 

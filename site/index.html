@@ -219,6 +219,10 @@
           debit Loans Receivable for principal, credit Cash for net proceeds, and credit
           Processing Fee Income for the fee. The release and loan become Posted and retain
           their linked journal number.
+          Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares
+          funding from an identified source, Manager approves it, and the assigned Teller
+          acknowledges it into the Open batch. Expected ending cash is Opening Funding plus
+          receipts minus payouts, and batch details retain all three control actors.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -309,6 +313,8 @@
               <li>Approved and Rejected applications retain immutable decision evidence.</li>
               <li>Loan Officer previews and saves the approved amortization schedule.</li>
               <li>Saved computations move to For Release without moving cash.</li>
+              <li>Bookkeeper prepares Teller funding and Manager approves it.</li>
+              <li>Assigned Teller acknowledges funding into the Open batch.</li>
               <li>Teller confirms the unique release voucher and exact net cash proceeds.</li>
               <li>Released proceeds enter the Open teller batch as cash-out evidence.</li>
               <li>Bookkeeper reviews the batch and records any required variance note.</li>
