@@ -6039,7 +6039,7 @@ function LoanComputations({ user }) {
   );
 }
 
-function TellerCashFunding({ user }) {
+function TellerCashFunding({ user, onFundingAcknowledged }) {
   const [fundings, setFundings] = useState([]);
   const [tellers, setTellers] = useState([]);
   const [form, setForm] = useState({
@@ -6113,6 +6113,9 @@ function TellerCashFunding({ user }) {
           : `${result.funding.fundingNo} acknowledged into ${result.funding.batchId}.`
       );
       await loadFundings();
+      if (action === "acknowledge") {
+        onFundingAcknowledged?.();
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -6390,7 +6393,7 @@ function LoanReleases({ user }) {
       {message ? <Text color="green.600">{message}</Text> : null}
       {error ? <Text color="red.500">{error}</Text> : null}
 
-      {canCreate && readyLoans.length ? (
+      {canCreate ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Heading size="sm" mb={4}>For Release Queue</Heading>
           <TableContainer>
@@ -6420,6 +6423,13 @@ function LoanReleases({ user }) {
                     </Td>
                   </Tr>
                 ))}
+                {!readyLoans.length ? (
+                  <Tr>
+                    <Td colSpan={6} color="gray.500">
+                      No computed loans are currently marked For Release.
+                    </Td>
+                  </Tr>
+                ) : null}
               </Tbody>
             </Table>
           </TableContainer>
@@ -6531,25 +6541,49 @@ function Loans({ user }) {
   const canViewReleases = user.permissions.includes("loans:releases:view");
   const canViewCashFunding = user.permissions.includes("teller-fundings:acknowledge");
   const canViewProducts = user.permissions.includes("loans:products:view");
+  const tabs = [
+    canViewApplications ? { key: "applications", label: "Applications" } : null,
+    canViewComputations ? { key: "computations", label: "Computations" } : null,
+    canViewReleases ? { key: "releases", label: "Releases" } : null,
+    canViewCashFunding ? { key: "cash-funding", label: "Cash Funding" } : null,
+    canViewProducts ? { key: "products", label: "Loan Products" } : null
+  ].filter(Boolean);
+  const [activeTabKey, setActiveTabKey] = useState(tabs[0]?.key || "");
+  const activeTabIndex = Math.max(0, tabs.findIndex((tab) => tab.key === activeTabKey));
+
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.key === activeTabKey)) {
+      setActiveTabKey(tabs[0]?.key || "");
+    }
+  }, [activeTabKey, tabs]);
 
   if (!canViewApplications && !canViewComputations && !canViewReleases && !canViewCashFunding && !canViewProducts) {
     return <Placeholder view="loans" />;
   }
 
   return (
-    <Tabs colorScheme="green" variant="enclosed" isLazy>
+    <Tabs
+      colorScheme="green"
+      variant="enclosed"
+      isLazy
+      index={activeTabIndex}
+      onChange={(index) => setActiveTabKey(tabs[index]?.key || "")}
+    >
       <TabList overflowX="auto" overflowY="hidden">
-        {canViewApplications ? <Tab flexShrink={0}>Applications</Tab> : null}
-        {canViewComputations ? <Tab flexShrink={0}>Computations</Tab> : null}
-        {canViewReleases ? <Tab flexShrink={0}>Releases</Tab> : null}
-        {canViewCashFunding ? <Tab flexShrink={0}>Cash Funding</Tab> : null}
-        {canViewProducts ? <Tab flexShrink={0}>Loan Products</Tab> : null}
+        {tabs.map((tab) => <Tab key={tab.key} flexShrink={0}>{tab.label}</Tab>)}
       </TabList>
       <TabPanels>
         {canViewApplications ? <TabPanel px={0}><LoanApplications user={user} /></TabPanel> : null}
         {canViewComputations ? <TabPanel px={0}><LoanComputations user={user} /></TabPanel> : null}
         {canViewReleases ? <TabPanel px={0}><LoanReleases user={user} /></TabPanel> : null}
-        {canViewCashFunding ? <TabPanel px={0}><TellerCashFunding user={user} /></TabPanel> : null}
+        {canViewCashFunding ? (
+          <TabPanel px={0}>
+            <TellerCashFunding
+              user={user}
+              onFundingAcknowledged={() => setActiveTabKey("releases")}
+            />
+          </TabPanel>
+        ) : null}
         {canViewProducts ? <TabPanel px={0}><LoanProducts user={user} /></TabPanel> : null}
       </TabPanels>
     </Tabs>
