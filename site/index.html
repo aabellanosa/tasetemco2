@@ -228,6 +228,11 @@
           acknowledged funding plus current-batch receipts less existing payouts. Prepared or
           Approved funding counts only after Teller acknowledgment. This control requires no
           new migration or seed.
+          Teller Cash Funding v1c completes the accounting transfer when Bookkeeper posts the
+          Reviewed batch. The system debits Cash on Hand and credits the funding source, normally
+          Cash in Bank, while posting the loan release in the same action. Funding keeps its
+          Acknowledged custody status and displays its linked journal. Run the additive database
+          migration before deployment; no seed is required.
           Acknowledgment opens the Releases tab. The Release button requires a computed loan
           marked For Release and an Open batch; it does not depend on another teller transaction.
           Initial member payment is one-time only; later member activity uses the normal
