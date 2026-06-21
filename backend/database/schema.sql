@@ -149,6 +149,28 @@ CREATE TABLE IF NOT EXISTS loan_releases (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS loan_collections (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  collection_no VARCHAR(40) NOT NULL UNIQUE,
+  loan_no VARCHAR(40) NOT NULL,
+  installment_no INT NOT NULL,
+  batch_no VARCHAR(40) NOT NULL,
+  member_no VARCHAR(40) NOT NULL,
+  member_name VARCHAR(180) NOT NULL,
+  principal_amount INT NOT NULL DEFAULT 0,
+  interest_amount INT NOT NULL DEFAULT 0,
+  amount_received INT NOT NULL DEFAULT 0,
+  collection_date DATE NOT NULL,
+  reference_no VARCHAR(80) NOT NULL UNIQUE,
+  received_by VARCHAR(80) NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
+  posted_by VARCHAR(80),
+  posted_entry_no VARCHAR(40),
+  posted_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (loan_no, installment_no)
+);
+
 CREATE TABLE IF NOT EXISTS member_applications (
   id INT AUTO_INCREMENT PRIMARY KEY,
   application_no VARCHAR(40) NOT NULL UNIQUE,

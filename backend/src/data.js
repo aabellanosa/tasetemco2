@@ -111,6 +111,7 @@ export const rolePermissions = {
     "loans:applications:view",
     "loans:computations:view",
     "loans:releases:view",
+    "loans:collections:view",
     "teller-fundings:view"
   ],
   "General Manager": [
@@ -128,6 +129,7 @@ export const rolePermissions = {
     "loans:applications:view",
     "loans:computations:view",
     "loans:releases:view",
+    "loans:collections:view",
     "teller-fundings:view",
     "teller-fundings:approve"
   ],
@@ -139,6 +141,7 @@ export const rolePermissions = {
     "teller-cash-counts:view",
     "teller-batches:view",
     "reports:view",
+    "loans:collections:view",
     "teller-fundings:view",
     "teller-fundings:prepare"
   ],
@@ -151,7 +154,8 @@ export const rolePermissions = {
     "loans:applications:submit",
     "loans:computations:view",
     "loans:computations:create",
-    "loans:releases:view"
+    "loans:releases:view",
+    "loans:collections:view"
   ],
   "Credit Committee / Approver": [
     "members:view",
@@ -161,7 +165,8 @@ export const rolePermissions = {
     "loans:applications:view",
     "loans:applications:decide",
     "loans:computations:view",
-    "loans:releases:view"
+    "loans:releases:view",
+    "loans:collections:view"
   ],
   "Teller / Cashier": [
     "members:view",
@@ -179,6 +184,8 @@ export const rolePermissions = {
     "loans:products:view",
     "loans:releases:view",
     "loans:releases:create",
+    "loans:collections:view",
+    "loans:collections:create",
     "teller-fundings:view",
     "teller-fundings:acknowledge"
   ],
@@ -204,6 +211,7 @@ export const rolePermissions = {
     "loans:applications:view",
     "loans:computations:view",
     "loans:releases:view",
+    "loans:collections:view",
     "teller-fundings:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
@@ -376,6 +384,8 @@ export const loans = [];
 export const loanInstallments = [];
 
 export const loanReleases = [];
+
+export const loanCollections = [];
 
 export const memberImportBatches = [];
 

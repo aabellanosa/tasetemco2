@@ -215,6 +215,8 @@ Teller Cash Funding v1b gives Bookkeeper a funding-demand view of every loan cur
 
 Teller Cash Funding v1c completes the accounting transfer during reviewed-batch posting. The Bookkeeper's existing `Post reviewed batch` action posts each unposted acknowledged funding as debit `1010 - Cash on Hand` and credit the funding's recorded source account, normally `1020 - Cash in Bank`. The same action continues posting the loan release journal. Funding remains `Acknowledged` as custody evidence while `postedBy`, `postedAt`, and `postedEntryNo` prove accounting completion. Batch details and funding history show the linked journal, closing is blocked while acknowledged funding remains unposted, and reposting cannot create duplicates.
 
+Loan Collection v1a starts the repayment series with one exact scheduled installment at a time. Teller/Cashier sees only posted loans and their earliest unpaid installment, may collect it on or before the due date, and records a unique official receipt/reference. The amount and principal-interest allocation come from the frozen schedule and cannot be edited. Recording marks that installment `Paid` and adds the receipt to the Open teller batch. After cash count and review, `Post reviewed batch` debits Cash on Hand, credits Loans Receivable for principal, and credits Interest Income for interest. Partial, excess, skipped-installment, penalty, and payoff handling are intentionally deferred.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -254,11 +256,22 @@ Teller Cash Funding v1c completes the accounting transfer during reviewed-batch 
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
+| Loan Collection Access | View | Collect Next Installment |
+| --- | --- | --- |
+| System Administrator | Yes | No |
+| General Manager | Yes | No |
+| Accountant / Bookkeeper | Ledger and batch evidence | No |
+| Loan Officer | Yes | No |
+| Credit Committee / Approver | Yes | No |
+| Teller / Cashier | Yes | Yes |
+| Auditor / Compliance Officer | Yes | No |
+| Membership Officer | No | No |
+
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
-Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, and savings deposits. Withdrawal voucher/reference numbers are unique across savings withdrawals.
+Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, savings deposits, and loan collections. Withdrawal voucher/reference numbers are unique across savings withdrawals.
 
 Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 

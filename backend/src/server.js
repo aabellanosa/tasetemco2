@@ -11,6 +11,7 @@ import {
   initialPayments,
   journalEntries,
   loanApplications,
+  loanCollections,
   loanInstallments,
   loanProducts,
   loanReleases,
@@ -62,6 +63,7 @@ let pool = null;
 const persistedTables = [
   "journal_entry_lines",
   "journal_entries",
+  "loan_collections",
   "loan_releases",
   "loan_installments",
   "loans",
@@ -256,6 +258,25 @@ const requiredSchemaColumns = {
     "release_date",
     "reference_no",
     "released_by",
+    "status",
+    "posted_by",
+    "posted_entry_no",
+    "posted_at",
+    "created_at"
+  ],
+  loan_collections: [
+    "collection_no",
+    "loan_no",
+    "installment_no",
+    "batch_no",
+    "member_no",
+    "member_name",
+    "principal_amount",
+    "interest_amount",
+    "amount_received",
+    "collection_date",
+    "reference_no",
+    "received_by",
     "status",
     "posted_by",
     "posted_entry_no",
@@ -1748,6 +1769,235 @@ async function releaseLoan(loanNo, body, user) {
   }
 }
 
+function mapLoanCollection(row) {
+  return {
+    collectionNo: row.collectionNo || row.id,
+    loanNo: row.loanNo,
+    installmentNo: Number(row.installmentNo || 0),
+    batchId: row.batchId,
+    memberNo: row.memberNo,
+    memberName: row.memberName,
+    principalAmount: Number(row.principalAmount || 0),
+    interestAmount: Number(row.interestAmount || 0),
+    amountReceived: Number(row.amountReceived || 0),
+    collectionDate: formatDateOnly(row.collectionDate),
+    referenceNo: row.referenceNo,
+    receivedBy: row.receivedBy,
+    status: row.status,
+    postedBy: row.postedBy || "",
+    postedEntryNo: row.postedEntryNo || "",
+    postedAt: row.postedAt || "",
+    createdAt: row.createdAt || ""
+  };
+}
+
+async function listLoanCollections() {
+  const db = await getPool();
+  if (!db) {
+    return loanCollections.map(mapLoanCollection);
+  }
+  const [rows] = await db.execute(
+    `SELECT collection_no AS collectionNo, loan_no AS loanNo,
+            installment_no AS installmentNo, batch_no AS batchId,
+            member_no AS memberNo, member_name AS memberName,
+            principal_amount AS principalAmount, interest_amount AS interestAmount,
+            amount_received AS amountReceived, collection_date AS collectionDate,
+            reference_no AS referenceNo, received_by AS receivedBy, status,
+            posted_by AS postedBy, posted_entry_no AS postedEntryNo,
+            posted_at AS postedAt, created_at AS createdAt
+     FROM loan_collections
+     ORDER BY created_at DESC, id DESC`
+  );
+  return rows.map(mapLoanCollection);
+}
+
+function validateLoanCollectionInput(body, installment, releaseDate = "") {
+  const collectionDate = formatDateOnly(body.collectionDate);
+  const referenceNo = String(body.referenceNo || "").trim().toUpperCase();
+  const amountReceived = Number(body.amountReceived);
+
+  if (!isValidIsoDate(collectionDate) || !collectionDate) {
+    return { error: "Collection date must be a valid YYYY-MM-DD date." };
+  }
+  if (!referenceNo) {
+    return { error: "Official receipt or reference number is required." };
+  }
+  if (releaseDate && collectionDate < formatDateOnly(releaseDate)) {
+    return { error: "Collection date cannot precede the loan release date." };
+  }
+  if (!Number.isInteger(amountReceived) || amountReceived !== installment.totalDue) {
+    return { error: "Amount received must exactly match the next scheduled installment." };
+  }
+
+  return { value: { collectionDate, referenceNo, amountReceived } };
+}
+
+async function nextLoanCollectionNo(connection = null) {
+  const db = connection || (await getPool());
+  if (!db) {
+    return `LC-${new Date().getFullYear()}-${String(loanCollections.length + 1).padStart(4, "0")}`;
+  }
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS countValue FROM loan_collections WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+  );
+  return `LC-${new Date().getFullYear()}-${String(Number(rows[0].countValue) + 1).padStart(4, "0")}`;
+}
+
+async function recordLoanCollection(loanNo, body, user) {
+  const currentLoans = await listLoans();
+  const loan = currentLoans.find((item) => item.loanNo === loanNo);
+  if (!loan) {
+    return { error: "Loan was not found.", statusCode: 404 };
+  }
+  if (loan.status !== "Posted") {
+    return { error: "Only posted loan releases can receive collections.", statusCode: 409 };
+  }
+  const release = (await listLoanReleases()).find((item) => item.loanNo === loanNo);
+  if (!release || release.status !== "Posted") {
+    return { error: "Posted loan release evidence was not found.", statusCode: 409 };
+  }
+  const installment = loan.installments.find((item) => item.status === "Scheduled");
+  if (!installment) {
+    return { error: "This loan has no unpaid scheduled installment.", statusCode: 409 };
+  }
+  const validation = validateLoanCollectionInput(body, installment, release.releaseDate);
+  if (validation.error) {
+    return { error: validation.error, statusCode: 400 };
+  }
+  const batchResult = await getOpenTellerBatch(user);
+  if (batchResult.error) {
+    return batchResult;
+  }
+  const db = await getPool();
+
+  if (!db) {
+    if (hasCashInReference(validation.value.referenceNo)) {
+      return { error: "Official receipt or reference number already exists.", statusCode: 409 };
+    }
+    const collectionNo = await nextLoanCollectionNo();
+    const collection = {
+      collectionNo,
+      loanNo,
+      installmentNo: installment.installmentNo,
+      batchId: batchResult.batch.id,
+      memberNo: loan.memberNo,
+      memberName: loan.memberName,
+      principalAmount: installment.principalDue,
+      interestAmount: installment.interestDue,
+      ...validation.value,
+      receivedBy: user.username,
+      status: "Teller Batch",
+      createdAt: new Date().toISOString()
+    };
+    loanCollections.unshift(collection);
+    const storedInstallment = loanInstallments.find(
+      (item) => item.loanNo === loanNo && item.installmentNo === installment.installmentNo
+    );
+    storedInstallment.status = "Paid";
+    return {
+      collection: mapLoanCollection(collection),
+      loan: (await listLoans()).find((item) => item.loanNo === loanNo)
+    };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [batchRows] = await connection.execute(
+      `SELECT batch_no AS id, status
+       FROM teller_batches
+       WHERE batch_no = ? LIMIT 1 FOR UPDATE`,
+      [batchResult.batch.id]
+    );
+    if (!batchRows[0] || batchRows[0].status !== "Open") {
+      await connection.rollback();
+      return { error: "No open teller batch is available for collection.", statusCode: 409 };
+    }
+    const [loanRows] = await connection.execute(
+      `SELECT loan.loan_no AS loanNo, loan.member_no AS memberNo,
+              loan.member_name AS memberName, loan.status,
+              lr.release_date AS releaseDate,
+              lr.status AS releaseStatus
+       FROM loans loan
+       JOIN loan_releases lr ON lr.loan_no = loan.loan_no
+       WHERE loan.loan_no = ? LIMIT 1
+       FOR UPDATE OF loan, lr`,
+      [loanNo]
+    );
+    const lockedLoan = loanRows[0];
+    if (
+      !lockedLoan ||
+      lockedLoan.status !== "Posted" ||
+      lockedLoan.releaseStatus !== "Posted"
+    ) {
+      await connection.rollback();
+      return { error: "Only posted loan releases can receive collections.", statusCode: 409 };
+    }
+    const [installmentRows] = await connection.execute(
+      `SELECT installment_no AS installmentNo, due_date AS dueDate,
+              principal_due AS principalDue, interest_due AS interestDue,
+              total_due AS totalDue, status
+       FROM loan_installments
+       WHERE loan_no = ? AND status = 'Scheduled'
+       ORDER BY installment_no
+       LIMIT 1
+       FOR UPDATE`,
+      [loanNo]
+    );
+    const lockedInstallment = installmentRows[0];
+    if (!lockedInstallment) {
+      await connection.rollback();
+      return { error: "This loan has no unpaid scheduled installment.", statusCode: 409 };
+    }
+    const lockedValidation = validateLoanCollectionInput(body, {
+      ...lockedInstallment,
+      totalDue: Number(lockedInstallment.totalDue)
+    }, lockedLoan.releaseDate);
+    if (lockedValidation.error) {
+      await connection.rollback();
+      return { error: lockedValidation.error, statusCode: 400 };
+    }
+    if (await hasCashInReferenceInDatabase(connection, lockedValidation.value.referenceNo)) {
+      await connection.rollback();
+      return { error: "Official receipt or reference number already exists.", statusCode: 409 };
+    }
+    const collectionNo = await nextLoanCollectionNo(connection);
+    await connection.execute(
+      `INSERT INTO loan_collections (
+         collection_no, loan_no, installment_no, batch_no,
+         member_no, member_name, principal_amount, interest_amount,
+         amount_received, collection_date, reference_no, received_by, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+      [
+        collectionNo, loanNo, lockedInstallment.installmentNo, batchResult.batch.id,
+        lockedLoan.memberNo, lockedLoan.memberName, lockedInstallment.principalDue,
+        lockedInstallment.interestDue, lockedValidation.value.amountReceived,
+        lockedValidation.value.collectionDate, lockedValidation.value.referenceNo,
+        user.username
+      ]
+    );
+    await connection.execute(
+      `UPDATE loan_installments
+       SET status = 'Paid'
+       WHERE loan_no = ? AND installment_no = ?`,
+      [loanNo, lockedInstallment.installmentNo]
+    );
+    await connection.commit();
+    return {
+      collection: (await listLoanCollections()).find((item) => item.collectionNo === collectionNo),
+      loan: (await listLoans()).find((item) => item.loanNo === loanNo)
+    };
+  } catch (error) {
+    await connection.rollback();
+    if (String(error.code) === "23505") {
+      return { error: "Installment or official receipt was already collected.", statusCode: 409 };
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 function mapTellerFunding(row) {
   return {
     fundingNo: row.fundingNo || row.id,
@@ -1842,6 +2092,10 @@ async function getTellerCashPosition(batchId, connection = null) {
          (SELECT COALESCE(SUM(cash_received), 0)
           FROM share_capital_contributions
           WHERE batch_no = ? AND status = 'Teller Batch')
+         +
+         (SELECT COALESCE(SUM(amount_received), 0)
+          FROM loan_collections
+          WHERE batch_no = ? AND status = 'Teller Batch')
        ) AS cashIn,
        (
          (SELECT COALESCE(SUM(amount), 0)
@@ -1852,7 +2106,7 @@ async function getTellerCashPosition(batchId, connection = null) {
           FROM loan_releases
           WHERE batch_no = ? AND status = 'Teller Batch')
        ) AS cashOut`,
-    [batchId, batchId, batchId, batchId, batchId, batchId]
+    [batchId, batchId, batchId, batchId, batchId, batchId, batchId]
   );
   const position = rows[0] || {};
   const openingFunding = Number(position.openingFunding || 0);
@@ -3917,7 +4171,8 @@ function buildTellerBatchSummary(rows) {
           summary.shareCapitalContributionCount + (row.batchType === "Share Capital Contribution" ? 1 : 0),
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
         savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0),
-        loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0)
+        loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
+        loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0)
       };
     },
     {
@@ -3929,7 +4184,8 @@ function buildTellerBatchSummary(rows) {
       shareCapitalContributionCount: 0,
       savingsDepositCount: 0,
       savingsWithdrawalCount: 0,
-      loanReleaseCount: 0
+      loanReleaseCount: 0,
+      loanCollectionCount: 0
     }
   );
 }
@@ -3940,7 +4196,7 @@ function normalizeReferenceNo(referenceNo) {
 
 function hasCashInReference(referenceNo) {
   const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
-  return [...initialPayments, ...savingsDeposits, ...shareCapitalContributions].some(
+  return [...initialPayments, ...savingsDeposits, ...shareCapitalContributions, ...loanCollections].some(
     (transaction) => normalizeReferenceNo(transaction.referenceNo) === normalizedReferenceNo
   );
 }
@@ -3965,8 +4221,12 @@ async function hasCashInReferenceInDatabase(connection, referenceNo) {
      SELECT reference_no AS referenceNo
      FROM share_capital_contributions
      WHERE UPPER(reference_no) = UPPER(?)
+     UNION ALL
+     SELECT reference_no AS referenceNo
+     FROM loan_collections
+     WHERE UPPER(reference_no) = UPPER(?)
      LIMIT 1`,
-    [referenceNo, referenceNo, referenceNo]
+    [referenceNo, referenceNo, referenceNo, referenceNo]
   );
 
   return rows.length > 0;
@@ -4111,6 +4371,29 @@ function buildTellerFundingJournalLines(funding) {
       credit: funding.amount
     }
   ];
+}
+
+function buildLoanCollectionJournalLines(collection) {
+  return [
+    {
+      accountCode: collection.cashAccount,
+      accountName: "Cash on Hand",
+      debit: collection.amountReceived,
+      credit: 0
+    },
+    {
+      accountCode: collection.loansReceivableAccount,
+      accountName: "Loans Receivable",
+      debit: 0,
+      credit: collection.principalAmount
+    },
+    {
+      accountCode: collection.interestIncomeAccount,
+      accountName: "Interest Income",
+      debit: 0,
+      credit: collection.interestAmount
+    }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
 }
 
 async function approveMemberApplication(applicationId, user) {
@@ -4429,6 +4712,18 @@ async function listTellerBatchRows(batchId = "") {
         shareCapitalAmount: 0,
         membershipFeeAmount: 0,
         savingsDepositAmount: 0
+      })),
+    ...(await listLoanCollections())
+      .filter((collection) => collection.status === "Teller Batch")
+      .map((collection) => ({
+        ...collection,
+        id: collection.collectionNo,
+        batchType: "Loan Collection",
+        cashReceived: collection.amountReceived,
+        cashOut: 0,
+        shareCapitalAmount: 0,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: 0
       }))
   ];
 
@@ -4482,6 +4777,16 @@ async function listTellerBatchTransactions(batchId) {
       shareCapitalAmount: 0,
       membershipFeeAmount: 0,
       savingsDepositAmount: 0
+    })),
+    ...(await listLoanCollections()).map((collection) => ({
+      ...collection,
+      id: collection.collectionNo,
+      batchType: "Loan Collection",
+      cashReceived: collection.amountReceived,
+      cashOut: 0,
+      shareCapitalAmount: 0,
+      membershipFeeAmount: 0,
+      savingsDepositAmount: 0
     }))
   ].filter((row) => row.batchId === batchId);
 }
@@ -4510,7 +4815,8 @@ function countBatchTransactions(batchId) {
     ...savingsDeposits,
     ...shareCapitalContributions,
     ...savingsWithdrawals,
-    ...loanReleases
+    ...loanReleases,
+    ...loanCollections
   ].filter((row) => row.batchId === batchId);
 
   return {
@@ -4554,6 +4860,8 @@ async function listTellerBatches() {
                 SELECT batch_no, status, posted_entry_no FROM savings_withdrawals
                 UNION ALL
                 SELECT batch_no, status, posted_entry_no FROM loan_releases
+                UNION ALL
+                SELECT batch_no, status, posted_entry_no FROM loan_collections
               ) posted_rows
               WHERE posted_rows.batch_no = teller_batches.batch_no
                 AND posted_rows.status = 'Posted'
@@ -4571,6 +4879,8 @@ async function listTellerBatches() {
                 SELECT batch_no, status FROM savings_withdrawals
                 UNION ALL
                 SELECT batch_no, status FROM loan_releases
+                UNION ALL
+                SELECT batch_no, status FROM loan_collections
               ) unposted_rows
               WHERE unposted_rows.batch_no = teller_batches.batch_no
                 AND unposted_rows.status = 'Teller Batch'
@@ -6502,6 +6812,147 @@ async function postLoanRelease(releaseId, user) {
   }
 }
 
+async function postLoanCollection(collectionNo, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const collection = loanCollections.find((item) => item.collectionNo === collectionNo);
+    if (!collection) {
+      return { error: "Loan collection was not found.", statusCode: 404 };
+    }
+    if (collection.status !== "Teller Batch") {
+      return { error: "Only teller batch loan collections can be posted.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(collection.batchId);
+    if (batchResult.error) {
+      return batchResult;
+    }
+    const loan = loans.find((item) => item.loanNo === collection.loanNo);
+    const application = loanApplications.find((item) => item.applicationNo === loan?.applicationNo);
+    if (!loan || !application) {
+      return { error: "Loan accounting snapshot was not found.", statusCode: 409 };
+    }
+    const accountingCollection = {
+      ...collection,
+      loansReceivableAccount: application.loansReceivableAccount,
+      interestIncomeAccount: application.interestIncomeAccount,
+      cashAccount: application.cashAccount
+    };
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "Loan Collection",
+      sourceNo: collection.collectionNo,
+      description: `Loan collection - ${collection.memberName} (${collection.loanNo})`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildLoanCollectionJournalLines(accountingCollection)
+    };
+    collection.status = "Posted";
+    collection.postedBy = user.username;
+    collection.postedEntryNo = entry.id;
+    collection.postedAt = entry.postedAt;
+    journalEntries.unshift(entry);
+    return { collection: mapLoanCollection(collection), entry };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [collectionRows] = await connection.execute(
+      `SELECT collection.collection_no AS collectionNo,
+              collection.loan_no AS loanNo,
+              collection.installment_no AS installmentNo,
+              collection.batch_no AS batchId,
+              collection.member_no AS memberNo,
+              collection.member_name AS memberName,
+              collection.principal_amount AS principalAmount,
+              collection.interest_amount AS interestAmount,
+              collection.amount_received AS amountReceived,
+              collection.status,
+              application.loans_receivable_account AS loansReceivableAccount,
+              application.interest_income_account AS interestIncomeAccount,
+              application.cash_account AS cashAccount
+       FROM loan_collections collection
+       JOIN loans loan ON loan.loan_no = collection.loan_no
+       JOIN loan_applications application ON application.application_no = loan.application_no
+       WHERE collection.collection_no = ?
+       LIMIT 1
+       FOR UPDATE OF collection`,
+      [collectionNo]
+    );
+    const collection = collectionRows[0];
+    if (!collection) {
+      await connection.rollback();
+      return { error: "Loan collection was not found.", statusCode: 404 };
+    }
+    if (collection.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Only teller batch loan collections can be posted.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(collection.batchId, connection);
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
+    }
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM journal_entries
+       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+    );
+    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    await connection.execute(
+      `INSERT INTO journal_entries (
+         entry_no, source_type, source_no, description, posted_by
+       ) VALUES (?, 'Loan Collection', ?, ?, ?)`,
+      [
+        entryNo,
+        collection.collectionNo,
+        `Loan collection - ${collection.memberName} (${collection.loanNo})`,
+        user.username
+      ]
+    );
+    const lines = buildLoanCollectionJournalLines(collection);
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (
+           entry_no, account_code, account_name, debit, credit
+         ) VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+    await connection.execute(
+      `UPDATE loan_collections
+       SET status = 'Posted', posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE collection_no = ?`,
+      [user.username, entryNo, collection.collectionNo]
+    );
+    await connection.commit();
+    return {
+      collection: {
+        ...mapLoanCollection(collection),
+        status: "Posted",
+        postedBy: user.username,
+        postedEntryNo: entryNo,
+        postedAt: new Date().toISOString()
+      },
+      entry: {
+        id: entryNo,
+        sourceType: "Loan Collection",
+        sourceNo: collection.collectionNo,
+        description: `Loan collection - ${collection.memberName} (${collection.loanNo})`,
+        postedBy: user.username,
+        postedAt: new Date().toISOString(),
+        lines
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function postTellerFunding(fundingNo, user) {
   const db = await getPool();
 
@@ -6637,6 +7088,10 @@ async function postTellerBatchRow(row, user) {
 
   if (row.batchType === "Loan Release") {
     return postLoanRelease(row.id, user);
+  }
+
+  if (row.batchType === "Loan Collection") {
+    return postLoanCollection(row.id, user);
   }
 
   return postInitialPayment(row.id, user);
@@ -7591,7 +8046,8 @@ app.get("/api/loans", async (request, response) => {
 
   if (
     !hasPermission(user, "loans:computations:view") &&
-    !hasPermission(user, "loans:releases:view")
+    !hasPermission(user, "loans:releases:view") &&
+    !hasPermission(user, "loans:collections:view")
   ) {
     response.status(403).json({ error: "Access denied" });
     return;
@@ -7679,6 +8135,37 @@ app.post("/api/loans/:loanNo/release", async (request, response) => {
     return;
   }
 
+  response.status(201).json(result);
+});
+
+app.get("/api/loan-collections", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+  if (!hasPermission(user, "loans:collections:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+  response.json(await listLoanCollections());
+});
+
+app.post("/api/loans/:loanNo/collections", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+  if (!hasPermission(user, "loans:collections:create")) {
+    response.status(403).json({ error: "Teller / Cashier access required" });
+    return;
+  }
+  const result = await recordLoanCollection(request.params.loanNo, request.body, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
   response.status(201).json(result);
 });
 

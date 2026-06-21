@@ -504,7 +504,8 @@ function buildTellerBatchSummary(rows) {
           summary.shareCapitalContributionCount + (row.batchType === "Share Capital Contribution" ? 1 : 0),
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
         savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0),
-        loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0)
+        loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
+        loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0)
       };
     },
     {
@@ -515,7 +516,8 @@ function buildTellerBatchSummary(rows) {
       shareCapitalContributionCount: 0,
       savingsDepositCount: 0,
       savingsWithdrawalCount: 0,
-      loanReleaseCount: 0
+      loanReleaseCount: 0,
+      loanCollectionCount: 0
     }
   );
 }
@@ -1729,6 +1731,7 @@ function Members({ user }) {
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [loanReleases, setLoanReleases] = useState([]);
+  const [loanCollections, setLoanCollections] = useState([]);
   const [openingFunding, setOpeningFunding] = useState(0);
   const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
@@ -1799,6 +1802,7 @@ function Members({ user }) {
   const canViewSavingsWithdrawals = user.permissions.includes("members:savings-withdrawals:view");
   const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
   const canViewLoanReleases = user.permissions.includes("loans:releases:view");
+  const canViewLoanCollections = user.permissions.includes("loans:collections:view");
   const canViewTellerCashCount = user.permissions.includes("teller-cash-counts:view");
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
@@ -1857,6 +1861,20 @@ function Members({ user }) {
         membershipFeeAmount: 0,
         savingsDepositAmount: 0,
         status: release.status
+      })),
+    ...loanCollections
+      .filter((collection) => collection.status === "Teller Batch")
+      .map((collection) => ({
+        id: collection.collectionNo,
+        memberName: collection.memberName,
+        batchId: collection.batchId,
+        batchType: "Loan Collection",
+        cashReceived: collection.amountReceived,
+        cashOut: 0,
+        shareCapitalAmount: 0,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: 0,
+        status: collection.status
       }))
   ];
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatchRows);
@@ -1874,6 +1892,7 @@ function Members({ user }) {
           savingsRows,
           withdrawalRows,
           loanReleaseRows,
+          loanCollectionRows,
           cashCountData
         ] =
           await Promise.all([
@@ -1884,6 +1903,7 @@ function Members({ user }) {
           canViewSavingsDeposits ? api("/api/savings-deposits") : [],
           canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : [],
           canViewLoanReleases ? api("/api/loan-releases") : [],
+          canViewLoanCollections ? api("/api/loan-collections") : [],
           canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
@@ -1893,6 +1913,7 @@ function Members({ user }) {
         setSavingsDeposits(savingsRows);
         setSavingsWithdrawals(withdrawalRows);
         setLoanReleases(loanReleaseRows);
+        setLoanCollections(loanCollectionRows);
         setActiveBatch(cashCountData.activeBatch);
         setOpeningFunding(Number(cashCountData.expected?.openingFunding || 0));
         setLatestCashCount(cashCountData.latestCashCount);
@@ -1916,6 +1937,7 @@ function Members({ user }) {
       canViewSavingsDeposits,
       canViewSavingsWithdrawals,
       canViewLoanReleases,
+      canViewLoanCollections,
       canViewTellerCashCount
     ]
   );
@@ -2606,6 +2628,7 @@ function Members({ user }) {
                   <Text fontWeight="bold">Deposits: {tellerBatchSummary.savingsDepositCount}</Text>
                   <Text fontWeight="bold">Withdrawals: {tellerBatchSummary.savingsWithdrawalCount}</Text>
                   <Text fontWeight="bold">Loan releases: {tellerBatchSummary.loanReleaseCount}</Text>
+                  <Text fontWeight="bold">Loan collections: {tellerBatchSummary.loanCollectionCount}</Text>
                 </VStack>
               </Box>
             </Grid>
@@ -6648,16 +6671,272 @@ function LoanReleases({ user }) {
   );
 }
 
+function LoanCollections({ user }) {
+  const [loans, setLoans] = useState([]);
+  const [collections, setCollections] = useState([]);
+  const [selectedLoan, setSelectedLoan] = useState(null);
+  const [form, setForm] = useState({
+    collectionDate: new Date().toISOString().slice(0, 10),
+    referenceNo: "",
+    amountReceived: 0
+  });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const collectionModal = useDisclosure();
+  const canCreate = user.permissions.includes("loans:collections:create");
+
+  const loadCollections = useCallback(async () => {
+    setError("");
+    try {
+      const [loanRows, collectionRows] = await Promise.all([
+        api("/api/loans"),
+        api("/api/loan-collections")
+      ]);
+      setLoans(loanRows);
+      setCollections(collectionRows);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCollections();
+  }, [loadCollections]);
+
+  function nextInstallment(loan) {
+    return loan.installments.find((installment) => installment.status === "Scheduled") || null;
+  }
+
+  function startCollection(loan) {
+    const installment = nextInstallment(loan);
+    if (!installment) {
+      return;
+    }
+    setSelectedLoan(loan);
+    setForm({
+      collectionDate: new Date().toISOString().slice(0, 10),
+      referenceNo: "",
+      amountReceived: installment.totalDue
+    });
+    setMessage("");
+    setError("");
+    collectionModal.onOpen();
+  }
+
+  async function confirmCollection() {
+    if (!selectedLoan) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api(`/api/loans/${selectedLoan.loanNo}/collections`, {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setMessage(
+        `${result.collection.collectionNo} recorded for installment ${result.collection.installmentNo} in ${result.collection.batchId}.`
+      );
+      collectionModal.onClose();
+      setSelectedLoan(null);
+      await loadCollections();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const collectibleLoans = loans
+    .filter((loan) => loan.status === "Posted")
+    .map((loan) => ({ ...loan, nextInstallment: nextInstallment(loan) }))
+    .filter((loan) => loan.nextInstallment);
+  const selectedInstallment = selectedLoan ? nextInstallment(selectedLoan) : null;
+
+  return (
+    <VStack align="stretch" spacing={5} minW={0} maxW="100%">
+      <Flex justify="space-between" gap={4} align="center" wrap="wrap">
+        <Box>
+          <Heading size="md">Loan Collections</Heading>
+          <Text color="gray.600" mt={1}>
+            Record the next exact scheduled installment. Partial, excess, and skipped-installment payments follow in later slices.
+          </Text>
+        </Box>
+        <Button size="sm" variant="outline" onClick={loadCollections}>Refresh</Button>
+      </Flex>
+
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="sm" mb={4}>Next Scheduled Installments</Heading>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Loan</Th>
+                <Th>Member</Th>
+                <Th>Installment</Th>
+                <Th>Due Date</Th>
+                <Th isNumeric>Principal</Th>
+                <Th isNumeric>Interest</Th>
+                <Th isNumeric>Total Due</Th>
+                {canCreate ? <Th>Action</Th> : null}
+              </Tr>
+            </Thead>
+            <Tbody>
+              {collectibleLoans.map((loan) => (
+                <Tr key={loan.loanNo}>
+                  <Td>{loan.loanNo}</Td>
+                  <Td>{loan.memberName}</Td>
+                  <Td>{loan.nextInstallment.installmentNo} of {loan.installmentCount}</Td>
+                  <Td>{loan.nextInstallment.dueDate}</Td>
+                  <Td isNumeric>{formatMoney(loan.nextInstallment.principalDue)}</Td>
+                  <Td isNumeric>{formatMoney(loan.nextInstallment.interestDue)}</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(loan.nextInstallment.totalDue)}</Td>
+                  {canCreate ? (
+                    <Td>
+                      <Button size="sm" colorScheme="green" onClick={() => startCollection(loan)}>
+                        Collect
+                      </Button>
+                    </Td>
+                  ) : null}
+                </Tr>
+              ))}
+              {!collectibleLoans.length ? (
+                <Tr>
+                  <Td colSpan={canCreate ? 8 : 7} color="gray.500">
+                    No posted loan currently has an unpaid scheduled installment.
+                  </Td>
+                </Tr>
+              ) : null}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="sm" mb={4}>Collection History</Heading>
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Collection</Th>
+                <Th>Loan</Th>
+                <Th>Member</Th>
+                <Th>Installment</Th>
+                <Th>Reference</Th>
+                <Th isNumeric>Principal</Th>
+                <Th isNumeric>Interest</Th>
+                <Th isNumeric>Received</Th>
+                <Th>Batch</Th>
+                <Th>Status</Th>
+                <Th>Journal</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {collections.map((collection) => (
+                <Tr key={collection.collectionNo}>
+                  <Td>{collection.collectionNo}</Td>
+                  <Td>{collection.loanNo}</Td>
+                  <Td>{collection.memberName}</Td>
+                  <Td>{collection.installmentNo}</Td>
+                  <Td>{collection.referenceNo}</Td>
+                  <Td isNumeric>{formatMoney(collection.principalAmount)}</Td>
+                  <Td isNumeric>{formatMoney(collection.interestAmount)}</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(collection.amountReceived)}</Td>
+                  <Td>{collection.batchId}</Td>
+                  <Td>
+                    <Badge colorScheme={collection.status === "Posted" ? "green" : "orange"}>
+                      {collection.status}
+                    </Badge>
+                  </Td>
+                  <Td>{collection.postedEntryNo || "-"}</Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+        {!collections.length ? <Text color="gray.500">No loan collections recorded yet.</Text> : null}
+      </Box>
+
+      <Modal isOpen={collectionModal.isOpen} onClose={collectionModal.onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>{selectedLoan ? `Collect ${selectedLoan.loanNo}` : "Collect Installment"}</ModalHeader>
+          <ModalBody>
+            {selectedLoan && selectedInstallment ? (
+              <VStack align="stretch" spacing={4}>
+                <Box>
+                  <Text fontWeight="bold">{selectedLoan.memberName}</Text>
+                  <Text color="gray.600">
+                    Installment {selectedInstallment.installmentNo} due {selectedInstallment.dueDate}
+                  </Text>
+                  <Text color="gray.600">Principal: {formatMoney(selectedInstallment.principalDue)}</Text>
+                  <Text color="gray.600">Interest: {formatMoney(selectedInstallment.interestDue)}</Text>
+                  <Text fontWeight="bold">Total due: {formatMoney(selectedInstallment.totalDue)}</Text>
+                </Box>
+                <FormControl isRequired>
+                  <FormLabel>Collection Date</FormLabel>
+                  <Input
+                    type="date"
+                    value={form.collectionDate}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      collectionDate: event.target.value
+                    }))}
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Official Receipt / Reference Number</FormLabel>
+                  <Input
+                    value={form.referenceNo}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      referenceNo: event.target.value.toUpperCase()
+                    }))}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Amount Received</FormLabel>
+                  <Input value={formatMoney(form.amountReceived)} isReadOnly />
+                </FormControl>
+                <Text color="gray.500" fontSize="sm">
+                  Early payment of the next installment is allowed. The scheduled principal and interest split cannot be changed.
+                </Text>
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={collectionModal.onClose}>Cancel</Button>
+            <Button
+              colorScheme="green"
+              onClick={confirmCollection}
+              isLoading={busy}
+              isDisabled={!form.referenceNo.trim()}
+            >
+              Confirm Collection
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </VStack>
+  );
+}
+
 function Loans({ user }) {
   const canViewApplications = user.permissions.includes("loans:applications:view");
   const canViewComputations = user.permissions.includes("loans:computations:view");
   const canViewReleases = user.permissions.includes("loans:releases:view");
+  const canViewCollections = user.permissions.includes("loans:collections:view");
   const canViewCashFunding = user.permissions.includes("teller-fundings:acknowledge");
   const canViewProducts = user.permissions.includes("loans:products:view");
   const tabs = [
     canViewApplications ? { key: "applications", label: "Applications" } : null,
     canViewComputations ? { key: "computations", label: "Computations" } : null,
     canViewReleases ? { key: "releases", label: "Releases" } : null,
+    canViewCollections ? { key: "collections", label: "Collections" } : null,
     canViewCashFunding ? { key: "cash-funding", label: "Cash Funding" } : null,
     canViewProducts ? { key: "products", label: "Loan Products" } : null
   ].filter(Boolean);
@@ -6670,7 +6949,7 @@ function Loans({ user }) {
     }
   }, [activeTabKey, tabs]);
 
-  if (!canViewApplications && !canViewComputations && !canViewReleases && !canViewCashFunding && !canViewProducts) {
+  if (!canViewApplications && !canViewComputations && !canViewReleases && !canViewCollections && !canViewCashFunding && !canViewProducts) {
     return <Placeholder view="loans" />;
   }
 
@@ -6689,6 +6968,7 @@ function Loans({ user }) {
         {canViewApplications ? <TabPanel px={0}><LoanApplications user={user} /></TabPanel> : null}
         {canViewComputations ? <TabPanel px={0}><LoanComputations user={user} /></TabPanel> : null}
         {canViewReleases ? <TabPanel px={0}><LoanReleases user={user} /></TabPanel> : null}
+        {canViewCollections ? <TabPanel px={0}><LoanCollections user={user} /></TabPanel> : null}
         {canViewCashFunding ? (
           <TabPanel px={0}>
             <TellerCashFunding

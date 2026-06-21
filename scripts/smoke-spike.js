@@ -2971,6 +2971,214 @@ async function run() {
       throw new Error("Posted funding and loan release should not create duplicate journal entries.");
     }
 
+    const closeReleaseBatchForCollection = await fetch(
+      `${baseUrl}/api/teller-batches/${releaseLoanBody.release.batchId}/close`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: bookkeeperCookie
+        },
+        body: JSON.stringify({
+          closingNote: "Close the completed release batch before installment collection."
+        })
+      }
+    );
+
+    if (!closeReleaseBatchForCollection.ok) {
+      throw new Error("Bookkeeper should close the fully posted release batch before collection.");
+    }
+
+    const tellerCollectionsBefore = await fetch(`${baseUrl}/api/loan-collections`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const tellerCollectionsBeforeRows = await tellerCollectionsBefore.json();
+
+    if (!tellerCollectionsBefore.ok || tellerCollectionsBeforeRows.length !== 0) {
+      throw new Error("Teller should start with an empty loan collection history.");
+    }
+
+    const collectionBeforeReleaseDate = await fetch(
+      `${baseUrl}/api/loans/${smokeLoanNo}/collections`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: tellerCookie
+        },
+        body: JSON.stringify({
+          collectionDate: "2026-06-30",
+          referenceNo: "OR-LOAN-EARLY-DATE",
+          amountReceived: 1755
+        })
+      }
+    );
+
+    if (collectionBeforeReleaseDate.status !== 400) {
+      throw new Error("Collection date should not precede the actual loan release date.");
+    }
+
+    const incorrectInstallmentAmount = await fetch(
+      `${baseUrl}/api/loans/${smokeLoanNo}/collections`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: tellerCookie
+        },
+        body: JSON.stringify({
+          collectionDate: "2026-07-02",
+          referenceNo: "OR-LOAN-WRONG",
+          amountReceived: 1700
+        })
+      }
+    );
+
+    if (incorrectInstallmentAmount.status !== 400) {
+      throw new Error("Loan Collection v1a should require the exact next installment amount.");
+    }
+
+    const recordLoanCollection = await fetch(
+      `${baseUrl}/api/loans/${smokeLoanNo}/collections`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: tellerCookie
+        },
+        body: JSON.stringify({
+          collectionDate: "2026-07-02",
+          referenceNo: "OR-LOAN-SMOKE-001",
+          amountReceived: 1755
+        })
+      }
+    );
+    const recordLoanCollectionBody = await recordLoanCollection.json();
+    const smokeCollectionNo = recordLoanCollectionBody.collection?.collectionNo;
+
+    if (
+      !recordLoanCollection.ok ||
+      !smokeCollectionNo ||
+      recordLoanCollectionBody.collection.installmentNo !== 1 ||
+      recordLoanCollectionBody.collection.principalAmount !== 1625 ||
+      recordLoanCollectionBody.collection.interestAmount !== 130 ||
+      recordLoanCollectionBody.collection.amountReceived !== 1755 ||
+      recordLoanCollectionBody.collection.status !== "Teller Batch"
+    ) {
+      throw new Error("Teller should record the exact next scheduled installment in the Open batch.");
+    }
+
+    const collectedLoan = recordLoanCollectionBody.loan;
+    if (
+      collectedLoan.installments.find((item) => item.installmentNo === 1)?.status !== "Paid" ||
+      collectedLoan.installments.find((item) => item.installmentNo === 2)?.status !== "Scheduled"
+    ) {
+      throw new Error("Collection should mark only the next scheduled installment Paid.");
+    }
+
+    const duplicateCollectionReference = await fetch(
+      `${baseUrl}/api/loans/${smokeLoanNo}/collections`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: tellerCookie
+        },
+        body: JSON.stringify({
+          collectionDate: "2026-07-02",
+          referenceNo: "OR-LOAN-SMOKE-001",
+          amountReceived: 1755
+        })
+      }
+    );
+
+    if (duplicateCollectionReference.status !== 409) {
+      throw new Error("Loan collections should reject a duplicate official receipt reference.");
+    }
+
+    const collectionCashCount = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({ actualCash: 1755 })
+    });
+    const collectionCashCountBody = await collectionCashCount.json();
+
+    if (
+      !collectionCashCount.ok ||
+      collectionCashCountBody.cashCount.expectedCash !== 1755 ||
+      collectionCashCountBody.cashCount.variance !== 0
+    ) {
+      throw new Error("The exact installment receipt should increase expected Teller cash.");
+    }
+
+    const collectionBatchId = recordLoanCollectionBody.collection.batchId;
+    const reviewCollectionBatch = await fetch(
+      `${baseUrl}/api/teller-batches/${collectionBatchId}/review`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: bookkeeperCookie
+        },
+        body: JSON.stringify({ varianceNote: "" })
+      }
+    );
+
+    if (!reviewCollectionBatch.ok) {
+      throw new Error("Bookkeeper should review the batch containing the installment collection.");
+    }
+
+    const postCollectionBatch = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${collectionBatchId}/post-reviewed`,
+      {
+        method: "POST",
+        headers: { Cookie: bookkeeperCookie }
+      }
+    );
+    const postCollectionBatchBody = await postCollectionBatch.json();
+    const postedCollectionResult = postCollectionBatchBody.results?.find(
+      (result) => result.id === smokeCollectionNo && result.batchType === "Loan Collection"
+    );
+    const collectionCashLine = postedCollectionResult?.entry.lines.find(
+      (line) => line.accountCode === "1010" && line.debit === 1755
+    );
+    const collectionPrincipalLine = postedCollectionResult?.entry.lines.find(
+      (line) => line.accountCode === "1050" && line.credit === 1625
+    );
+    const collectionInterestLine = postedCollectionResult?.entry.lines.find(
+      (line) => line.accountCode === "4010" && line.credit === 130
+    );
+
+    if (
+      !postCollectionBatch.ok ||
+      postCollectionBatchBody.postedCount !== 1 ||
+      !postedCollectionResult ||
+      !collectionCashLine ||
+      !collectionPrincipalLine ||
+      !collectionInterestLine
+    ) {
+      throw new Error("Bookkeeper should post the balanced scheduled installment journal.");
+    }
+
+    const postedCollections = await fetch(`${baseUrl}/api/loan-collections`, {
+      headers: { Cookie: loanOfficerCookie }
+    });
+    const postedCollectionRows = await postedCollections.json();
+    const postedCollection = postedCollectionRows.find(
+      (collection) => collection.collectionNo === smokeCollectionNo
+    );
+
+    if (
+      !postedCollections.ok ||
+      postedCollection?.status !== "Posted" ||
+      postedCollection?.postedEntryNo !== postedCollectionResult.entry.id
+    ) {
+      throw new Error("Loan collection history should expose its posted journal evidence.");
+    }
+
     const forbiddenLoanOfficerRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
       method: "POST",
       headers: {
@@ -3003,6 +3211,14 @@ async function run() {
 
     if (forbiddenMembershipFundingPosition.status !== 403) {
       throw new Error("Membership Officer should not receive Teller funding demand access.");
+    }
+
+    const forbiddenMembershipCollections = await fetch(`${baseUrl}/api/loan-collections`, {
+      headers: { Cookie: cookie }
+    });
+
+    if (forbiddenMembershipCollections.status !== 403) {
+      throw new Error("Membership Officer should not receive loan collection access.");
     }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);

@@ -252,6 +252,8 @@ Teller Cash Funding v1b adds the funding-demand and payout guard. Accountant / B
 
 Teller Cash Funding v1c adds accounting completion to the reviewed-batch posting cycle. After Teller submits cash count and Bookkeeper reviews the batch, `Post reviewed batch` creates one funding-transfer journal for each unposted acknowledged funding: debit `1010 - Cash on Hand` and credit the source account recorded during preparation, normally `1020 - Cash in Bank`. Loan release and other teller transaction journals are posted by the same command. Funding remains `Acknowledged` because that status proves Teller custody; separate posting fields and the linked journal number prove that the transfer reached the general ledger. The batch cannot close while acknowledged funding remains unposted.
 
+Loan Collection v1a introduces exact scheduled installment collection. Teller/Cashier selects a posted loan and the system presents only its earliest unpaid installment. Early payment is allowed, but Teller cannot skip installments, alter the scheduled principal-interest split, or enter a partial or excess amount. A unique official receipt/reference is required. Recording creates an immutable cash-in row in the Open teller batch and marks that installment `Paid`. After Teller cash count and Bookkeeper review, `Post reviewed batch` debits Cash on Hand for the total received, credits Loans Receivable for scheduled principal, and credits Interest Income for scheduled interest. Loan Officer, Admin, Manager, Approver, and Auditor have read-only collection visibility.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -276,6 +278,17 @@ Teller Cash Funding v1c adds accounting completion to the reviewed-batch posting
 | --- | --- | --- |
 | System Administrator | Yes | No |
 | General Manager | Yes | No |
+| Loan Officer | Yes | No |
+| Credit Committee / Approver | Yes | No |
+| Teller / Cashier | Yes | Yes |
+| Auditor / Compliance Officer | Yes | No |
+| Membership Officer | No | No |
+
+| Loan Collection Access | View | Collect Next Installment |
+| --- | --- | --- |
+| System Administrator | Yes | No |
+| General Manager | Yes | No |
+| Accountant / Bookkeeper | Ledger and batch evidence | No |
 | Loan Officer | Yes | No |
 | Credit Committee / Approver | Yes | No |
 | Teller / Cashier | Yes | Yes |
@@ -727,6 +740,8 @@ Teller Cash Funding v1a adds the `teller_fundings` Postgres table. Run `npm run 
 Teller Cash Funding v1b requires no schema migration and no seed. It derives funding demand and available cash from existing loans, teller funding, receipts, withdrawals, and releases. Available cash is `Acknowledged Funding + Cash In - Cash Out`; the release API recalculates this under an Open-batch database lock before recording a payout.
 
 Teller Cash Funding v1c adds nullable `posted_by`, `posted_entry_no`, and `posted_at` columns to `teller_fundings`. Run `npm run pg:migrate` before starting or deploying this build. No seed is required. The migration is additive and preserves existing funding and tester data. Reviewed-batch posting is idempotent and rejects a funding source mapped to `1010 - Cash on Hand`.
+
+Loan Collection v1a adds the `loan_collections` Postgres table. Run `npm run pg:migrate` before starting or deploying this build. No seed is required. Each loan installment can have only one collection row, official receipt references are unique across cash-in transactions, and recording plus installment status update is transactional. Existing organically created posted loans become collectible without rebuilding their schedules.
 
 ## 7. Audit Trail Requirements
 
