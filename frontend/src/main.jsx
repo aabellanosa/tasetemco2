@@ -548,14 +548,14 @@ function Login({ onLogin }) {
         <Grid templateColumns={{ base: "1fr", lg: "1.2fr 420px" }} gap={10} alignItems="center">
           <GridItem>
             <Badge bg="yellow.300" color="green.900" mb={5}>
-              React + Chakra + MySQL spike
+              Cooperative Operations and Accounting
             </Badge>
             <Heading size="3xl" lineHeight="1">
               TASETEMCO
             </Heading>
             <Text mt={5} fontSize="xl" color="green.50" maxW="2xl">
-              First vertical slice for the cooperative working prototype: staff login,
-              role-based landing screens, dashboard metrics, and seeded member data.
+              Secure staff access to member services, teller operations, loans,
+              accounting records, and management reports.
             </Text>
           </GridItem>
           <GridItem>
@@ -4297,7 +4297,7 @@ function Reports() {
             <Box>
               <Heading size="md">Control Account Reconciliation</Heading>
               <Text color="gray.600" mt={1}>
-                Prototype activity only: subsidiary movement compared with posted GL control accounts.
+                Recorded system activity: subsidiary movement compared with posted general ledger control accounts.
               </Text>
             </Box>
             <Text color="gray.500" fontSize="sm">
@@ -4340,7 +4340,7 @@ function Reports() {
             <Box>
               <Heading size="md">Trial Balance</Heading>
               <Text color="gray.600" mt={1}>
-                Prototype posted journal entries only: total debit and credit movement by general ledger account.
+                Posted journal entries: total debit and credit movement by general ledger account.
               </Text>
             </Box>
             <Badge colorScheme={trialBalanceSummary.status === "Balanced" ? "green" : "orange"}>
@@ -4558,7 +4558,7 @@ function AdminUserManagement({ user }) {
         role: "Membership Officer",
         defaultView: "members"
       });
-      setMessage(`Created ${form.username}. Prototype password is ${defaultPassword}.`);
+      setMessage(`Created ${form.username}. Temporary password is ${defaultPassword}.`);
       await loadUsers();
     } catch (requestError) {
       setError(requestError.message);
@@ -4597,7 +4597,7 @@ function AdminUserManagement({ user }) {
           <Heading size="md">{canManageUsers ? "User Management" : "User / Security Review"}</Heading>
           <Text color="gray.600" mt={1}>
             {canManageUsers
-              ? "Staff accounts use the shared prototype password while role and access testing continues."
+              ? "Staff accounts use a shared temporary password during demonstration and access review."
               : "Read-only staff account directory for compliance and access review."}
           </Text>
         </Box>
@@ -4661,7 +4661,7 @@ function AdminUserManagement({ user }) {
         </Grid>
         <Flex justify="space-between" align="center" gap={4} wrap="wrap" mt={4}>
           <Text color="gray.600" fontSize="sm">
-            New users sign in with the prototype password: {defaultPassword}
+            New users sign in with the temporary password: {defaultPassword}
           </Text>
           <Button colorScheme="green" type="submit" isLoading={busy}>
             Create User
@@ -4838,7 +4838,7 @@ function AdminDemoMaintenance({ user }) {
           <Box>
             <Heading size="md">Demo Maintenance</Heading>
             <Text color="gray.600" mt={1}>
-              Admin-only controls for the hosted prototype data.
+              Admin-only controls for the hosted demonstration data.
             </Text>
           </Box>
           <Badge colorScheme={status?.database === "postgres" ? "green" : "gray"}>
@@ -4923,7 +4923,7 @@ function AdminDemoMaintenance({ user }) {
       <Box bg="white" borderWidth="1px" borderColor="red.200" borderRadius="lg" p={5}>
         <Heading size="sm">Reset To Demo Seed</Heading>
         <Text color="gray.600" mt={1}>
-          This clears hosted tester input and restores the original seeded prototype rows.
+          This clears demonstration input and restores the original sample records.
           A pre-reset backup downloads automatically.
         </Text>
         <FormControl mt={4}>
@@ -6164,7 +6164,7 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
       <Box>
         <Heading size="md">Teller Cash Funding</Heading>
         <Text color="gray.600" mt={1}>
-          Establish controlled Teller custody before cash payouts. Accounting transfer posting follows in v1c.
+          Establish controlled Teller custody before cash payouts and retain the related accounting evidence.
         </Text>
       </Box>
 
@@ -6760,7 +6760,7 @@ function LoanCollections({ user }) {
         <Box>
           <Heading size="md">Loan Collections</Heading>
           <Text color="gray.600" mt={1}>
-            Record the next exact scheduled installment. Partial, excess, and skipped-installment payments follow in later slices.
+            Record the next exact scheduled installment. Partial, excess, and skipped-installment payments are not yet enabled.
           </Text>
         </Box>
         <Button size="sm" variant="outline" onClick={loadCollections}>Refresh</Button>
@@ -6988,8 +6988,7 @@ function Placeholder({ view }) {
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={6}>
       <Heading size="md">{viewTitles[view]}</Heading>
       <Text mt={3} color="gray.600">
-        This screen is reserved for the next spike slice. The first iteration proves
-        login, role navigation, dashboard loading, and member listing.
+        This module is reserved for a future phase of the cooperative workflow.
       </Text>
     </Box>
   );
@@ -7037,7 +7036,7 @@ function Shell({ user, onLogout }) {
       <GridItem bg="green.900" color="white" p={5} minW={0}>
         <Heading size="md">TASETEMCO</Heading>
         <Text color="green.100" mt={1} fontSize="sm">
-          React spike
+          Cooperative Management System
         </Text>
         <VStack align="stretch" mt={8}>
           {navItems.map((item) => (

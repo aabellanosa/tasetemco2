@@ -1362,7 +1362,7 @@ function allocateWholePesos(total, count) {
 
 function computeFlatLoanSchedule(application, firstPaymentDate) {
   if (application.interestMethod !== "Flat Interest") {
-    return { error: "This spike currently supports Flat Interest computations only." };
+    return { error: "The current loan computation supports Flat Interest only." };
   }
 
   if (!isValidIsoDate(firstPaymentDate) || !firstPaymentDate) {
@@ -2715,7 +2715,7 @@ async function validateMemberImportRows(inputRows) {
   }
 
   if (inputRows.length > 250) {
-    return { error: "Prototype import batches are limited to 250 rows." };
+    return { error: "Import batches are limited to 250 rows." };
   }
 
   const db = await getPool();
@@ -5122,7 +5122,7 @@ async function getControlAccountReconciliationReport() {
 
   return {
     generatedAt: new Date().toISOString(),
-    basis: "Prototype activity only",
+    basis: "Recorded system activity",
     rows,
     summary: {
       accountCount: rows.length,
@@ -5169,7 +5169,7 @@ async function getTrialBalanceReport() {
 
   return {
     generatedAt: new Date().toISOString(),
-    basis: "Prototype posted journal entries only",
+    basis: "Posted journal entries",
     rows,
     summary: {
       accountCount: rows.length,
@@ -5240,7 +5240,7 @@ async function getStatementOfFinancialConditionReport() {
 
   return {
     generatedAt: new Date().toISOString(),
-    basis: "Prototype posted journal entries only; income and expense accounts are presented as current period surplus or deficit until formal closing entries exist.",
+    basis: "Posted journal entries; income and expense accounts are presented as current period surplus or deficit until formal closing entries exist.",
     sections: {
       assets,
       liabilities,
