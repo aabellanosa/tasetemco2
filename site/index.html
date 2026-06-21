@@ -233,6 +233,12 @@
           Cash in Bank, while posting the loan release in the same action. Funding keeps its
           Acknowledged custody status and displays its linked journal. Run the additive database
           migration before deployment; no seed is required.
+          Loan Collection v1a lets Teller collect the earliest unpaid installment of a posted
+          loan. The scheduled principal, interest, and total cannot be edited; early payment is
+          allowed after release, while partial and excess payments are deferred. The collection
+          enters the Open teller batch as cash-in. Teller submits cash count from Members and
+          Bookkeeper reviews and posts debit Cash on Hand, credit Loans Receivable, and credit
+          Interest Income. Run the additive migration before deployment; no seed is required.
           Acknowledgment opens the Releases tab. The Release button requires a computed loan
           marked For Release and an Open batch; it does not depend on another teller transaction.
           Initial member payment is one-time only; later member activity uses the normal
