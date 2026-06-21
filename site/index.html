@@ -160,96 +160,40 @@
           </table>
         </div>
         <p class="table-note">
-          Process under Membership means the role can encode member applications.
-          Approve means the role can convert approved applications into active members.
-          System Administrator and Membership Officer can create member applications,
-          while System Administrator approves them. Teller / Cashier records initial
-          payments and Accountant / Bookkeeper posts reviewed teller batches.
-          Member imports map and validate Excel or CSV rows before approved records become
-          active member profiles. Imported profiles begin with zero financial balances.
-          Opening balance imports are reviewed separately so confirmed share capital and
-          savings can be applied with source references and audit evidence.
-          The Ledger workspace is organized into role-aware tabs for Batch Review, Opening
-          Balances, Batch History, and Posted Entries so users open one ledger work area at a time.
-          Opening balance rows with issues remain unapplied for correction. Finalized rows
-          retain actor, timing, source, and cutover evidence and cannot run twice.
-          Finalization creates one balanced journal: debit Opening Balance Clearing,
-          credit Share Capital, and credit Savings Deposits Payable. The journal is linked
-          to the batch and appears in Posted Entries and reports.
-          Member Statements show finalized opening balances with their batch, cutover
-          date, source reference, and journal number. Member Subsidiary Ledger separates
-          opening share capital and savings from normal transaction movements.
-          The Loans workspace provides reusable Regular, Emergency, and Small Business
-          loan templates. Admin maintains amount and term
-          limits, rates, fees, penalties, status, and accounting mappings. Manager, Loan
-          Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only
-          product access.
-          The Loan Officer creates and edits Draft applications, with active-member checks
-          and product amount and term
-          limits enforced. Product rates, methods, fees, penalties, and accounting mappings
-          are copied into the application as an audit snapshot. Submitting makes the record
-          read-only and visible to Admin, Manager, Credit Committee / Approver, and Auditor.
-          Loan Credit Review lets the Credit Committee / Approver record assessment notes,
-          recommended amount and term, decision date, and remarks before choosing Approved,
-          Rejected, or Returned. Returned applications go back to the originating Loan Officer
-          for revision and resubmission. Approval cannot exceed the member's request, and
-          decided applications are immutable.
-          The originating Loan Officer selects the first payment date and previews the Flat Interest
-          schedule, processing fee, net proceeds, total payable, and maturity, then saves it
-          once as For Release. Whole-peso rounding differences go to the final installment.
-          Teller / Cashier verifies the
-          computed amounts, enters a unique voucher and release date, and confirms cash equal
-          to net proceeds. The release is immutable, linked to the Open teller batch, and
-          counted as cash-out. Bookkeeper posts the Reviewed batch:
-          debit Loans Receivable for principal, credit Cash for net proceeds, and credit
-          Processing Fee Income for the fee. The release and loan become Posted and retain
-          their linked journal number.
-          Teller Cash Funding establishes custody before payouts. Bookkeeper prepares
-          funding from an identified source, Manager approves it, and the assigned Teller
-          acknowledges it into the Open batch. Expected ending cash is Opening Funding plus
-          receipts minus payouts, and batch details retain all three control actors.
-          Bookkeeper sees pending loan-release demand, available
-          teller cash, and shortage. Teller cannot release a loan whose net proceeds exceed
-          acknowledged funding plus current-batch receipts less existing payouts. Prepared or
-          Approved funding counts only after Teller acknowledgment.
-          When Bookkeeper posts the Reviewed batch, the system debits Cash on Hand and
-          credits the funding source, normally
-          Cash in Bank, while posting the loan release in the same action. Funding keeps its
-          Acknowledged custody status and displays its linked journal.
-          Teller can collect the earliest unpaid installment of a posted
-          loan. The scheduled principal, interest, and total cannot be edited; early payment is
-          allowed after release, while partial and excess payments are deferred. The collection
-          enters the Open teller batch as cash-in. Teller submits cash count from Members and
-          Bookkeeper reviews and posts debit Cash on Hand, credit Loans Receivable, and credit
-          Interest Income.
-          Acknowledgment opens the Releases tab. The Release button requires a computed loan
-          marked For Release and an Open batch; it does not depend on another teller transaction.
-          Initial member payment is one-time only; later member activity uses the normal
-          savings deposit, savings withdrawal, or share capital contribution workflows.
-          Cash-in OR/reference numbers cannot be reused across initial payments, share capital
-          contributions, savings deposits, and loan collections. Withdrawal voucher/reference
-          numbers cannot be reused across withdrawals.
-          Teller / Cashier can submit actual cash counted for the unposted batch, while
-          Accountant / Bookkeeper reviews expected cash, actual cash, and variance before posting.
-          The implemented batch status flow is Open to Submitted to Reviewed to Closed, then
-          the next teller batch opens for new activity.
-          Posting is allowed only after review. Bookkeeper posts the reviewed batch in one
-          action, while the system keeps source-level journal entries for audit traceability.
-          Non-zero variance requires a Bookkeeper variance note before review.
-          Official close records closed by, closed time, and optional closing note.
-          Teller Batch History remains available as read-only evidence after closing, and
-          each row can be opened to inspect cash count evidence, transactions, and linked journals.
-          Reports now use a selector layout so users open one report at a time.
-          Daily Cash Position summarizes teller batch cash evidence in Reports.
-          Member Subsidiary Ledger summarizes member share capital and savings balances in Reports.
-          Control Account Reconciliation compares recorded subsidiary activity to general ledger controls.
-          Trial Balance summarizes posted GL debit and credit totals and flags whether the ledger is balanced.
-          Statement of Financial Condition presents assets, liabilities, and equity from posted ledger balances.
-          The Members workflow refreshes automatically, with a
-          manual Refresh button available when users want the latest state immediately.
-          The Members screen is now organized into role-aware tabs for Applications,
-          Imports, Teller Transactions, Member Directory, and Transaction History.
+          Process means the role may encode or prepare a transaction. Approve, Post, and
+          Admin identify controlled actions reserved for the assigned role.
         </p>
+
+        <div class="capability-grid">
+          <article>
+            <h3>Membership and Balances</h3>
+            <p>
+              Staff can process member applications, import validated profiles, apply
+              approved opening balances, and review member statements with source evidence.
+            </p>
+          </article>
+          <article>
+            <h3>Loans</h3>
+            <p>
+              Loan staff can prepare applications, record credit decisions, generate
+              amortization schedules, release funded loans, and collect scheduled installments.
+            </p>
+          </article>
+          <article>
+            <h3>Teller and Accounting</h3>
+            <p>
+              Teller transactions move through cash count, Bookkeeper review, posting, and
+              official batch closing with linked journals and variance controls.
+            </p>
+          </article>
+          <article>
+            <h3>Reports and Oversight</h3>
+            <p>
+              Authorized users can review cash position, subsidiary balances, reconciliation,
+              trial balance, financial condition, user access, and audit evidence.
+            </p>
+          </article>
+        </div>
       </section>
 
       <section class="section" id="workflows">

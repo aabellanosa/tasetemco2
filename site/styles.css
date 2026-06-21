@@ -163,6 +163,31 @@ td:first-child {
   line-height: 1.5;
 }
 
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(210px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.capability-grid article {
+  border-left: 3px solid var(--green);
+  background: white;
+  padding: 16px;
+}
+
+.capability-grid h3 {
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.capability-grid p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .workflow-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(210px, 1fr));
@@ -217,6 +242,7 @@ footer {
 }
 
 @media (max-width: 960px) {
+  .capability-grid,
   .workflow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -241,6 +267,7 @@ footer {
     margin-top: 72px;
   }
 
+  .capability-grid,
   .workflow-grid {
     grid-template-columns: 1fr;
   }
