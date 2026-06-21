@@ -183,9 +183,11 @@ Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Te
 
 Loan Release v1b brings released loans into the reviewed-batch posting control. After Teller submits cash count and Bookkeeper marks the batch Reviewed, one-button posting debits Loans Receivable for principal, credits Cash on Hand for net proceeds, and credits Processing Fee Income for the deducted fee. The release, loan, and application become `Posted`, and release history and batch details retain the journal number. Reposting cannot create a duplicate journal.
 
-Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares funding with assigned Teller, amount, source account, date, and unique reference; General Manager approves it; the assigned Teller acknowledges receipt into the Open batch. Acknowledged funding becomes Opening Funding, so expected ending cash is `Opening Funding + Cash In - Cash Out`. Batch details retain the control evidence. This slice does not yet create the funding journal or block payouts exceeding available cash.
+Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares funding with assigned Teller, amount, source account, date, and unique reference; General Manager approves it; the assigned Teller acknowledges receipt into the Open batch. Acknowledged funding becomes Opening Funding, so expected ending cash is `Opening Funding + Cash In - Cash Out`. Batch details retain the control evidence.
 
 After Teller acknowledges funding, the Loans workspace opens the Releases tab. A Release button depends only on a computed loan having `For Release` status and an Open teller batch; it does not require an unrelated deposit or member transaction. An empty queue means no computed loan is currently marked `For Release`.
+
+Teller Cash Funding v1b gives Bookkeeper a funding-demand view of every loan marked `For Release`, including net proceeds, total demand, acknowledged funding, other receipts, existing payouts, available teller cash, and shortage. Teller sees the available cash in the release queue. The UI disables and the API rejects any release whose net proceeds exceed `Acknowledged Funding + Cash In - Cash Out`. Prepared or Approved funding does not count until Teller acknowledges it.
 
 | Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |

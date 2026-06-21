@@ -248,6 +248,8 @@ Teller Cash Funding v1a introduces a controlled custody lifecycle before payouts
 
 Funding acknowledgment routes Teller directly to the Releases tab. Loan release availability is independent of other teller transactions: the button appears when a computed loan has `For Release` status and the teller batch is Open. If the queue is empty, the loan must first be approved and saved from the Loan Officer's Computations tab.
 
+Teller Cash Funding v1b adds funding-demand visibility and the payout guard. Accountant / Bookkeeper sees the loans marked `For Release` and their combined net proceeds beside acknowledged funding, other Open-batch receipts, existing payouts, available teller cash, and shortage. Teller/Cashier sees the same available cash in the release queue. A release is disabled in the UI and independently rejected by the backend when net proceeds exceed available cash. Postgres locks and recalculates the Open batch before insert so concurrent releases cannot spend the same funding. Prepared and Approved amounts do not count until Teller acknowledges them.
+
 | Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -694,7 +696,9 @@ Loan Release v1b requires no new migration. It uses the journal tables and posti
 
 Teller Cash Funding v1a adds the `teller_fundings` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. No seed is required. Funding follows `Prepared -> Approved -> Acknowledged`; only acknowledged funding contributes to Opening Funding.
 
-This removes artificial teller cash-count variance when sufficient funding is acknowledged, but does not yet post the source-account transfer to the general ledger. Teller Cash Funding v1b should block payouts exceeding available acknowledged cash. Teller Cash Funding v1c should post the funding transfer, such as debit Cash on Hand and credit Cash in Bank. Until v1c, batch cash can be correct while GL Cash on Hand can still become negative.
+Teller Cash Funding v1b requires no schema migration and no seed. It derives available cash as `Acknowledged Funding + Cash In - Cash Out` from existing records and blocks releases that exceed it.
+
+This removes artificial teller cash-count variance when sufficient funding is acknowledged, but does not yet post the source-account transfer to the general ledger. Teller Cash Funding v1c should post the funding transfer, such as debit Cash on Hand and credit Cash in Bank. Until v1c, batch cash can be correct while GL Cash on Hand can still become negative.
 
 ## 7. Audit Trail Requirements
 

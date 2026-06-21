@@ -223,6 +223,11 @@
           funding from an identified source, Manager approves it, and the assigned Teller
           acknowledges it into the Open batch. Expected ending cash is Opening Funding plus
           receipts minus payouts, and batch details retain all three control actors.
+          Teller Cash Funding v1b shows Bookkeeper the pending loan-release demand, available
+          teller cash, and shortage. Teller cannot release a loan whose net proceeds exceed
+          acknowledged funding plus current-batch receipts less existing payouts. Prepared or
+          Approved funding counts only after Teller acknowledgment. This control requires no
+          new migration or seed.
           Acknowledgment opens the Releases tab. The Release button requires a computed loan
           marked For Release and an Open batch; it does not depend on another teller transaction.
           Initial member payment is one-time only; later member activity uses the normal
