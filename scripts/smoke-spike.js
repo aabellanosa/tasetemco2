@@ -2504,6 +2504,45 @@ async function run() {
       throw new Error("General Manager should approve prepared teller funding.");
     }
 
+    const unfundedLoanRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        releaseDate: "2026-07-01",
+        referenceNo: "LV-SMOKE-NO-FUNDING",
+        cashReleased: 12750
+      })
+    });
+    const unfundedLoanReleaseBody = await unfundedLoanRelease.json();
+
+    if (
+      unfundedLoanRelease.status !== 409 ||
+      !unfundedLoanReleaseBody.error?.includes("Insufficient teller cash")
+    ) {
+      throw new Error("Teller should not release a loan before sufficient cash is available.");
+    }
+
+    const fundingPositionBeforeFunding = await fetch(
+      `${baseUrl}/api/teller-funding-position`,
+      { headers: { Cookie: bookkeeperCookie } }
+    );
+    const fundingPositionBeforeFundingBody = await fundingPositionBeforeFunding.json();
+
+    if (
+      !fundingPositionBeforeFunding.ok ||
+      fundingPositionBeforeFundingBody.totalReleaseDemand !== 12750 ||
+      fundingPositionBeforeFundingBody.availableCash !== 0 ||
+      fundingPositionBeforeFundingBody.fundingShortage !== 12750 ||
+      !fundingPositionBeforeFundingBody.releaseQueue.some(
+        (loan) => loan.loanNo === smokeLoanNo && loan.netProceeds === 12750
+      )
+    ) {
+      throw new Error("Bookkeeper should see the For Release funding demand and current shortage.");
+    }
+
     const prepareTellerFunding = await fetch(`${baseUrl}/api/teller-fundings`, {
       method: "POST",
       headers: {
@@ -2588,6 +2627,21 @@ async function run() {
 
     if (duplicateFundingAcknowledgment.status !== 409) {
       throw new Error("Acknowledged teller funding should not be acknowledged twice.");
+    }
+
+    const fundingPositionAfterFunding = await fetch(
+      `${baseUrl}/api/teller-funding-position`,
+      { headers: { Cookie: tellerCookie } }
+    );
+    const fundingPositionAfterFundingBody = await fundingPositionAfterFunding.json();
+
+    if (
+      !fundingPositionAfterFunding.ok ||
+      fundingPositionAfterFundingBody.openingFunding !== 20000 ||
+      fundingPositionAfterFundingBody.availableCash !== 20000 ||
+      fundingPositionAfterFundingBody.fundingShortage !== 0
+    ) {
+      throw new Error("Acknowledged funding should clear the Teller release shortage.");
     }
 
     const tellerLoansBeforeRelease = await fetch(`${baseUrl}/api/loans`, {
@@ -2876,6 +2930,15 @@ async function run() {
 
     if (forbiddenMembershipReleases.status !== 403) {
       throw new Error("Membership Officer should not receive loan release access.");
+    }
+
+    const forbiddenMembershipFundingPosition = await fetch(
+      `${baseUrl}/api/teller-funding-position`,
+      { headers: { Cookie: cookie } }
+    );
+
+    if (forbiddenMembershipFundingPosition.status !== 403) {
+      throw new Error("Membership Officer should not receive Teller funding demand access.");
     }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);

@@ -6042,6 +6042,7 @@ function LoanComputations({ user }) {
 function TellerCashFunding({ user, onFundingAcknowledged }) {
   const [fundings, setFundings] = useState([]);
   const [tellers, setTellers] = useState([]);
+  const [position, setPosition] = useState(null);
   const [form, setForm] = useState({
     tellerUsername: "teller01",
     amount: 20000,
@@ -6060,9 +6061,13 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
   const loadFundings = useCallback(async () => {
     setError("");
     try {
-      const data = await api("/api/teller-fundings");
+      const [data, fundingPosition] = await Promise.all([
+        api("/api/teller-fundings"),
+        api("/api/teller-funding-position")
+      ]);
       setFundings(data.fundings);
       setTellers(data.tellers);
+      setPosition(fundingPosition);
       setForm((current) => ({
         ...current,
         tellerUsername:
@@ -6138,6 +6143,79 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
 
       {message ? <Text color="green.600">{message}</Text> : null}
       {error ? <Text color="red.500">{error}</Text> : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+          <Box>
+            <Heading size="sm">Release Funding Demand</Heading>
+            <Text color="gray.600" fontSize="sm" mt={1}>
+              Current For Release loans compared with acknowledged cash in the Open teller batch.
+            </Text>
+          </Box>
+          <Badge colorScheme={position?.fundingShortage > 0 ? "orange" : "green"} alignSelf="start">
+            {position?.fundingShortage > 0
+              ? `Shortage: ${formatMoney(position.fundingShortage)}`
+              : "Demand covered"}
+          </Badge>
+        </Flex>
+        <Grid templateColumns={{ base: "repeat(2, 1fr)", lg: "repeat(5, 1fr)" }} gap={4} mb={5}>
+          {[
+            ["Release Demand", position?.totalReleaseDemand || 0],
+            ["Acknowledged Funding", position?.openingFunding || 0],
+            ["Other Cash Receipts", position?.cashIn || 0],
+            ["Existing Cash Payouts", position?.cashOut || 0],
+            ["Available Teller Cash", position?.availableCash || 0]
+          ].map(([label, value]) => (
+            <Box key={label} minW={0}>
+              <Text color="gray.500" fontSize="xs">{label}</Text>
+              <Text fontWeight="bold">{formatMoney(value)}</Text>
+            </Box>
+          ))}
+        </Grid>
+        {canPrepare && position?.fundingShortage > 0 ? (
+          <Flex justify="flex-end" mb={4}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setForm((current) => ({
+                ...current,
+                amount: position.fundingShortage
+              }))}
+            >
+              Use Current Shortage
+            </Button>
+          </Flex>
+        ) : null}
+        <TableContainer>
+          <Table size="sm">
+            <Thead>
+              <Tr>
+                <Th>Loan</Th>
+                <Th>Member</Th>
+                <Th>Date Computed</Th>
+                <Th isNumeric>Net Proceeds</Th>
+                <Th>Status</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {(position?.releaseQueue || []).map((loan) => (
+                <Tr key={loan.loanNo}>
+                  <Td>{loan.loanNo}</Td>
+                  <Td>{loan.memberName}</Td>
+                  <Td>{formatDateTime(loan.computedAt)}</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(loan.netProceeds)}</Td>
+                  <Td><Badge colorScheme="purple">{loan.status}</Badge></Td>
+                </Tr>
+              ))}
+              {!position?.releaseQueue?.length ? (
+                <Tr>
+                  <Td colSpan={5} color="gray.500">No loans currently require release funding.</Td>
+                </Tr>
+              ) : null}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      </Box>
 
       {canPrepare ? (
         <Box as="form" onSubmit={prepareFunding} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
@@ -6312,6 +6390,7 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
 function LoanReleases({ user }) {
   const [loans, setLoans] = useState([]);
   const [releases, setReleases] = useState([]);
+  const [position, setPosition] = useState(null);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [form, setForm] = useState({
     releaseDate: new Date().toISOString().slice(0, 10),
@@ -6327,16 +6406,18 @@ function LoanReleases({ user }) {
   const loadReleases = useCallback(async () => {
     setError("");
     try {
-      const [loanRows, releaseRows] = await Promise.all([
+      const [loanRows, releaseRows, fundingPosition] = await Promise.all([
         api("/api/loans"),
-        api("/api/loan-releases")
+        api("/api/loan-releases"),
+        canCreate ? api("/api/teller-funding-position") : Promise.resolve(null)
       ]);
       setLoans(loanRows);
       setReleases(releaseRows);
+      setPosition(fundingPosition);
     } catch (requestError) {
       setError(requestError.message);
     }
-  }, []);
+  }, [canCreate]);
 
   useEffect(() => {
     loadReleases();
@@ -6395,7 +6476,17 @@ function LoanReleases({ user }) {
 
       {canCreate ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-          <Heading size="sm" mb={4}>For Release Queue</Heading>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+            <Box>
+              <Heading size="sm">For Release Queue</Heading>
+              <Text color="gray.600" fontSize="sm" mt={1}>
+                Available teller cash: {formatMoney(position?.availableCash || 0)}
+              </Text>
+            </Box>
+            <Badge colorScheme={position?.fundingShortage > 0 ? "orange" : "green"} alignSelf="start">
+              Queue shortage: {formatMoney(position?.fundingShortage || 0)}
+            </Badge>
+          </Flex>
           <TableContainer>
             <Table size="sm">
               <Thead>
@@ -6409,20 +6500,32 @@ function LoanReleases({ user }) {
                 </Tr>
               </Thead>
               <Tbody>
-                {readyLoans.map((loan) => (
-                  <Tr key={loan.loanNo}>
-                    <Td>{loan.loanNo}</Td>
-                    <Td>{loan.memberName}</Td>
-                    <Td isNumeric>{formatMoney(loan.principal)}</Td>
-                    <Td isNumeric>{formatMoney(loan.processingFee)}</Td>
-                    <Td isNumeric fontWeight="bold">{formatMoney(loan.netProceeds)}</Td>
-                    <Td>
-                      <Button size="sm" colorScheme="green" onClick={() => startRelease(loan)}>
-                        Release
-                      </Button>
-                    </Td>
-                  </Tr>
-                ))}
+                {readyLoans.map((loan) => {
+                  const shortage = Math.max(
+                    0,
+                    Number(loan.netProceeds || 0) - Number(position?.availableCash || 0)
+                  );
+                  return (
+                    <Tr key={loan.loanNo}>
+                      <Td>{loan.loanNo}</Td>
+                      <Td>{loan.memberName}</Td>
+                      <Td isNumeric>{formatMoney(loan.principal)}</Td>
+                      <Td isNumeric>{formatMoney(loan.processingFee)}</Td>
+                      <Td isNumeric fontWeight="bold">{formatMoney(loan.netProceeds)}</Td>
+                      <Td>
+                        <Button
+                          size="sm"
+                          colorScheme="green"
+                          onClick={() => startRelease(loan)}
+                          isDisabled={shortage > 0}
+                          title={shortage > 0 ? `Funding shortage: ${formatMoney(shortage)}` : ""}
+                        >
+                          {shortage > 0 ? `Short ${formatMoney(shortage)}` : "Release"}
+                        </Button>
+                      </Td>
+                    </Tr>
+                  );
+                })}
                 {!readyLoans.length ? (
                   <Tr>
                     <Td colSpan={6} color="gray.500">
@@ -6519,6 +6622,9 @@ function LoanReleases({ user }) {
                 </FormControl>
                 <Text color="gray.500" fontSize="sm">
                   Cash must exactly match net proceeds. Posting to the general ledger remains a Bookkeeper step.
+                </Text>
+                <Text color="gray.500" fontSize="sm">
+                  Available teller cash after existing batch activity: {formatMoney(position?.availableCash || 0)}
                 </Text>
               </VStack>
             ) : null}

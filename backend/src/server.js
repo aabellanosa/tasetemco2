@@ -1616,9 +1616,16 @@ async function releaseLoan(loanNo, body, user) {
     return batchResult;
   }
   const db = await getPool();
-  const releaseNo = await nextLoanReleaseNo();
 
   if (!db) {
+    const cashPosition = await getTellerCashPosition(batchResult.batch.id);
+    if (cashPosition.availableCash < validation.value.cashReleased) {
+      const shortage = validation.value.cashReleased - cashPosition.availableCash;
+      return {
+        error: `Insufficient teller cash. Available: ${cashPosition.availableCash}; required: ${validation.value.cashReleased}; shortage: ${shortage}.`,
+        statusCode: 409
+      };
+    }
     if (
       loanReleases.some(
         (item) => normalizeReferenceNo(item.referenceNo) === normalizeReferenceNo(validation.value.referenceNo)
@@ -1627,6 +1634,7 @@ async function releaseLoan(loanNo, body, user) {
     ) {
       return { error: "Release voucher or reference number already exists.", statusCode: 409 };
     }
+    const releaseNo = await nextLoanReleaseNo();
     const release = {
       releaseNo,
       loanNo,
@@ -1655,6 +1663,19 @@ async function releaseLoan(loanNo, body, user) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const [batchRows] = await connection.execute(
+      `SELECT batch_no AS id, status
+       FROM teller_batches
+       WHERE batch_no = ? LIMIT 1 FOR UPDATE`,
+      [batchResult.batch.id]
+    );
+    if (!batchRows[0] || batchRows[0].status !== "Open") {
+      await connection.rollback();
+      return {
+        error: "No open teller batch is available for the loan release.",
+        statusCode: 409
+      };
+    }
     const [loanRows] = await connection.execute(
       `SELECT loan_no AS loanNo, application_no AS applicationNo, member_no AS memberNo,
               member_name AS memberName, principal, processing_fee AS processingFee,
@@ -1666,6 +1687,15 @@ async function releaseLoan(loanNo, body, user) {
     if (!lockedLoan || lockedLoan.status !== "For Release") {
       await connection.rollback();
       return { error: "Only loans marked For Release can be released.", statusCode: 409 };
+    }
+    const cashPosition = await getTellerCashPosition(batchResult.batch.id, connection);
+    if (cashPosition.availableCash < validation.value.cashReleased) {
+      await connection.rollback();
+      const shortage = validation.value.cashReleased - cashPosition.availableCash;
+      return {
+        error: `Insufficient teller cash. Available: ${cashPosition.availableCash}; required: ${validation.value.cashReleased}; shortage: ${shortage}.`,
+        statusCode: 409
+      };
     }
     const [referenceRows] = await connection.execute(
       `SELECT reference_no FROM loan_releases WHERE UPPER(reference_no) = UPPER(?)
@@ -1679,6 +1709,7 @@ async function releaseLoan(loanNo, body, user) {
       return { error: "Release voucher or reference number already exists.", statusCode: 409 };
     }
 
+    const releaseNo = await nextLoanReleaseNo(connection);
     await connection.execute(
       `INSERT INTO loan_releases (
          release_no, loan_no, batch_no, member_no, member_name, principal,
@@ -1762,6 +1793,104 @@ async function getAcknowledgedFundingTotal(batchId) {
   return rows
     .filter((funding) => funding.batchId === batchId && funding.status === "Acknowledged")
     .reduce((sum, funding) => sum + funding.amount, 0);
+}
+
+async function getTellerCashPosition(batchId, connection = null) {
+  if (!batchId) {
+    return {
+      openingFunding: 0,
+      cashIn: 0,
+      cashOut: 0,
+      availableCash: 0
+    };
+  }
+
+  const db = connection || (await getPool());
+  if (!db) {
+    const openingFunding = await getAcknowledgedFundingTotal(batchId);
+    const summary = buildTellerBatchSummary(await listTellerBatchRows(batchId));
+    return {
+      openingFunding,
+      cashIn: summary.cashIn,
+      cashOut: summary.cashOut,
+      availableCash: openingFunding + summary.cashIn - summary.cashOut
+    };
+  }
+
+  const [rows] = await db.execute(
+    `SELECT
+       (SELECT COALESCE(SUM(amount), 0)
+        FROM teller_fundings
+        WHERE batch_no = ? AND status = 'Acknowledged') AS openingFunding,
+       (
+         (SELECT COALESCE(SUM(cash_received), 0)
+          FROM initial_member_payments
+          WHERE batch_no = ? AND status = 'Teller Batch')
+         +
+         (SELECT COALESCE(SUM(cash_received), 0)
+          FROM savings_deposits
+          WHERE batch_no = ? AND status = 'Teller Batch')
+         +
+         (SELECT COALESCE(SUM(cash_received), 0)
+          FROM share_capital_contributions
+          WHERE batch_no = ? AND status = 'Teller Batch')
+       ) AS cashIn,
+       (
+         (SELECT COALESCE(SUM(amount), 0)
+          FROM savings_withdrawals
+          WHERE batch_no = ? AND status = 'Teller Batch')
+         +
+         (SELECT COALESCE(SUM(cash_released), 0)
+          FROM loan_releases
+          WHERE batch_no = ? AND status = 'Teller Batch')
+       ) AS cashOut`,
+    [batchId, batchId, batchId, batchId, batchId, batchId]
+  );
+  const position = rows[0] || {};
+  const openingFunding = Number(position.openingFunding || 0);
+  const cashIn = Number(position.cashIn || 0);
+  const cashOut = Number(position.cashOut || 0);
+
+  return {
+    openingFunding,
+    cashIn,
+    cashOut,
+    availableCash: openingFunding + cashIn - cashOut
+  };
+}
+
+async function getTellerFundingPosition() {
+  const batches = await listTellerBatches();
+  const batch = batches.find((item) => item.status === "Open") || null;
+  const releaseQueue = (await listLoans())
+    .filter((loan) => loan.status === "For Release")
+    .map((loan) => ({
+      loanNo: loan.loanNo,
+      memberNo: loan.memberNo,
+      memberName: loan.memberName,
+      netProceeds: loan.netProceeds,
+      computedAt: loan.computedAt,
+      status: loan.status
+    }));
+  const cashPosition = await getTellerCashPosition(batch?.id || "");
+  const totalReleaseDemand = releaseQueue.reduce(
+    (sum, loan) => sum + Number(loan.netProceeds || 0),
+    0
+  );
+
+  return {
+    batch: batch
+      ? {
+          id: batch.id,
+          tellerUsername: batch.tellerUsername,
+          status: batch.status
+        }
+      : null,
+    releaseQueue,
+    totalReleaseDemand,
+    ...cashPosition,
+    fundingShortage: Math.max(0, totalReleaseDemand - cashPosition.availableCash)
+  };
 }
 
 async function nextTellerFundingNo(connection = null) {
@@ -7391,6 +7520,19 @@ app.get("/api/teller-fundings", async (request, response) => {
       )
       .map((item) => ({ username: item.username, name: item.name }))
   });
+});
+
+app.get("/api/teller-funding-position", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+  if (!hasPermission(user, "teller-fundings:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+  response.json(await getTellerFundingPosition());
 });
 
 app.post("/api/teller-fundings", async (request, response) => {
