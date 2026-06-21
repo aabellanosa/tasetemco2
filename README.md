@@ -213,6 +213,8 @@ Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares 
 
 Teller Cash Funding v1b gives Bookkeeper a funding-demand view of every loan currently marked `For Release`, including member, computation date, net proceeds, total demand, acknowledged funding, other batch receipts, existing payouts, available teller cash, and shortage. Teller sees the same available-cash control in the release queue. A release is disabled in the UI and rejected by the API when net proceeds exceed `Acknowledged Funding + Cash In - Cash Out`. The database path locks and rechecks the Open batch before insert so concurrent releases cannot spend the same available cash. Only acknowledged funding counts; Prepared or Approved funding does not.
 
+Teller Cash Funding v1c completes the accounting transfer during reviewed-batch posting. The Bookkeeper's existing `Post reviewed batch` action posts each unposted acknowledged funding as debit `1010 - Cash on Hand` and credit the funding's recorded source account, normally `1020 - Cash in Bank`. The same action continues posting the loan release journal. Funding remains `Acknowledged` as custody evidence while `postedBy`, `postedAt`, and `postedEntryNo` prove accounting completion. Batch details and funding history show the linked journal, closing is blocked while acknowledged funding remains unposted, and reposting cannot create duplicates.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |

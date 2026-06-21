@@ -250,6 +250,8 @@ Teller Cash Funding v1a introduces a controlled custody lifecycle before cash pa
 
 Teller Cash Funding v1b adds the funding-demand and payout guard. Accountant / Bookkeeper sees the loans currently marked `For Release` and their combined net proceeds beside acknowledged funding, other Open-batch cash receipts, existing cash payouts, available teller cash, and the remaining shortage. Teller/Cashier sees available cash in the release queue. The Release action is unavailable when a loan's net proceeds exceed available cash, and the backend independently rejects the attempt. Postgres locks the Open batch and recalculates cash before inserting the release, preventing two concurrent releases from consuming the same funding. Prepared and Approved amounts do not count until the assigned Teller acknowledges them.
 
+Teller Cash Funding v1c adds accounting completion to the reviewed-batch posting cycle. After Teller submits cash count and Bookkeeper reviews the batch, `Post reviewed batch` creates one funding-transfer journal for each unposted acknowledged funding: debit `1010 - Cash on Hand` and credit the source account recorded during preparation, normally `1020 - Cash in Bank`. Loan release and other teller transaction journals are posted by the same command. Funding remains `Acknowledged` because that status proves Teller custody; separate posting fields and the linked journal number prove that the transfer reached the general ledger. The batch cannot close while acknowledged funding remains unposted.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
@@ -724,7 +726,7 @@ Teller Cash Funding v1a adds the `teller_fundings` Postgres table. Run `npm run 
 
 Teller Cash Funding v1b requires no schema migration and no seed. It derives funding demand and available cash from existing loans, teller funding, receipts, withdrawals, and releases. Available cash is `Acknowledged Funding + Cash In - Cash Out`; the release API recalculates this under an Open-batch database lock before recording a payout.
 
-The next funding control is v1c, which posts the funding transfer such as debit Cash on Hand and credit Cash in Bank. Until v1c, operational batch cash can be correct while the general-ledger Cash on Hand balance can still become negative after a loan release journal.
+Teller Cash Funding v1c adds nullable `posted_by`, `posted_entry_no`, and `posted_at` columns to `teller_fundings`. Run `npm run pg:migrate` before starting or deploying this build. No seed is required. The migration is additive and preserves existing funding and tester data. Reviewed-batch posting is idempotent and rejects a funding source mapped to `1010 - Cash on Hand`.
 
 ## 7. Audit Trail Requirements
 

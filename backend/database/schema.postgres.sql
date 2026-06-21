@@ -385,5 +385,12 @@ CREATE TABLE IF NOT EXISTS teller_fundings (
   approved_by VARCHAR(80),
   approved_at TIMESTAMPTZ,
   acknowledged_by VARCHAR(80),
-  acknowledged_at TIMESTAMPTZ
+  acknowledged_at TIMESTAMPTZ,
+  posted_by VARCHAR(80),
+  posted_entry_no VARCHAR(40),
+  posted_at TIMESTAMPTZ
 );
+
+ALTER TABLE teller_fundings ADD COLUMN IF NOT EXISTS posted_by VARCHAR(80);
+ALTER TABLE teller_fundings ADD COLUMN IF NOT EXISTS posted_entry_no VARCHAR(40);
+ALTER TABLE teller_fundings ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ;

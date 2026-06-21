@@ -277,7 +277,10 @@ const requiredSchemaColumns = {
     "approved_by",
     "approved_at",
     "acknowledged_by",
-    "acknowledged_at"
+    "acknowledged_at",
+    "posted_by",
+    "posted_entry_no",
+    "posted_at"
   ]
 };
 
@@ -1761,7 +1764,10 @@ function mapTellerFunding(row) {
     approvedBy: row.approvedBy || "",
     approvedAt: row.approvedAt || "",
     acknowledgedBy: row.acknowledgedBy || "",
-    acknowledgedAt: row.acknowledgedAt || ""
+    acknowledgedAt: row.acknowledgedAt || "",
+    postedBy: row.postedBy || "",
+    postedEntryNo: row.postedEntryNo || "",
+    postedAt: row.postedAt || ""
   };
 }
 
@@ -1778,7 +1784,9 @@ async function listTellerFundings() {
             reference_no AS referenceNo, funding_date AS fundingDate, status,
             prepared_by AS preparedBy, prepared_at AS preparedAt,
             approved_by AS approvedBy, approved_at AS approvedAt,
-            acknowledged_by AS acknowledgedBy, acknowledged_at AS acknowledgedAt
+            acknowledged_by AS acknowledgedBy, acknowledged_at AS acknowledgedAt,
+            posted_by AS postedBy, posted_entry_no AS postedEntryNo,
+            posted_at AS postedAt
      FROM teller_fundings
      ORDER BY prepared_at DESC, id DESC`
   );
@@ -1927,6 +1935,9 @@ async function validateTellerFundingInput(body) {
   }
   if (!sourceAccountCode || !sourceAccountName) {
     return { error: "Funding source account is required." };
+  }
+  if (sourceAccountCode === "1010") {
+    return { error: "Funding source cannot be the Cash on Hand account." };
   }
   if (!referenceNo) {
     return { error: "Funding reference number is required." };
@@ -4085,6 +4096,23 @@ function buildLoanReleaseJournalLines(release) {
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
 
+function buildTellerFundingJournalLines(funding) {
+  return [
+    {
+      accountCode: "1010",
+      accountName: "Cash on Hand",
+      debit: funding.amount,
+      credit: 0
+    },
+    {
+      accountCode: funding.sourceAccountCode,
+      accountName: funding.sourceAccountName,
+      debit: 0,
+      credit: funding.amount
+    }
+  ];
+}
+
 async function approveMemberApplication(applicationId, user) {
   const db = await getPool();
 
@@ -4569,7 +4597,10 @@ async function getTellerBatchDetails(batchId) {
     (funding) => funding.batchId === batchId && funding.status === "Acknowledged"
   );
   const postedEntryNos = new Set(
-    transactions.map((transaction) => transaction.postedEntryNo).filter((entryNo) => Boolean(entryNo))
+    [
+      ...transactions.map((transaction) => transaction.postedEntryNo),
+      ...fundings.map((funding) => funding.postedEntryNo)
+    ].filter((entryNo) => Boolean(entryNo))
   );
   const linkedJournalEntries = (await listJournalEntries()).filter((entry) => postedEntryNos.has(entry.id));
 
@@ -6471,6 +6502,126 @@ async function postLoanRelease(releaseId, user) {
   }
 }
 
+async function postTellerFunding(fundingNo, user) {
+  const db = await getPool();
+
+  if (!db) {
+    const funding = tellerFundings.find((item) => item.fundingNo === fundingNo);
+    if (!funding) {
+      return { error: "Teller funding was not found.", statusCode: 404 };
+    }
+    if (funding.status !== "Acknowledged" || funding.postedEntryNo) {
+      return { error: "Only unposted acknowledged teller funding can be posted.", statusCode: 409 };
+    }
+    if (funding.sourceAccountCode === "1010") {
+      return { error: "Funding source cannot be the Cash on Hand account.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(funding.batchId);
+    if (batchResult.error) {
+      return batchResult;
+    }
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "Teller Cash Funding",
+      sourceNo: funding.fundingNo,
+      description: `Teller cash funding - ${funding.tellerUsername}`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildTellerFundingJournalLines(funding)
+    };
+    funding.postedBy = user.username;
+    funding.postedEntryNo = entry.id;
+    funding.postedAt = entry.postedAt;
+    journalEntries.unshift(entry);
+    return { funding: mapTellerFunding(funding), entry };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [fundingRows] = await connection.execute(
+      `SELECT funding_no AS fundingNo, batch_no AS batchId,
+              teller_username AS tellerUsername, amount,
+              source_account_code AS sourceAccountCode,
+              source_account_name AS sourceAccountName, status,
+              COALESCE(posted_entry_no, '') AS postedEntryNo
+       FROM teller_fundings
+       WHERE funding_no = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [fundingNo]
+    );
+    const funding = fundingRows[0];
+    if (!funding) {
+      await connection.rollback();
+      return { error: "Teller funding was not found.", statusCode: 404 };
+    }
+    if (funding.status !== "Acknowledged" || funding.postedEntryNo) {
+      await connection.rollback();
+      return { error: "Only unposted acknowledged teller funding can be posted.", statusCode: 409 };
+    }
+    if (funding.sourceAccountCode === "1010") {
+      await connection.rollback();
+      return { error: "Funding source cannot be the Cash on Hand account.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(funding.batchId, connection);
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
+    }
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue
+       FROM journal_entries
+       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
+    );
+    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    await connection.execute(
+      `INSERT INTO journal_entries (
+         entry_no, source_type, source_no, description, posted_by
+       ) VALUES (?, 'Teller Cash Funding', ?, ?, ?)`,
+      [entryNo, funding.fundingNo, `Teller cash funding - ${funding.tellerUsername}`, user.username]
+    );
+    const lines = buildTellerFundingJournalLines(funding);
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (
+           entry_no, account_code, account_name, debit, credit
+         ) VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+    await connection.execute(
+      `UPDATE teller_fundings
+       SET posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE funding_no = ?`,
+      [user.username, entryNo, funding.fundingNo]
+    );
+    await connection.commit();
+    return {
+      funding: {
+        ...mapTellerFunding(funding),
+        postedBy: user.username,
+        postedEntryNo: entryNo,
+        postedAt: new Date().toISOString()
+      },
+      entry: {
+        id: entryNo,
+        sourceType: "Teller Cash Funding",
+        sourceNo: funding.fundingNo,
+        description: `Teller cash funding - ${funding.tellerUsername}`,
+        postedBy: user.username,
+        postedAt: new Date().toISOString(),
+        lines
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function postTellerBatchRow(row, user) {
   if (row.batchType === "Savings Deposit") {
     return postSavingsDeposit(row.id, user);
@@ -6498,19 +6649,40 @@ async function postReviewedTellerBatch(batchId, user) {
     return batchResult;
   }
 
+  const fundings = (await listTellerFundings()).filter(
+    (funding) =>
+      funding.batchId === batchId &&
+      funding.status === "Acknowledged" &&
+      !funding.postedEntryNo
+  );
   const rows = await listTellerBatchRows(batchId);
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && fundings.length === 0) {
     return {
       batch: batchResult.batch,
       postedCount: 0,
+      fundingPostedCount: 0,
+      transactionPostedCount: 0,
       entries: [],
       results: [],
-      message: "All transactions in this batch are already posted."
+      message: "All transactions and acknowledged funding in this batch are already posted."
     };
   }
 
   const results = [];
+
+  for (const funding of fundings) {
+    const result = await postTellerFunding(funding.fundingNo, user);
+    if (result.error) {
+      return result;
+    }
+    results.push({
+      id: funding.fundingNo,
+      batchType: "Teller Cash Funding",
+      memberName: funding.tellerUsername,
+      entry: result.entry
+    });
+  }
 
   for (const row of rows) {
     const result = await postTellerBatchRow(row, user);
@@ -6531,6 +6703,8 @@ async function postReviewedTellerBatch(batchId, user) {
   return {
     batch: batchResult.batch,
     postedCount: results.length,
+    fundingPostedCount: fundings.length,
+    transactionPostedCount: rows.length,
     entries: results.map((result) => result.entry),
     results
   };
@@ -6732,9 +6906,18 @@ async function reviewTellerBatch(batchId, input, user) {
 
 async function closeTellerBatch(batchId, input, user) {
   const unpostedRows = await listTellerBatchRows(batchId);
+  const unpostedFundings = (await listTellerFundings()).filter(
+    (funding) =>
+      funding.batchId === batchId &&
+      funding.status === "Acknowledged" &&
+      !funding.postedEntryNo
+  );
 
-  if (unpostedRows.length > 0) {
-    return { error: "Post all teller batch transactions before closing the batch.", statusCode: 409 };
+  if (unpostedRows.length > 0 || unpostedFundings.length > 0) {
+    return {
+      error: "Post all teller batch transactions and acknowledged funding before closing the batch.",
+      statusCode: 409
+    };
   }
 
   const db = await getPool();
@@ -8291,9 +8474,15 @@ app.get("/api/ledger", async (request, response) => {
 
   const activeBatch = hasPermission(user, "teller-batches:view") ? await getCurrentTellerBatch(user) : null;
   const openingFunding = activeBatch ? await getAcknowledgedFundingTotal(activeBatch.id) : 0;
+  const activeBatchFundings = activeBatch
+    ? (await listTellerFundings()).filter(
+        (funding) => funding.batchId === activeBatch.id && funding.status === "Acknowledged"
+      )
+    : [];
   response.json({
     activeBatch,
     openingFunding,
+    unpostedFundingCount: activeBatchFundings.filter((funding) => !funding.postedEntryNo).length,
     tellerBatch: activeBatch ? await listTellerBatchRows(activeBatch.id) : await listTellerBatchRows(),
     tellerBatches: hasPermission(user, "teller-batches:view") ? await listTellerBatches() : [],
     latestCashCount: hasPermission(user, "teller-cash-counts:view") ? await getLatestTellerCashCount() : null,

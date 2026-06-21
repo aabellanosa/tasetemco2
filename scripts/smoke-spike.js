@@ -2840,6 +2840,9 @@ async function run() {
     const postedReleaseResult = postReleaseBatchBody.results?.find(
       (result) => result.id === smokeReleaseNo && result.batchType === "Loan Release"
     );
+    const postedFundingResult = postReleaseBatchBody.results?.find(
+      (result) => result.id === smokeFundingNo && result.batchType === "Teller Cash Funding"
+    );
     const releaseDebitTotal = postedReleaseResult?.entry.lines.reduce(
       (sum, line) => sum + Number(line.debit || 0),
       0
@@ -2857,18 +2860,74 @@ async function run() {
     const releaseFeeLine = postedReleaseResult?.entry.lines.find(
       (line) => line.accountCode === "4030" && line.credit === 250
     );
+    const fundingDebitTotal = postedFundingResult?.entry.lines.reduce(
+      (sum, line) => sum + Number(line.debit || 0),
+      0
+    );
+    const fundingCreditTotal = postedFundingResult?.entry.lines.reduce(
+      (sum, line) => sum + Number(line.credit || 0),
+      0
+    );
+    const fundingCashLine = postedFundingResult?.entry.lines.find(
+      (line) => line.accountCode === "1010" && line.debit === 20000
+    );
+    const fundingSourceLine = postedFundingResult?.entry.lines.find(
+      (line) => line.accountCode === "1020" && line.credit === 20000
+    );
 
     if (
       !postReleaseBatch.ok ||
-      postReleaseBatchBody.postedCount !== 1 ||
+      postReleaseBatchBody.postedCount !== 2 ||
+      postReleaseBatchBody.transactionPostedCount !== 1 ||
+      postReleaseBatchBody.fundingPostedCount !== 1 ||
       !postedReleaseResult ||
+      !postedFundingResult ||
       releaseDebitTotal !== 13000 ||
       releaseCreditTotal !== 13000 ||
       !releaseReceivableLine ||
       !releaseCashLine ||
-      !releaseFeeLine
+      !releaseFeeLine ||
+      fundingDebitTotal !== 20000 ||
+      fundingCreditTotal !== 20000 ||
+      !fundingCashLine ||
+      !fundingSourceLine
     ) {
-      throw new Error("Bookkeeper should post a balanced loan release journal from the reviewed batch.");
+      throw new Error("Bookkeeper should post balanced funding and loan release journals from the reviewed batch.");
+    }
+
+    const postedTellerFundings = await fetch(`${baseUrl}/api/teller-fundings`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const postedTellerFundingsBody = await postedTellerFundings.json();
+    const postedFunding = postedTellerFundingsBody.fundings?.find(
+      (funding) => funding.fundingNo === smokeFundingNo
+    );
+
+    if (
+      !postedTellerFundings.ok ||
+      postedFunding?.status !== "Acknowledged" ||
+      postedFunding?.postedBy !== "bookkeeper" ||
+      postedFunding?.postedEntryNo !== postedFundingResult.entry.id
+    ) {
+      throw new Error("Acknowledged funding should retain custody status and expose its journal evidence.");
+    }
+
+    const postedReleaseBatchDetails = await fetch(
+      `${baseUrl}/api/teller-batches/${releaseLoanBody.release.batchId}`,
+      { headers: { Cookie: bookkeeperCookie } }
+    );
+    const postedReleaseBatchDetailsBody = await postedReleaseBatchDetails.json();
+
+    if (
+      !postedReleaseBatchDetails.ok ||
+      !postedReleaseBatchDetailsBody.journalEntries.some(
+        (entry) => entry.id === postedFundingResult.entry.id
+      ) ||
+      !postedReleaseBatchDetailsBody.journalEntries.some(
+        (entry) => entry.id === postedReleaseResult.entry.id
+      )
+    ) {
+      throw new Error("Batch details should link both funding and loan release journal entries.");
     }
 
     const postedLoanReleases = await fetch(`${baseUrl}/api/loan-releases`, {
@@ -2903,8 +2962,13 @@ async function run() {
     );
     const repostReleaseBatchBody = await repostReleaseBatch.json();
 
-    if (!repostReleaseBatch.ok || repostReleaseBatchBody.postedCount !== 0) {
-      throw new Error("A posted loan release should not create a duplicate journal entry.");
+    if (
+      !repostReleaseBatch.ok ||
+      repostReleaseBatchBody.postedCount !== 0 ||
+      repostReleaseBatchBody.fundingPostedCount !== 0 ||
+      repostReleaseBatchBody.transactionPostedCount !== 0
+    ) {
+      throw new Error("Posted funding and loan release should not create duplicate journal entries.");
     }
 
     const forbiddenLoanOfficerRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {

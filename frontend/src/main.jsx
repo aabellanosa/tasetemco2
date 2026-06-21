@@ -3172,6 +3172,7 @@ function Ledger({ user }) {
   const [latestCashCount, setLatestCashCount] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
   const [openingFunding, setOpeningFunding] = useState(0);
+  const [unpostedFundingCount, setUnpostedFundingCount] = useState(0);
   const [memberLookup, setMemberLookup] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -3212,6 +3213,7 @@ function Ledger({ user }) {
       setLatestCashCount(data.latestCashCount);
       setJournalEntries(data.journalEntries);
       setOpeningFunding(Number(data.openingFunding || 0));
+      setUnpostedFundingCount(Number(data.unpostedFundingCount || 0));
       setMemberLookup(lookupRows);
       if (!data.activeBatch || data.activeBatch.status !== "Submitted" || data.activeBatch.variance === 0) {
         setVarianceNote("");
@@ -3244,7 +3246,7 @@ function Ledger({ user }) {
       });
       setMessage(
         data.postedCount > 0
-          ? `${data.postedCount} teller batch transaction${data.postedCount === 1 ? "" : "s"} posted.`
+          ? `${data.transactionPostedCount} teller transaction${data.transactionPostedCount === 1 ? "" : "s"} and ${data.fundingPostedCount} funding transfer${data.fundingPostedCount === 1 ? "" : "s"} posted.`
           : data.message
       );
       await loadLedger();
@@ -3373,7 +3375,7 @@ function Ledger({ user }) {
                           size="sm"
                           colorScheme="green"
                           onClick={postReviewedBatch}
-                          isDisabled={tellerBatch.length === 0}
+                          isDisabled={tellerBatch.length === 0 && unpostedFundingCount === 0}
                         >
                           Post reviewed batch
                         </Button>
@@ -3383,7 +3385,7 @@ function Ledger({ user }) {
                           size="sm"
                           colorScheme="green"
                           onClick={closeConfirmation.onOpen}
-                          isDisabled={tellerBatch.length > 0}
+                          isDisabled={tellerBatch.length > 0 || unpostedFundingCount > 0}
                         >
                           Close and open next
                         </Button>
@@ -3429,7 +3431,7 @@ function Ledger({ user }) {
                     </Box>
                   </Grid>
                   <Text mt={3} color="gray.600" fontSize="sm">
-                    Post reviewed batch creates the accounting entries for all unposted rows in the reviewed batch. A non-zero variance requires a Bookkeeper note before review.
+                    Post reviewed batch creates accounting entries for acknowledged funding and all unposted transaction rows. A non-zero variance requires a Bookkeeper note before review.
                   </Text>
                   {needsVarianceNote ? (
                     <FormControl mt={4} isRequired>
@@ -3778,6 +3780,7 @@ function Ledger({ user }) {
                           <Th>Source</Th>
                           <Th isNumeric>Amount</Th>
                           <Th>Acknowledged By</Th>
+                          <Th>Journal</Th>
                         </Tr>
                       </Thead>
                       <Tbody>
@@ -3788,11 +3791,12 @@ function Ledger({ user }) {
                             <Td>{funding.sourceAccountCode} - {funding.sourceAccountName}</Td>
                             <Td isNumeric>{formatMoney(funding.amount)}</Td>
                             <Td>{funding.acknowledgedBy}</Td>
+                            <Td>{funding.postedEntryNo || "Unposted"}</Td>
                           </Tr>
                         ))}
                         {!selectedBatchDetails.fundings.length ? (
                           <Tr>
-                            <Td colSpan={5} color="gray.500">No acknowledged opening funding.</Td>
+                            <Td colSpan={6} color="gray.500">No acknowledged opening funding.</Td>
                           </Tr>
                         ) : null}
                       </Tbody>
@@ -6318,6 +6322,7 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
                 <Th>Status</Th>
                 <Th>Batch</Th>
                 <Th>Control Evidence</Th>
+                <Th>Journal</Th>
                 <Th>Action</Th>
               </Tr>
             </Thead>
@@ -6346,7 +6351,9 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
                     <Text fontSize="xs">Prepared: {funding.preparedBy}</Text>
                     <Text fontSize="xs">Approved: {funding.approvedBy || "-"}</Text>
                     <Text fontSize="xs">Acknowledged: {funding.acknowledgedBy || "-"}</Text>
+                    <Text fontSize="xs">Posted: {funding.postedBy || "-"}</Text>
                   </Td>
+                  <Td>{funding.postedEntryNo || "Unposted"}</Td>
                   <Td>
                     {canApprove && funding.status === "Prepared" ? (
                       <Button

@@ -374,5 +374,8 @@ CREATE TABLE IF NOT EXISTS teller_fundings (
   approved_by VARCHAR(80),
   approved_at TIMESTAMP NULL,
   acknowledged_by VARCHAR(80),
-  acknowledged_at TIMESTAMP NULL
+  acknowledged_at TIMESTAMP NULL,
+  posted_by VARCHAR(80),
+  posted_entry_no VARCHAR(40),
+  posted_at TIMESTAMP NULL
 );
