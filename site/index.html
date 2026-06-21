@@ -162,44 +162,30 @@
         <p class="table-note">
           Process under Membership means the role can encode member applications.
           Approve means the role can convert approved applications into active members.
-          In the current spike, System Administrator and Membership Officer can create
-          member applications, System Administrator is the only role that can approve them,
-          System Administrator and Membership Officer can preview mapped member CSV imports,
-          Teller / Cashier records the initial member payment, and Accountant / Bookkeeper
-          posts teller batch payments to the general ledger.
-          Member Import Preview is discovery-only: pasted Excel/CSV rows are mapped and
-          validated before any active member write is implemented.
-          Member Import Staging saves mapped rows into an import batch review queue with
-          ready and issue counts, but staged rows are not active member records yet.
-          Member Import Finalize lets the System Administrator convert ready rows into
-          active member profiles with zero share capital and zero savings.
-          Opening Balance Import Planning lets the System Administrator and Accountant /
-          Bookkeeper preview mapped cutover balances before any balance write exists.
+          System Administrator and Membership Officer can create member applications,
+          while System Administrator approves them. Teller / Cashier records initial
+          payments and Accountant / Bookkeeper posts reviewed teller batches.
+          Member imports map and validate Excel or CSV rows before approved records become
+          active member profiles. Imported profiles begin with zero financial balances.
+          Opening balance imports are reviewed separately so confirmed share capital and
+          savings can be applied with source references and audit evidence.
           The Ledger workspace is organized into role-aware tabs for Batch Review, Opening
           Balances, Batch History, and Posted Entries so users open one ledger work area at a time.
-          Opening Balance Import Staging saves mapped cutover rows into a staged review
-          batch, flags duplicate or already-staged member numbers and other validation
-          issues, and does not change balances until a later finalization step.
-          Admin and Bookkeeper can open staged batch details to review row issues and raw
-          source values. Admin may reject a batch while retaining it as audit evidence and
-          allowing a corrected upload for the same members.
-          Admin can finalize ready rows after confirmation, applying share capital and
-          savings amounts to member balances while issue rows remain skipped. Finalized
-          batches retain actor and timing evidence and cannot run twice.
-          Finalization now creates one balanced journal: debit Opening Balance Clearing,
+          Opening balance rows with issues remain unapplied for correction. Finalized rows
+          retain actor, timing, source, and cutover evidence and cannot run twice.
+          Finalization creates one balanced journal: debit Opening Balance Clearing,
           credit Share Capital, and credit Savings Deposits Payable. The journal is linked
-          to the batch and appears in Posted Entries and reports. Older finalized batches
-          without this linkage can be repaired by the System Administrator.
-          Member Statements now show finalized opening balances with their batch, cutover
+          to the batch and appears in Posted Entries and reports.
+          Member Statements show finalized opening balances with their batch, cutover
           date, source reference, and journal number. Member Subsidiary Ledger separates
           opening share capital and savings from normal transaction movements.
-          Loan Product Foundation replaces the Loans placeholder with reusable Regular,
-          Emergency, and Small Business loan templates. Admin maintains amount and term
+          The Loans workspace provides reusable Regular, Emergency, and Small Business
+          loan templates. Admin maintains amount and term
           limits, rates, fees, penalties, status, and accounting mappings. Manager, Loan
           Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only
           product access.
-          Loan Application v1 adds a separate Applications tab. The Loan Officer can create
-          and edit their own Draft, with active-member checks and product amount and term
+          The Loan Officer creates and edits Draft applications, with active-member checks
+          and product amount and term
           limits enforced. Product rates, methods, fees, penalties, and accounting mappings
           are copied into the application as an audit snapshot. Submitting makes the record
           read-only and visible to Admin, Manager, Credit Committee / Approver, and Auditor.
@@ -208,44 +194,41 @@
           Rejected, or Returned. Returned applications go back to the originating Loan Officer
           for revision and resubmission. Approval cannot exceed the member's request, and
           decided applications are immutable.
-          Loan Computation and Amortization Preview adds a separate Computations tab. The
-          originating Loan Officer selects the first payment date, previews the Flat Interest
+          The originating Loan Officer selects the first payment date and previews the Flat Interest
           schedule, processing fee, net proceeds, total payable, and maturity, then saves it
           once as For Release. Whole-peso rounding differences go to the final installment.
-          Loan Release v1a adds a Releases tab for Teller / Cashier. Teller verifies the
+          Teller / Cashier verifies the
           computed amounts, enters a unique voucher and release date, and confirms cash equal
           to net proceeds. The release is immutable, linked to the Open teller batch, and
-          counted as cash-out. Loan Release v1b lets Bookkeeper post the Reviewed batch:
+          counted as cash-out. Bookkeeper posts the Reviewed batch:
           debit Loans Receivable for principal, credit Cash for net proceeds, and credit
           Processing Fee Income for the fee. The release and loan become Posted and retain
           their linked journal number.
-          Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares
+          Teller Cash Funding establishes custody before payouts. Bookkeeper prepares
           funding from an identified source, Manager approves it, and the assigned Teller
           acknowledges it into the Open batch. Expected ending cash is Opening Funding plus
           receipts minus payouts, and batch details retain all three control actors.
-          Teller Cash Funding v1b shows Bookkeeper the pending loan-release demand, available
+          Bookkeeper sees pending loan-release demand, available
           teller cash, and shortage. Teller cannot release a loan whose net proceeds exceed
           acknowledged funding plus current-batch receipts less existing payouts. Prepared or
-          Approved funding counts only after Teller acknowledgment. This control requires no
-          new migration or seed.
-          Teller Cash Funding v1c completes the accounting transfer when Bookkeeper posts the
-          Reviewed batch. The system debits Cash on Hand and credits the funding source, normally
+          Approved funding counts only after Teller acknowledgment.
+          When Bookkeeper posts the Reviewed batch, the system debits Cash on Hand and
+          credits the funding source, normally
           Cash in Bank, while posting the loan release in the same action. Funding keeps its
-          Acknowledged custody status and displays its linked journal. Run the additive database
-          migration before deployment; no seed is required.
-          Loan Collection v1a lets Teller collect the earliest unpaid installment of a posted
+          Acknowledged custody status and displays its linked journal.
+          Teller can collect the earliest unpaid installment of a posted
           loan. The scheduled principal, interest, and total cannot be edited; early payment is
           allowed after release, while partial and excess payments are deferred. The collection
           enters the Open teller batch as cash-in. Teller submits cash count from Members and
           Bookkeeper reviews and posts debit Cash on Hand, credit Loans Receivable, and credit
-          Interest Income. Run the additive migration before deployment; no seed is required.
+          Interest Income.
           Acknowledgment opens the Releases tab. The Release button requires a computed loan
           marked For Release and an Open batch; it does not depend on another teller transaction.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
-          contributions, and savings deposits, and withdrawal voucher/reference numbers cannot be
-          reused across withdrawals.
+          contributions, savings deposits, and loan collections. Withdrawal voucher/reference
+          numbers cannot be reused across withdrawals.
           Teller / Cashier can submit actual cash counted for the unposted batch, while
           Accountant / Bookkeeper reviews expected cash, actual cash, and variance before posting.
           The implemented batch status flow is Open to Submitted to Reviewed to Closed, then
@@ -259,10 +242,10 @@
           Reports now use a selector layout so users open one report at a time.
           Daily Cash Position summarizes teller batch cash evidence in Reports.
           Member Subsidiary Ledger summarizes member share capital and savings balances in Reports.
-          Control Account Reconciliation compares prototype activity subsidiary totals to GL controls.
+          Control Account Reconciliation compares recorded subsidiary activity to general ledger controls.
           Trial Balance summarizes posted GL debit and credit totals and flags whether the ledger is balanced.
           Statement of Financial Condition presents assets, liabilities, and equity from posted ledger balances.
-          The Members workflow auto-refreshes every 5 seconds during demo testing, with a
+          The Members workflow refreshes automatically, with a
           manual Refresh button available when users want the latest state immediately.
           The Members screen is now organized into role-aware tabs for Applications,
           Imports, Teller Transactions, Member Directory, and Transaction History.
@@ -355,28 +338,22 @@
 
       <section class="section">
         <div class="section-heading">
-          <p class="eyebrow">Persistence</p>
-          <h2>Demo Reset Safety</h2>
+          <p class="eyebrow">Data protection</p>
+          <h2>Demonstration Data Safety</h2>
           <p>
-            The working app can remain in in-memory seed mode while DATABASE_URL is blank.
-            When Postgres is configured, demo data can be restored with a reset command
-            that creates a JSON backup before reseeding the configured database. The hosted
-            Render demo also includes an admin-only Demo Maintenance panel for backups and
-            typed-confirmation resets.
+            The System Administrator can download a backup and restore the demonstration
+            records when testing input needs to be cleared. Reset requires typed confirmation
+            and preserves a pre-reset backup for recovery.
           </p>
           <p>
-            Render free deployments require manual schema migration from a local terminal
-            before code with new database columns is deployed. The health endpoint reports
-            schema status so missing columns can be caught early.
-            Member Import Staging adds Postgres tables for import batches and import rows,
-            so run the migration before deploying that app build.
-            Member Import Finalize adds finalization columns to import batches, so run the
-            migration before deploying that app build as well.
+            Database maintenance and deployment steps are handled by the implementation
+            team. Staff users work through the application screens and do not need access
+            to database tools or hosting settings.
           </p>
           <p>
-            The System Administrator can create prototype staff users, assign roles and
-            default screens, and deactivate non-admin accounts while the prototype still uses
-            one shared test password.
+            The System Administrator can create demonstration staff users, assign roles and
+            default screens, and deactivate non-admin accounts. Demonstration accounts use
+            a shared temporary password until individual password management is introduced.
             The Auditor / Compliance Officer can review usernames, roles, default screens,
             and account status through a read-only User / Security directory without password,
             maintenance, backup, or reset access.
@@ -389,7 +366,7 @@
           <p class="eyebrow">Accounting output</p>
           <h2>Ledger-Driven Reports</h2>
           <p>
-            TASETEMCO should treat the general ledger as the source of financial
+            TASETEMCO treats the general ledger as the source of financial
             statements. Savings, share capital, and loans should reconcile to
             their subsidiary ledgers.
           </p>
