@@ -4463,10 +4463,12 @@ async function approveMemberApplication(applicationId, user) {
     const [lastMemberRows] = await connection.execute(
       `SELECT member_no AS id
        FROM members
-       ORDER BY CAST(REPLACE(member_no, 'M-', '') AS UNSIGNED) DESC
-       LIMIT 1`
+       WHERE member_no ~ '^M-[0-9]+$'`
     );
-    const lastNumber = lastMemberRows[0]?.id ? Number(lastMemberRows[0].id.replace("M-", "")) : 0;
+    const lastNumber = lastMemberRows.reduce(
+      (maximum, row) => Math.max(maximum, Number(String(row.id).replace("M-", "")) || 0),
+      0
+    );
     const memberNo = `M-${String(lastNumber + 1).padStart(6, "0")}`;
 
     await connection.execute(

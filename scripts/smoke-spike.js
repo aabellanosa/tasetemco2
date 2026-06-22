@@ -552,6 +552,37 @@ async function run() {
       throw new Error("Finalized import should create active member profile with zero financial balances.");
     }
 
+    const postImportApplication = await fetch(`${baseUrl}/api/member-applications`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie
+      },
+      body: JSON.stringify({
+        fullName: "Post Import Approval Member",
+        clusterName: "General Membership",
+        contactNumber: "0999-333-4444",
+        initialShareCapital: 5000
+      })
+    });
+    const postImportApplicationBody = await postImportApplication.json();
+    const postImportApproval = await fetch(
+      `${baseUrl}/api/member-applications/${postImportApplicationBody.application?.id}/approve`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie }
+      }
+    );
+    const postImportApprovalBody = await postImportApproval.json();
+
+    if (
+      !postImportApplication.ok ||
+      !postImportApproval.ok ||
+      !/^M-\d{6}$/.test(postImportApprovalBody.member?.id || "")
+    ) {
+      throw new Error("Admin approval should ignore nonnumeric imported member IDs when assigning the next member number.");
+    }
+
     const tellerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

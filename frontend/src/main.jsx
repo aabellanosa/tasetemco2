@@ -106,10 +106,23 @@ async function api(path, options = {}) {
     },
     ...options
   });
-  const data = await response.json();
+  const responseText = await response.text();
+  let data = {};
+
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        response.ok
+          ? `Server returned an unreadable response for ${path}.`
+          : `Request failed (${response.status}) for ${path}: ${responseText.slice(0, 160)}`
+      );
+    }
+  }
 
   if (!response.ok) {
-    throw new Error(data.error || "Request failed");
+    throw new Error(data.error || `Request failed (${response.status}) for ${path}`);
   }
 
   return data;
