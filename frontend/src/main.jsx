@@ -132,8 +132,26 @@ function formatMoney(value) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
-    maximumFractionDigits: 0
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(value);
+}
+
+const MONEY_SCALE = 100;
+const MAX_MONEY = 9999999999999.99;
+
+function moneyCents(value) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? Math.round(amount * MONEY_SCALE) : Number.NaN;
+}
+
+function moneyValue(value) {
+  const cents = moneyCents(value);
+  return Number.isFinite(cents) ? cents / MONEY_SCALE : Number.NaN;
+}
+
+function addMoney(...values) {
+  return values.reduce((total, value) => total + moneyCents(value), 0) / MONEY_SCALE;
 }
 
 function formatTime(value) {
@@ -405,7 +423,15 @@ function parseOpeningBalanceAmount(value) {
     return { value: 0, error: "Invalid amount" };
   }
 
-  return { value: amount };
+  if (Math.abs(amount * MONEY_SCALE - Math.round(amount * MONEY_SCALE)) >= 0.000001) {
+    return { value: 0, error: "Amount must have no more than two decimal places" };
+  }
+
+  if (amount > MAX_MONEY) {
+    return { value: 0, error: "Amount exceeds the supported limit" };
+  }
+
+  return { value: moneyValue(amount) };
 }
 
 function buildOpeningBalancePreview(
@@ -472,11 +498,11 @@ function buildOpeningBalancePreview(
     }
 
     if (shareCapital.error) {
-      issues.push("Invalid share capital amount");
+      issues.push(`Share capital: ${shareCapital.error}`);
     }
 
     if (savings.error) {
-      issues.push("Invalid savings amount");
+      issues.push(`Savings: ${savings.error}`);
     }
 
     if (!isValidImportDate(row.cutoverDate)) {
@@ -505,12 +531,12 @@ function buildOpeningBalancePreview(
 function buildTellerBatchSummary(rows) {
   return rows.reduce(
     (summary, row) => {
-      const cashIn = Number(row.cashReceived || 0);
-      const cashOut = Number(row.cashOut || 0);
+      const cashIn = moneyValue(row.cashReceived);
+      const cashOut = moneyValue(row.cashOut);
 
       return {
-        cashIn: summary.cashIn + cashIn,
-        cashOut: summary.cashOut + cashOut,
+        cashIn: addMoney(summary.cashIn, cashIn),
+        cashOut: addMoney(summary.cashOut, cashOut),
         transactionCount: summary.transactionCount + 1,
         initialPaymentCount: summary.initialPaymentCount + (row.batchType === "Initial Payment" ? 1 : 0),
         shareCapitalContributionCount:
@@ -1118,12 +1144,9 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
   const issueCount = previewRows.reduce((total, row) => total + row.issues.length, parsedImport.errors.length);
   const warningCount = previewRows.reduce((total, row) => total + row.warnings.length, 0);
   const validRowCount = previewRows.filter((row) => row.issues.length === 0).length;
-  const shareCapitalTotal = previewRows
-    .filter((row) => row.issues.length === 0)
-    .reduce((total, row) => total + row.shareCapitalAmount, 0);
-  const savingsTotal = previewRows
-    .filter((row) => row.issues.length === 0)
-    .reduce((total, row) => total + row.savingsAmount, 0);
+  const readyRows = previewRows.filter((row) => row.issues.length === 0);
+  const shareCapitalTotal = addMoney(...readyRows.map((row) => row.shareCapitalAmount));
+  const savingsTotal = addMoney(...readyRows.map((row) => row.savingsAmount));
   const canSaveStagedBatch = previewRows.length > 0 && parsedImport.errors.length === 0;
 
   async function loadStagedBatches() {
@@ -1981,10 +2004,11 @@ function Members({ user }) {
       const next = { ...current, [field]: value };
 
       if (field === "shareCapitalAmount" || field === "membershipFeeAmount" || field === "savingsDepositAmount") {
-        next.cashReceived =
-          Number(next.shareCapitalAmount || 0) +
-          Number(next.membershipFeeAmount || 0) +
-          Number(next.savingsDepositAmount || 0);
+        next.cashReceived = addMoney(
+          next.shareCapitalAmount,
+          next.membershipFeeAmount,
+          next.savingsDepositAmount
+        );
       }
 
       return next;
@@ -1996,7 +2020,7 @@ function Members({ user }) {
       const next = { ...current, [field]: value };
 
       if (field === "amount") {
-        next.cashReceived = Number(next.amount || 0);
+        next.cashReceived = moneyValue(next.amount);
       }
 
       return next;
@@ -2008,7 +2032,7 @@ function Members({ user }) {
       const next = { ...current, [field]: value };
 
       if (field === "amount") {
-        next.cashReceived = Number(next.amount || 0);
+        next.cashReceived = moneyValue(next.amount);
       }
 
       return next;
@@ -2278,6 +2302,8 @@ function Members({ user }) {
               <FormLabel>Required Initial Share Capital</FormLabel>
               <NumberInput
                 min={0}
+                precision={2}
+                step={0.01}
                 value={form.initialShareCapital}
                 onChange={(value) => updateForm("initialShareCapital", Number(value || 0))}
               >
@@ -2418,6 +2444,8 @@ function Members({ user }) {
                   <FormLabel>Share capital</FormLabel>
                   <NumberInput
                     min={0}
+                    precision={2}
+                    step={0.01}
                     value={paymentForm.shareCapitalAmount}
                     onChange={(value) => updatePaymentForm("shareCapitalAmount", Number(value || 0))}
                   >
@@ -2428,6 +2456,8 @@ function Members({ user }) {
                   <FormLabel>Membership fee</FormLabel>
                   <NumberInput
                     min={0}
+                    precision={2}
+                    step={0.01}
                     value={paymentForm.membershipFeeAmount}
                     onChange={(value) => updatePaymentForm("membershipFeeAmount", Number(value || 0))}
                   >
@@ -2438,6 +2468,8 @@ function Members({ user }) {
                   <FormLabel>Savings</FormLabel>
                   <NumberInput
                     min={0}
+                    precision={2}
+                    step={0.01}
                     value={paymentForm.savingsDepositAmount}
                     onChange={(value) => updatePaymentForm("savingsDepositAmount", Number(value || 0))}
                   >
@@ -2448,6 +2480,8 @@ function Members({ user }) {
                   <FormLabel>Cash received</FormLabel>
                   <NumberInput
                     min={0}
+                    precision={2}
+                    step={0.01}
                     value={paymentForm.cashReceived}
                     onChange={(value) => updatePaymentForm("cashReceived", Number(value || 0))}
                   >
@@ -2478,7 +2512,9 @@ function Members({ user }) {
                 <FormControl isRequired>
                   <FormLabel>Share capital contribution</FormLabel>
                   <NumberInput
-                    min={1}
+                    min={0.01}
+                    precision={2}
+                    step={0.01}
                     value={shareCapitalContributionForm.amount}
                     onChange={(value) => updateShareCapitalContributionForm("amount", Number(value || 0))}
                   >
@@ -2489,6 +2525,8 @@ function Members({ user }) {
                   <FormLabel>Cash received</FormLabel>
                   <NumberInput
                     min={0}
+                    precision={2}
+                    step={0.01}
                     value={shareCapitalContributionForm.cashReceived}
                     onChange={(value) => updateShareCapitalContributionForm("cashReceived", Number(value || 0))}
                   >
@@ -2519,7 +2557,9 @@ function Members({ user }) {
                 <FormControl isRequired>
                   <FormLabel>Savings deposit</FormLabel>
                   <NumberInput
-                    min={1}
+                    min={0.01}
+                    precision={2}
+                    step={0.01}
                     value={savingsDepositForm.amount}
                     onChange={(value) => updateSavingsDepositForm("amount", Number(value || 0))}
                   >
@@ -2530,6 +2570,8 @@ function Members({ user }) {
                   <FormLabel>Cash received</FormLabel>
                   <NumberInput
                     min={0}
+                    precision={2}
+                    step={0.01}
                     value={savingsDepositForm.cashReceived}
                     onChange={(value) => updateSavingsDepositForm("cashReceived", Number(value || 0))}
                   >
@@ -2560,7 +2602,9 @@ function Members({ user }) {
                 <FormControl isRequired>
                   <FormLabel>Withdrawal amount</FormLabel>
                   <NumberInput
-                    min={1}
+                    min={0.01}
+                    precision={2}
+                    step={0.01}
                     value={savingsWithdrawalForm.amount}
                     onChange={(value) => updateSavingsWithdrawalForm("amount", Number(value || 0))}
                   >
@@ -2626,7 +2670,7 @@ function Members({ user }) {
                   Expected Ending Cash
                 </Text>
                 <Text fontWeight="bold">
-                  {formatMoney(openingFunding + tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
+                  {formatMoney(addMoney(openingFunding, tellerBatchSummary.cashIn, -tellerBatchSummary.cashOut))}
                 </Text>
               </Box>
               <Box borderWidth="1px" borderRadius="md" p={4}>
@@ -2699,13 +2743,15 @@ function Members({ user }) {
                       Expected Ending Cash
                     </Text>
                     <Text fontWeight="bold">
-                      {formatMoney(openingFunding + tellerBatchSummary.cashIn - tellerBatchSummary.cashOut)}
+                      {formatMoney(addMoney(openingFunding, tellerBatchSummary.cashIn, -tellerBatchSummary.cashOut))}
                     </Text>
                   </Box>
                   <FormControl isRequired>
                     <FormLabel>Actual cash counted</FormLabel>
                     <NumberInput
                       min={0}
+                      precision={2}
+                      step={0.01}
                       value={cashCountForm.actualCash}
                       onChange={(value) => setCashCountForm({ actualCash: Number(value || 0) })}
                     >
@@ -2717,7 +2763,9 @@ function Members({ user }) {
                       Variance
                     </Text>
                     <Text fontWeight="bold">
-                      {formatMoney(Number(cashCountForm.actualCash || 0) - (tellerBatchSummary.cashIn - tellerBatchSummary.cashOut))}
+                      {formatMoney(
+                        addMoney(cashCountForm.actualCash, -tellerBatchSummary.cashIn, tellerBatchSummary.cashOut)
+                      )}
                     </Text>
                   </Box>
                   <Box alignSelf="end">
@@ -5091,13 +5139,13 @@ function LoanProducts({ user }) {
             </FormControl>
             <FormControl>
               <FormLabel>Minimum Principal</FormLabel>
-              <NumberInput min={0} value={form.minimumPrincipal} onChange={(value) => updateForm("minimumPrincipal", Number(value || 0))}>
+              <NumberInput min={0} precision={2} step={0.01} value={form.minimumPrincipal} onChange={(value) => updateForm("minimumPrincipal", Number(value || 0))}>
                 <NumberInputField />
               </NumberInput>
             </FormControl>
             <FormControl>
               <FormLabel>Maximum Principal</FormLabel>
-              <NumberInput min={1} value={form.maximumPrincipal} onChange={(value) => updateForm("maximumPrincipal", Number(value || 0))}>
+              <NumberInput min={0.01} precision={2} step={0.01} value={form.maximumPrincipal} onChange={(value) => updateForm("maximumPrincipal", Number(value || 0))}>
                 <NumberInputField />
               </NumberInput>
             </FormControl>
@@ -5121,7 +5169,7 @@ function LoanProducts({ user }) {
             </FormControl>
             <FormControl>
               <FormLabel>Processing Fee</FormLabel>
-              <NumberInput min={0} value={form.processingFee} onChange={(value) => updateForm("processingFee", Number(value || 0))}>
+              <NumberInput min={0} precision={2} step={0.01} value={form.processingFee} onChange={(value) => updateForm("processingFee", Number(value || 0))}>
                 <NumberInputField />
               </NumberInput>
             </FormControl>
@@ -5496,8 +5544,10 @@ function LoanApplications({ user }) {
             <FormControl isRequired>
               <FormLabel>Requested Principal</FormLabel>
               <NumberInput
-                min={selectedProduct?.minimumPrincipal || 1}
+                min={selectedProduct?.minimumPrincipal || 0.01}
                 max={selectedProduct?.maximumPrincipal}
+                precision={2}
+                step={0.01}
                 value={form.requestedPrincipal}
                 onChange={(value) => updateForm("requestedPrincipal", Number(value || 0))}
               >
@@ -5690,8 +5740,10 @@ function LoanApplications({ user }) {
                   <FormControl isRequired={reviewForm.decision === "Approved"}>
                     <FormLabel>Recommended Principal</FormLabel>
                     <NumberInput
-                      min={1}
+                      min={0.01}
                       max={reviewApplication.requestedPrincipal}
+                      precision={2}
+                      step={0.01}
                       value={reviewForm.recommendedPrincipal}
                       isDisabled={reviewForm.decision !== "Approved"}
                       onChange={(value) => setReviewForm((current) => ({
@@ -6168,9 +6220,9 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
     }
   }
 
-  const acknowledgedTotal = fundings
-    .filter((funding) => funding.status === "Acknowledged")
-    .reduce((sum, funding) => sum + funding.amount, 0);
+  const acknowledgedTotal = addMoney(
+    ...fundings.filter((funding) => funding.status === "Acknowledged").map((funding) => funding.amount)
+  );
 
   return (
     <VStack align="stretch" spacing={5} minW={0} maxW="100%">
@@ -6280,7 +6332,9 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
             <FormControl isRequired>
               <FormLabel>Funding Amount</FormLabel>
               <NumberInput
-                min={1}
+                min={0.01}
+                precision={2}
+                step={0.01}
                 value={form.amount}
                 onChange={(value) => setForm((current) => ({ ...current, amount: Number(value || 0) }))}
               >
@@ -6546,7 +6600,7 @@ function LoanReleases({ user }) {
                 {readyLoans.map((loan) => {
                   const shortage = Math.max(
                     0,
-                    Number(loan.netProceeds || 0) - Number(position?.availableCash || 0)
+                    addMoney(loan.netProceeds, -Number(position?.availableCash || 0))
                   );
                   return (
                     <Tr key={loan.loanNo}>
@@ -6654,6 +6708,8 @@ function LoanReleases({ user }) {
                   <FormLabel>Cash Released</FormLabel>
                   <NumberInput
                     min={0}
+                    precision={2}
+                    step={0.01}
                     value={form.cashReleased}
                     onChange={(value) => setForm((current) => ({
                       ...current,

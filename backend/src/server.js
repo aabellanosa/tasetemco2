@@ -37,6 +37,47 @@ import {
 dotenv.config();
 
 pg.types.setTypeParser(20, (value) => Number(value));
+pg.types.setTypeParser(1700, (value) => Number(value));
+
+const MONEY_SCALE = 100;
+const MAX_MONEY = 9999999999999.99;
+
+function moneyCents(value) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? Math.round(amount * MONEY_SCALE) : Number.NaN;
+}
+
+function moneyValue(value) {
+  const cents = moneyCents(value);
+  return Number.isFinite(cents) ? cents / MONEY_SCALE : Number.NaN;
+}
+
+function isMoney(value, { positive = false } = {}) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount > MAX_MONEY) {
+    return false;
+  }
+  if (positive && amount <= 0) {
+    return false;
+  }
+  return Math.abs(amount * MONEY_SCALE - Math.round(amount * MONEY_SCALE)) < 0.000001;
+}
+
+function moneyEquals(left, right) {
+  return moneyCents(left) === moneyCents(right);
+}
+
+function addMoney(...values) {
+  return values.reduce((total, value) => total + moneyCents(value), 0) / MONEY_SCALE;
+}
+
+function subtractMoney(left, right) {
+  return (moneyCents(left) - moneyCents(right)) / MONEY_SCALE;
+}
+
+function sumMoney(values) {
+  return addMoney(...values);
+}
 
 const app = express();
 const host = process.env.HOST || (process.env.RENDER ? "0.0.0.0" : "127.0.0.1");
@@ -560,11 +601,11 @@ function validateLoanProductInput(body) {
     return { error: "Product name is required." };
   }
 
-  if (!Number.isInteger(minimumPrincipal) || minimumPrincipal < 0) {
-    return { error: "Minimum principal must be a non-negative whole peso amount." };
+  if (!isMoney(minimumPrincipal)) {
+    return { error: "Minimum principal must be a non-negative amount with up to two decimal places." };
   }
 
-  if (!Number.isInteger(maximumPrincipal) || maximumPrincipal < minimumPrincipal || maximumPrincipal <= 0) {
+  if (!isMoney(maximumPrincipal, { positive: true }) || maximumPrincipal < minimumPrincipal) {
     return { error: "Maximum principal must be greater than or equal to the minimum principal." };
   }
 
@@ -580,8 +621,8 @@ function validateLoanProductInput(body) {
     return { error: "Annual interest rate must be between 0% and 100%." };
   }
 
-  if (!Number.isInteger(processingFee) || processingFee < 0) {
-    return { error: "Processing fee must be a non-negative whole peso amount." };
+  if (!isMoney(processingFee)) {
+    return { error: "Processing fee must be a non-negative amount with up to two decimal places." };
   }
 
   if (!Number.isInteger(penaltyRateBps) || penaltyRateBps < 0 || penaltyRateBps > 10000) {
@@ -609,14 +650,14 @@ function validateLoanProductInput(body) {
       code,
       name,
       description,
-      minimumPrincipal,
-      maximumPrincipal,
+      minimumPrincipal: moneyValue(minimumPrincipal),
+      maximumPrincipal: moneyValue(maximumPrincipal),
       minimumTermMonths,
       maximumTermMonths,
       annualInterestRateBps,
       interestMethod,
       paymentFrequency,
-      processingFee,
+      processingFee: moneyValue(processingFee),
       penaltyRateBps,
       ...accounts,
       status
@@ -849,7 +890,7 @@ async function validateLoanApplicationInput(body) {
   }
 
   if (
-    !Number.isInteger(requestedPrincipal) ||
+    !isMoney(requestedPrincipal, { positive: true }) ||
     requestedPrincipal < product.minimumPrincipal ||
     requestedPrincipal > product.maximumPrincipal
   ) {
@@ -882,7 +923,7 @@ async function validateLoanApplicationInput(body) {
       memberName: member.name,
       productCode: product.code,
       productName: product.name,
-      requestedPrincipal,
+      requestedPrincipal: moneyValue(requestedPrincipal),
       requestedTermMonths,
       purpose: purpose.slice(0, 1000),
       applicationDate,
@@ -1131,8 +1172,7 @@ function validateLoanCreditDecision(body, application) {
 
   if (decision === "Approved") {
     if (
-      !Number.isInteger(recommendedPrincipal) ||
-      recommendedPrincipal <= 0 ||
+      !isMoney(recommendedPrincipal, { positive: true }) ||
       recommendedPrincipal > application.requestedPrincipal
     ) {
       return { error: "Recommended principal must be positive and cannot exceed the requested principal." };
@@ -1151,7 +1191,7 @@ function validateLoanCreditDecision(body, application) {
     value: {
       decision,
       creditAssessmentNotes: creditAssessmentNotes.slice(0, 2000),
-      recommendedPrincipal: decision === "Approved" ? recommendedPrincipal : 0,
+      recommendedPrincipal: decision === "Approved" ? moneyValue(recommendedPrincipal) : 0,
       recommendedTermMonths: decision === "Approved" ? recommendedTermMonths : 0,
       decisionRemarks: decisionRemarks.slice(0, 2000),
       decisionDate
@@ -1353,10 +1393,11 @@ function installmentDate(firstPaymentDate, paymentFrequency, index) {
   return addUtcDays(firstPaymentDate, index * 7);
 }
 
-function allocateWholePesos(total, count) {
-  const base = Math.floor(total / count);
+function allocateMoney(total, count) {
+  const totalCents = moneyCents(total);
+  const baseCents = Math.floor(totalCents / count);
   return Array.from({ length: count }, (_, index) =>
-    index === count - 1 ? total - base * (count - 1) : base
+    (index === count - 1 ? totalCents - baseCents * (count - 1) : baseCents) / MONEY_SCALE
   );
 }
 
@@ -1383,12 +1424,14 @@ function computeFlatLoanSchedule(application, firstPaymentDate) {
     return { error: "Processing fee must be less than the approved principal." };
   }
 
-  const totalInterest = Math.round(
-    (principal * Number(application.annualInterestRateBps) * termMonths) / (10000 * 12)
-  );
-  const totalPayable = principal + totalInterest;
-  const principalParts = allocateWholePesos(principal, installmentCount);
-  const interestParts = allocateWholePesos(totalInterest, installmentCount);
+  const totalInterest =
+    Math.round(
+      (moneyCents(principal) * Number(application.annualInterestRateBps) * termMonths) /
+        (10000 * 12)
+    ) / MONEY_SCALE;
+  const totalPayable = addMoney(principal, totalInterest);
+  const principalParts = allocateMoney(principal, installmentCount);
+  const interestParts = allocateMoney(totalInterest, installmentCount);
   const installments = principalParts.map((principalDue, index) => {
     const interestDue = interestParts[index];
     return {
@@ -1396,7 +1439,7 @@ function computeFlatLoanSchedule(application, firstPaymentDate) {
       dueDate: installmentDate(firstPaymentDate, application.paymentFrequency, index),
       principalDue,
       interestDue,
-      totalDue: principalDue + interestDue,
+      totalDue: addMoney(principalDue, interestDue),
       status: "Scheduled"
     };
   });
@@ -1416,7 +1459,7 @@ function computeFlatLoanSchedule(application, firstPaymentDate) {
       processingFee: application.processingFee,
       totalInterest,
       totalPayable,
-      netProceeds: Math.max(0, principal - application.processingFee),
+      netProceeds: Math.max(0, subtractMoney(principal, application.processingFee)),
       installmentCount,
       firstPaymentDate,
       maturityDate: installments[installments.length - 1].dueDate,
@@ -1604,11 +1647,11 @@ function validateLoanReleaseInput(body, loan) {
   if (!referenceNo) {
     return { error: "Release voucher or reference number is required." };
   }
-  if (!Number.isInteger(cashReleased) || cashReleased !== loan.netProceeds) {
+  if (!isMoney(cashReleased) || !moneyEquals(cashReleased, loan.netProceeds)) {
     return { error: "Cash released must exactly match the computed net proceeds." };
   }
 
-  return { value: { releaseDate, referenceNo, cashReleased } };
+  return { value: { releaseDate, referenceNo, cashReleased: moneyValue(cashReleased) } };
 }
 
 async function nextLoanReleaseNo(connection = null) {
@@ -1643,8 +1686,8 @@ async function releaseLoan(loanNo, body, user) {
 
   if (!db) {
     const cashPosition = await getTellerCashPosition(batchResult.batch.id);
-    if (cashPosition.availableCash < validation.value.cashReleased) {
-      const shortage = validation.value.cashReleased - cashPosition.availableCash;
+    if (moneyCents(cashPosition.availableCash) < moneyCents(validation.value.cashReleased)) {
+      const shortage = subtractMoney(validation.value.cashReleased, cashPosition.availableCash);
       return {
         error: `Insufficient teller cash. Available: ${cashPosition.availableCash}; required: ${validation.value.cashReleased}; shortage: ${shortage}.`,
         statusCode: 409
@@ -1713,9 +1756,9 @@ async function releaseLoan(loanNo, body, user) {
       return { error: "Only loans marked For Release can be released.", statusCode: 409 };
     }
     const cashPosition = await getTellerCashPosition(batchResult.batch.id, connection);
-    if (cashPosition.availableCash < validation.value.cashReleased) {
+    if (moneyCents(cashPosition.availableCash) < moneyCents(validation.value.cashReleased)) {
       await connection.rollback();
-      const shortage = validation.value.cashReleased - cashPosition.availableCash;
+      const shortage = subtractMoney(validation.value.cashReleased, cashPosition.availableCash);
       return {
         error: `Insufficient teller cash. Available: ${cashPosition.availableCash}; required: ${validation.value.cashReleased}; shortage: ${shortage}.`,
         statusCode: 409
@@ -1825,11 +1868,11 @@ function validateLoanCollectionInput(body, installment, releaseDate = "") {
   if (releaseDate && collectionDate < formatDateOnly(releaseDate)) {
     return { error: "Collection date cannot precede the loan release date." };
   }
-  if (!Number.isInteger(amountReceived) || amountReceived !== installment.totalDue) {
+  if (!isMoney(amountReceived) || !moneyEquals(amountReceived, installment.totalDue)) {
     return { error: "Amount received must exactly match the next scheduled installment." };
   }
 
-  return { value: { collectionDate, referenceNo, amountReceived } };
+  return { value: { collectionDate, referenceNo, amountReceived: moneyValue(amountReceived) } };
 }
 
 async function nextLoanCollectionNo(connection = null) {
@@ -2050,7 +2093,7 @@ async function getAcknowledgedFundingTotal(batchId) {
   const rows = await listTellerFundings();
   return rows
     .filter((funding) => funding.batchId === batchId && funding.status === "Acknowledged")
-    .reduce((sum, funding) => sum + funding.amount, 0);
+    .reduce((sum, funding) => addMoney(sum, funding.amount), 0);
 }
 
 async function getTellerCashPosition(batchId, connection = null) {
@@ -2071,7 +2114,7 @@ async function getTellerCashPosition(batchId, connection = null) {
       openingFunding,
       cashIn: summary.cashIn,
       cashOut: summary.cashOut,
-      availableCash: openingFunding + summary.cashIn - summary.cashOut
+      availableCash: subtractMoney(addMoney(openingFunding, summary.cashIn), summary.cashOut)
     };
   }
 
@@ -2117,7 +2160,7 @@ async function getTellerCashPosition(batchId, connection = null) {
     openingFunding,
     cashIn,
     cashOut,
-    availableCash: openingFunding + cashIn - cashOut
+    availableCash: subtractMoney(addMoney(openingFunding, cashIn), cashOut)
   };
 }
 
@@ -2135,10 +2178,7 @@ async function getTellerFundingPosition() {
       status: loan.status
     }));
   const cashPosition = await getTellerCashPosition(batch?.id || "");
-  const totalReleaseDemand = releaseQueue.reduce(
-    (sum, loan) => sum + Number(loan.netProceeds || 0),
-    0
-  );
+  const totalReleaseDemand = sumMoney(releaseQueue.map((loan) => loan.netProceeds));
 
   return {
     batch: batch
@@ -2151,7 +2191,7 @@ async function getTellerFundingPosition() {
     releaseQueue,
     totalReleaseDemand,
     ...cashPosition,
-    fundingShortage: Math.max(0, totalReleaseDemand - cashPosition.availableCash)
+    fundingShortage: Math.max(0, subtractMoney(totalReleaseDemand, cashPosition.availableCash))
   };
 }
 
@@ -2184,8 +2224,8 @@ async function validateTellerFundingInput(body) {
   if (!teller) {
     return { error: "An active Teller / Cashier account is required." };
   }
-  if (!Number.isInteger(amount) || amount <= 0) {
-    return { error: "Funding amount must be a positive whole peso amount." };
+  if (!isMoney(amount, { positive: true })) {
+    return { error: "Funding amount must be positive and have no more than two decimal places." };
   }
   if (!sourceAccountCode || !sourceAccountName) {
     return { error: "Funding source account is required." };
@@ -2203,7 +2243,7 @@ async function validateTellerFundingInput(body) {
   return {
     value: {
       tellerUsername,
-      amount,
+      amount: moneyValue(amount),
       sourceAccountCode,
       sourceAccountName,
       referenceNo,
@@ -2865,7 +2905,21 @@ function parseOpeningBalanceAmount(value) {
     return { value: 0, error: "Invalid amount" };
   }
 
-  return { value: amount };
+  if (!isMoney(amount)) {
+    return {
+      value: 0,
+      error:
+        amount > MAX_MONEY
+          ? "Amount exceeds the supported limit"
+          : "Amount must have no more than two decimal places"
+    };
+  }
+
+  if (amount > MAX_MONEY) {
+    return { value: 0, error: "Amount exceeds the supported limit" };
+  }
+
+  return { value: moneyValue(amount) };
 }
 
 function normalizeImportMemberNo(value) {
@@ -2997,11 +3051,11 @@ async function validateOpeningBalanceImportRows(inputRows) {
       }
 
       if (shareCapital.error) {
-        issues.push("Invalid share capital amount");
+        issues.push(`Share capital: ${shareCapital.error}`);
       }
 
       if (savings.error) {
-        issues.push("Invalid savings amount");
+        issues.push(`Savings: ${savings.error}`);
       }
 
       if (!cutoverDate || !isValidIsoDate(cutoverDate)) {
@@ -3033,8 +3087,8 @@ function summarizeOpeningBalanceImportRows(rows) {
     totalRows: rows.length,
     readyRows: readyRows.length,
     issueRows: rows.length - readyRows.length,
-    totalShareCapital: readyRows.reduce((total, row) => total + row.shareCapitalAmount, 0),
-    totalSavings: readyRows.reduce((total, row) => total + row.savingsAmount, 0)
+    totalShareCapital: sumMoney(readyRows.map((row) => row.shareCapitalAmount)),
+    totalSavings: sumMoney(readyRows.map((row) => row.savingsAmount))
   };
 }
 
@@ -3327,7 +3381,7 @@ async function rejectOpeningBalanceImportBatch(importNo, user) {
 }
 
 function buildOpeningBalanceJournalLines(shareCapitalAmount, savingsAmount) {
-  const total = Number(shareCapitalAmount || 0) + Number(savingsAmount || 0);
+  const total = addMoney(shareCapitalAmount, savingsAmount);
 
   return [
     {
@@ -3340,13 +3394,13 @@ function buildOpeningBalanceJournalLines(shareCapitalAmount, savingsAmount) {
       accountCode: "3010",
       accountName: "Share Capital",
       debit: 0,
-      credit: Number(shareCapitalAmount || 0)
+      credit: moneyValue(shareCapitalAmount)
     },
     {
       accountCode: "2020",
       accountName: "Savings Deposits Payable",
       debit: 0,
-      credit: Number(savingsAmount || 0)
+      credit: moneyValue(savingsAmount)
     }
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
@@ -3361,13 +3415,10 @@ function createOpeningBalanceJournalInMemory(batch, rows, user) {
   }
 
   const finalizedRows = rows.filter((row) => row.rowStatus === "Finalized" && row.finalizedAt);
-  const shareCapitalAmount = finalizedRows.reduce(
-    (total, row) => total + Number(row.shareCapitalAmount || 0),
-    0
-  );
-  const savingsAmount = finalizedRows.reduce((total, row) => total + Number(row.savingsAmount || 0), 0);
+  const shareCapitalAmount = sumMoney(finalizedRows.map((row) => row.shareCapitalAmount));
+  const savingsAmount = sumMoney(finalizedRows.map((row) => row.savingsAmount));
 
-  if (shareCapitalAmount + savingsAmount <= 0) {
+  if (addMoney(shareCapitalAmount, savingsAmount) <= 0) {
     return null;
   }
 
@@ -3410,7 +3461,7 @@ async function createOpeningBalanceJournalInDatabase(connection, importNo, user)
     [importNo]
   );
   const totals = totalsRows[0];
-  const totalAmount = Number(totals.shareCapitalAmount || 0) + Number(totals.savingsAmount || 0);
+  const totalAmount = addMoney(totals.shareCapitalAmount, totals.savingsAmount);
 
   if (totalAmount <= 0) {
     return "";
@@ -3491,8 +3542,8 @@ async function finalizeOpeningBalanceImportBatch(importNo, user) {
         continue;
       }
 
-      member.share += row.shareCapitalAmount;
-      member.savings += row.savingsAmount;
+      member.share = addMoney(member.share, row.shareCapitalAmount);
+      member.savings = addMoney(member.savings, row.savingsAmount);
       row.memberNo = member.id;
       row.rowStatus = "Finalized";
       row.finalizedAt = finalizedAt;
@@ -4158,13 +4209,13 @@ function nextTellerBatchNumber() {
 function buildTellerBatchSummary(rows) {
   return rows.reduce(
     (summary, row) => {
-      const cashIn = Number(row.cashReceived || 0);
-      const cashOut = Number(row.cashOut || 0);
+      const cashIn = moneyValue(row.cashReceived);
+      const cashOut = moneyValue(row.cashOut);
 
       return {
-        cashIn: summary.cashIn + cashIn,
-        cashOut: summary.cashOut + cashOut,
-        netCash: summary.netCash + cashIn - cashOut,
+        cashIn: addMoney(summary.cashIn, cashIn),
+        cashOut: addMoney(summary.cashOut, cashOut),
+        netCash: addMoney(summary.netCash, cashIn, -cashOut),
         transactionCount: summary.transactionCount + 1,
         initialPaymentCount: summary.initialPaymentCount + (row.batchType === "Initial Payment" ? 1 : 0),
         shareCapitalContributionCount:
@@ -4921,7 +4972,7 @@ async function getTellerBatchDetails(batchId) {
     cashCounts,
     latestCashCount: cashCounts[0] || null,
     fundings,
-    openingFunding: fundings.reduce((sum, funding) => sum + funding.amount, 0),
+    openingFunding: sumMoney(fundings.map((funding) => funding.amount)),
     transactions,
     journalEntries: linkedJournalEntries
   };
@@ -4947,12 +4998,12 @@ async function getDailyCashPositionReport() {
     (totals, batch) => ({
       batchCount: totals.batchCount + 1,
       closedBatchCount: totals.closedBatchCount + (batch.status === "Closed" ? 1 : 0),
-      cashIn: totals.cashIn + Number(batch.cashIn || 0),
-      cashOut: totals.cashOut + Number(batch.cashOut || 0),
-      netCash: totals.netCash + Number(batch.netCash || 0),
-      expectedCash: totals.expectedCash + Number(batch.expectedCash || 0),
-      actualCash: totals.actualCash + Number(batch.actualCash || 0),
-      variance: totals.variance + Number(batch.variance || 0),
+      cashIn: addMoney(totals.cashIn, batch.cashIn),
+      cashOut: addMoney(totals.cashOut, batch.cashOut),
+      netCash: addMoney(totals.netCash, batch.netCash),
+      expectedCash: addMoney(totals.expectedCash, batch.expectedCash),
+      actualCash: addMoney(totals.actualCash, batch.actualCash),
+      variance: addMoney(totals.variance, batch.variance),
       postedEntryCount: totals.postedEntryCount + Number(batch.postedEntryCount || 0),
       unpostedTransactionCount: totals.unpostedTransactionCount + Number(batch.unpostedTransactionCount || 0)
     }),
@@ -5010,29 +5061,17 @@ async function getMemberSubsidiaryLedgerReport() {
       status: member.status,
       shareCapitalBalance: Number(member.share || 0),
       savingsBalance: Number(member.savings || 0),
-      openingShareCapitalTotal: memberOpeningBalanceRows.reduce(
-        (sum, row) => sum + Number(row.shareCapitalAmount || 0),
-        0
+      openingShareCapitalTotal: sumMoney(memberOpeningBalanceRows.map((row) => row.shareCapitalAmount)),
+      openingSavingsTotal: sumMoney(memberOpeningBalanceRows.map((row) => row.savingsAmount)),
+      initialPaymentTotal: sumMoney(memberInitialPayments.map((payment) => payment.shareCapitalAmount)),
+      shareCapitalContributionTotal: sumMoney(
+        memberShareCapitalContributions.map((contribution) => contribution.amount)
       ),
-      openingSavingsTotal: memberOpeningBalanceRows.reduce(
-        (sum, row) => sum + Number(row.savingsAmount || 0),
-        0
+      savingsDepositTotal: addMoney(
+        sumMoney(memberInitialPayments.map((payment) => payment.savingsDepositAmount)),
+        sumMoney(memberSavingsDeposits.map((deposit) => deposit.amount))
       ),
-      initialPaymentTotal: memberInitialPayments.reduce(
-        (sum, payment) => sum + Number(payment.shareCapitalAmount || 0),
-        0
-      ),
-      shareCapitalContributionTotal: memberShareCapitalContributions.reduce(
-        (sum, contribution) => sum + Number(contribution.amount || 0),
-        0
-      ),
-      savingsDepositTotal:
-        memberInitialPayments.reduce((sum, payment) => sum + Number(payment.savingsDepositAmount || 0), 0) +
-        memberSavingsDeposits.reduce((sum, deposit) => sum + Number(deposit.amount || 0), 0),
-      savingsWithdrawalTotal: memberSavingsWithdrawals.reduce(
-        (sum, withdrawal) => sum + Number(withdrawal.amount || 0),
-        0
-      ),
+      savingsWithdrawalTotal: sumMoney(memberSavingsWithdrawals.map((withdrawal) => withdrawal.amount)),
       postedTransactionCount: transactions.filter(
         (transaction) => transaction.status === "Posted" || transaction.rowStatus === "Finalized"
       ).length,
@@ -5043,10 +5082,10 @@ async function getMemberSubsidiaryLedgerReport() {
   const summary = membersWithSubsidiary.reduce(
     (totals, member) => ({
       totalMembers: totals.totalMembers + 1,
-      totalShareCapital: totals.totalShareCapital + member.shareCapitalBalance,
-      totalSavings: totals.totalSavings + member.savingsBalance,
-      totalOpeningShareCapital: totals.totalOpeningShareCapital + member.openingShareCapitalTotal,
-      totalOpeningSavings: totals.totalOpeningSavings + member.openingSavingsTotal,
+      totalShareCapital: addMoney(totals.totalShareCapital, member.shareCapitalBalance),
+      totalSavings: addMoney(totals.totalSavings, member.savingsBalance),
+      totalOpeningShareCapital: addMoney(totals.totalOpeningShareCapital, member.openingShareCapitalTotal),
+      totalOpeningSavings: addMoney(totals.totalOpeningSavings, member.openingSavingsTotal),
       totalPostedTransactions: totals.totalPostedTransactions + member.postedTransactionCount,
       totalUnpostedTransactions: totals.totalUnpostedTransactions + member.unpostedTransactionCount
     }),
@@ -5079,25 +5118,28 @@ async function getControlAccountReconciliationReport() {
   const entries = await listJournalEntries();
 
   const glBalance = (accountCode) =>
-    entries.reduce(
-      (sum, entry) =>
-        sum +
+    sumMoney(
+      entries.flatMap((entry) =>
         entry.lines
           .filter((line) => line.accountCode === accountCode)
-          .reduce((lineSum, line) => lineSum + Number(line.credit || 0) - Number(line.debit || 0), 0),
-      0
+          .map((line) => subtractMoney(line.credit, line.debit))
+      )
     );
 
-  const shareCapitalSubsidiaryTotal =
-    openingBalanceRows.reduce((sum, row) => sum + Number(row.shareCapitalAmount || 0), 0) +
-    initialPaymentRows.reduce((sum, payment) => sum + Number(payment.shareCapitalAmount || 0), 0) +
-    shareCapitalContributionRows.reduce((sum, contribution) => sum + Number(contribution.amount || 0), 0);
+  const shareCapitalSubsidiaryTotal = sumMoney([
+    ...openingBalanceRows.map((row) => row.shareCapitalAmount),
+    ...initialPaymentRows.map((payment) => payment.shareCapitalAmount),
+    ...shareCapitalContributionRows.map((contribution) => contribution.amount)
+  ]);
 
-  const savingsSubsidiaryTotal =
-    openingBalanceRows.reduce((sum, row) => sum + Number(row.savingsAmount || 0), 0) +
-    initialPaymentRows.reduce((sum, payment) => sum + Number(payment.savingsDepositAmount || 0), 0) +
-    savingsDepositRows.reduce((sum, deposit) => sum + Number(deposit.amount || 0), 0) -
-    savingsWithdrawalRows.reduce((sum, withdrawal) => sum + Number(withdrawal.amount || 0), 0);
+  const savingsSubsidiaryTotal = subtractMoney(
+    sumMoney([
+      ...openingBalanceRows.map((row) => row.savingsAmount),
+      ...initialPaymentRows.map((payment) => payment.savingsDepositAmount),
+      ...savingsDepositRows.map((deposit) => deposit.amount)
+    ]),
+    sumMoney(savingsWithdrawalRows.map((withdrawal) => withdrawal.amount))
+  );
 
   const rows = [
     {
@@ -5113,12 +5155,12 @@ async function getControlAccountReconciliationReport() {
       generalLedgerTotal: glBalance("2020")
     }
   ].map((row) => {
-    const difference = row.subsidiaryTotal - row.generalLedgerTotal;
+    const difference = subtractMoney(row.subsidiaryTotal, row.generalLedgerTotal);
 
     return {
       ...row,
       difference,
-      status: difference === 0 ? "Reconciled" : "Difference"
+      status: moneyCents(difference) === 0 ? "Reconciled" : "Difference"
     };
   });
 
@@ -5147,15 +5189,15 @@ async function getTrialBalanceReport() {
         totalCredit: 0
       };
 
-      existingRow.totalDebit += Number(line.debit || 0);
-      existingRow.totalCredit += Number(line.credit || 0);
+      existingRow.totalDebit = addMoney(existingRow.totalDebit, line.debit);
+      existingRow.totalCredit = addMoney(existingRow.totalCredit, line.credit);
       accountRows.set(line.accountCode, existingRow);
     });
   });
 
   const rows = Array.from(accountRows.values())
     .map((row) => {
-      const netBalance = row.totalDebit - row.totalCredit;
+      const netBalance = subtractMoney(row.totalDebit, row.totalCredit);
 
       return {
         ...row,
@@ -5165,9 +5207,9 @@ async function getTrialBalanceReport() {
     })
     .sort((firstRow, secondRow) => firstRow.accountCode.localeCompare(secondRow.accountCode));
 
-  const totalDebits = rows.reduce((sum, row) => sum + row.totalDebit, 0);
-  const totalCredits = rows.reduce((sum, row) => sum + row.totalCredit, 0);
-  const difference = totalDebits - totalCredits;
+  const totalDebits = sumMoney(rows.map((row) => row.totalDebit));
+  const totalCredits = sumMoney(rows.map((row) => row.totalCredit));
+  const difference = subtractMoney(totalDebits, totalCredits);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -5178,7 +5220,7 @@ async function getTrialBalanceReport() {
       totalDebits,
       totalCredits,
       difference,
-      status: difference === 0 ? "Balanced" : "Out of Balance"
+      status: moneyCents(difference) === 0 ? "Balanced" : "Out of Balance"
     }
   };
 }
@@ -5188,10 +5230,10 @@ async function getStatementOfFinancialConditionReport() {
 
   const accountBalance = (row, normalSide) => {
     if (normalSide === "debit") {
-      return row.endingDebitBalance - row.endingCreditBalance;
+      return subtractMoney(row.endingDebitBalance, row.endingCreditBalance);
     }
 
-    return row.endingCreditBalance - row.endingDebitBalance;
+    return subtractMoney(row.endingCreditBalance, row.endingDebitBalance);
   };
 
   const assets = trialBalance.rows
@@ -5218,13 +5260,17 @@ async function getStatementOfFinancialConditionReport() {
       amount: accountBalance(row, "credit")
     }));
 
-  const revenueTotal = trialBalance.rows
-    .filter((row) => row.accountCode.startsWith("4"))
-    .reduce((sum, row) => sum + accountBalance(row, "credit"), 0);
-  const expenseTotal = trialBalance.rows
-    .filter((row) => row.accountCode.startsWith("5"))
-    .reduce((sum, row) => sum + accountBalance(row, "debit"), 0);
-  const currentPeriodSurplus = revenueTotal - expenseTotal;
+  const revenueTotal = sumMoney(
+    trialBalance.rows
+      .filter((row) => row.accountCode.startsWith("4"))
+      .map((row) => accountBalance(row, "credit"))
+  );
+  const expenseTotal = sumMoney(
+    trialBalance.rows
+      .filter((row) => row.accountCode.startsWith("5"))
+      .map((row) => accountBalance(row, "debit"))
+  );
+  const currentPeriodSurplus = subtractMoney(revenueTotal, expenseTotal);
 
   if (currentPeriodSurplus !== 0) {
     equity.push({
@@ -5234,11 +5280,11 @@ async function getStatementOfFinancialConditionReport() {
     });
   }
 
-  const totalAssets = assets.reduce((sum, row) => sum + row.amount, 0);
-  const totalLiabilities = liabilities.reduce((sum, row) => sum + row.amount, 0);
-  const totalEquity = equity.reduce((sum, row) => sum + row.amount, 0);
-  const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
-  const difference = totalAssets - totalLiabilitiesAndEquity;
+  const totalAssets = sumMoney(assets.map((row) => row.amount));
+  const totalLiabilities = sumMoney(liabilities.map((row) => row.amount));
+  const totalEquity = sumMoney(equity.map((row) => row.amount));
+  const totalLiabilitiesAndEquity = addMoney(totalLiabilities, totalEquity);
+  const difference = subtractMoney(totalAssets, totalLiabilitiesAndEquity);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -5255,7 +5301,7 @@ async function getStatementOfFinancialConditionReport() {
       totalLiabilitiesAndEquity,
       currentPeriodSurplus,
       difference,
-      status: difference === 0 ? "Balanced" : "Out of Balance"
+      status: moneyCents(difference) === 0 ? "Balanced" : "Out of Balance"
     }
   };
 }
@@ -5635,8 +5681,8 @@ async function recordInitialPayment(input, user) {
       return { error: "OR/reference number already exists.", statusCode: 409 };
     }
 
-    member.share += input.shareCapitalAmount;
-    member.savings += input.savingsDepositAmount;
+    member.share = addMoney(member.share, input.shareCapitalAmount);
+    member.savings = addMoney(member.savings, input.savingsDepositAmount);
 
     const payment = {
       id: nextInitialPaymentNumber(),
@@ -5753,8 +5799,8 @@ async function recordInitialPayment(input, user) {
       },
       member: {
         ...member,
-        share: member.share + input.shareCapitalAmount,
-        savings: member.savings + input.savingsDepositAmount
+        share: addMoney(member.share, input.shareCapitalAmount),
+        savings: addMoney(member.savings, input.savingsDepositAmount)
       }
     };
   } catch (error) {
@@ -5784,7 +5830,7 @@ async function recordSavingsDeposit(input, user) {
       return { error: "OR/reference number already exists.", statusCode: 409 };
     }
 
-    member.savings += input.amount;
+    member.savings = addMoney(member.savings, input.amount);
 
     const deposit = {
       id: nextSavingsDepositNumber(),
@@ -5881,7 +5927,7 @@ async function recordSavingsDeposit(input, user) {
       },
       member: {
         ...member,
-        savings: member.savings + input.amount
+        savings: addMoney(member.savings, input.amount)
       }
     };
   } catch (error) {
@@ -5911,7 +5957,7 @@ async function recordShareCapitalContribution(input, user) {
       return { error: "OR/reference number already exists.", statusCode: 409 };
     }
 
-    member.share += input.amount;
+    member.share = addMoney(member.share, input.amount);
 
     const contribution = {
       id: nextShareCapitalContributionNumber(),
@@ -6008,7 +6054,7 @@ async function recordShareCapitalContribution(input, user) {
       },
       member: {
         ...member,
-        share: member.share + input.amount
+        share: addMoney(member.share, input.amount)
       }
     };
   } catch (error) {
@@ -6042,7 +6088,7 @@ async function recordSavingsWithdrawal(input, user) {
       return { error: "Withdrawal voucher/reference number already exists.", statusCode: 409 };
     }
 
-    member.savings -= input.amount;
+    member.savings = subtractMoney(member.savings, input.amount);
 
     const withdrawal = {
       id: nextSavingsWithdrawalNumber(),
@@ -6133,7 +6179,7 @@ async function recordSavingsWithdrawal(input, user) {
       },
       member: {
         ...member,
-        savings: member.savings - input.amount
+        savings: subtractMoney(member.savings, input.amount)
       }
     };
   } catch (error) {
@@ -7184,9 +7230,9 @@ async function submitTellerCashCount(input, user) {
   const cashCount = {
     id: nextTellerCashCountNumber(),
     batchId: batch.id,
-    expectedCash: openingFunding + summary.netCash,
+    expectedCash: addMoney(openingFunding, summary.netCash),
     actualCash: input.actualCash,
-    variance: input.actualCash - (openingFunding + summary.netCash),
+    variance: subtractMoney(input.actualCash, addMoney(openingFunding, summary.netCash)),
     transactionCount: summary.transactionCount,
     submittedBy: user.username,
     status: "Submitted",
@@ -7511,8 +7557,8 @@ function validateMemberApplication(body) {
     return { error: "Contact number is required." };
   }
 
-  if (!Number.isInteger(initialShareCapital) || initialShareCapital < 0) {
-    return { error: "Initial share capital must be a whole peso amount." };
+  if (!isMoney(initialShareCapital)) {
+    return { error: "Initial share capital must have no more than two decimal places." };
   }
 
   return {
@@ -7520,7 +7566,7 @@ function validateMemberApplication(body) {
       fullName,
       clusterName,
       contactNumber,
-      initialShareCapital
+      initialShareCapital: moneyValue(initialShareCapital)
     }
   };
 }
@@ -7537,25 +7583,26 @@ function validateInitialPayment(body) {
     return { error: "Member is required." };
   }
 
-  if (!Number.isInteger(shareCapitalAmount) || shareCapitalAmount < 0) {
-    return { error: "Share capital amount must be a whole peso amount." };
+  if (!isMoney(shareCapitalAmount)) {
+    return { error: "Share capital amount must have no more than two decimal places." };
   }
 
-  if (!Number.isInteger(membershipFeeAmount) || membershipFeeAmount < 0) {
-    return { error: "Membership fee must be a whole peso amount." };
+  if (!isMoney(membershipFeeAmount)) {
+    return { error: "Membership fee must have no more than two decimal places." };
   }
 
-  if (!Number.isInteger(savingsDepositAmount) || savingsDepositAmount < 0) {
-    return { error: "Savings deposit must be a whole peso amount." };
+  if (!isMoney(savingsDepositAmount)) {
+    return { error: "Savings deposit must have no more than two decimal places." };
   }
 
-  if (shareCapitalAmount + membershipFeeAmount + savingsDepositAmount <= 0) {
+  const totalPayment = addMoney(shareCapitalAmount, membershipFeeAmount, savingsDepositAmount);
+  if (totalPayment <= 0) {
     return { error: "Payment must include share capital, membership fee, or savings." };
   }
 
   if (
-    !Number.isInteger(cashReceived) ||
-    cashReceived < shareCapitalAmount + membershipFeeAmount + savingsDepositAmount
+    !isMoney(cashReceived) ||
+    moneyCents(cashReceived) < moneyCents(totalPayment)
   ) {
     return { error: "Cash received must cover the total payment." };
   }
@@ -7567,10 +7614,10 @@ function validateInitialPayment(body) {
   return {
     value: {
       memberId,
-      shareCapitalAmount,
-      membershipFeeAmount,
-      savingsDepositAmount,
-      cashReceived,
+      shareCapitalAmount: moneyValue(shareCapitalAmount),
+      membershipFeeAmount: moneyValue(membershipFeeAmount),
+      savingsDepositAmount: moneyValue(savingsDepositAmount),
+      cashReceived: moneyValue(cashReceived),
       referenceNo
     }
   };
@@ -7586,11 +7633,11 @@ function validateSavingsDeposit(body) {
     return { error: "Member is required." };
   }
 
-  if (!Number.isInteger(amount) || amount <= 0) {
-    return { error: "Savings deposit amount must be a positive whole peso amount." };
+  if (!isMoney(amount, { positive: true })) {
+    return { error: "Savings deposit amount must be positive and have no more than two decimal places." };
   }
 
-  if (!Number.isInteger(cashReceived) || cashReceived < amount) {
+  if (!isMoney(cashReceived) || moneyCents(cashReceived) < moneyCents(amount)) {
     return { error: "Cash received must cover the savings deposit." };
   }
 
@@ -7601,8 +7648,8 @@ function validateSavingsDeposit(body) {
   return {
     value: {
       memberId,
-      amount,
-      cashReceived,
+      amount: moneyValue(amount),
+      cashReceived: moneyValue(cashReceived),
       referenceNo
     }
   };
@@ -7618,11 +7665,11 @@ function validateShareCapitalContribution(body) {
     return { error: "Member is required." };
   }
 
-  if (!Number.isInteger(amount) || amount <= 0) {
-    return { error: "Share capital contribution must be a positive whole peso amount." };
+  if (!isMoney(amount, { positive: true })) {
+    return { error: "Share capital contribution must be positive and have no more than two decimal places." };
   }
 
-  if (!Number.isInteger(cashReceived) || cashReceived < amount) {
+  if (!isMoney(cashReceived) || moneyCents(cashReceived) < moneyCents(amount)) {
     return { error: "Cash received must cover the share capital contribution." };
   }
 
@@ -7633,8 +7680,8 @@ function validateShareCapitalContribution(body) {
   return {
     value: {
       memberId,
-      amount,
-      cashReceived,
+      amount: moneyValue(amount),
+      cashReceived: moneyValue(cashReceived),
       referenceNo
     }
   };
@@ -7649,8 +7696,8 @@ function validateSavingsWithdrawal(body) {
     return { error: "Member is required." };
   }
 
-  if (!Number.isInteger(amount) || amount <= 0) {
-    return { error: "Savings withdrawal amount must be a positive whole peso amount." };
+  if (!isMoney(amount, { positive: true })) {
+    return { error: "Savings withdrawal amount must be positive and have no more than two decimal places." };
   }
 
   if (!referenceNo) {
@@ -7660,7 +7707,7 @@ function validateSavingsWithdrawal(body) {
   return {
     value: {
       memberId,
-      amount,
+      amount: moneyValue(amount),
       referenceNo
     }
   };
@@ -7669,13 +7716,13 @@ function validateSavingsWithdrawal(body) {
 function validateTellerCashCount(body) {
   const actualCash = Number(body.actualCash || 0);
 
-  if (!Number.isInteger(actualCash) || actualCash < 0) {
-    return { error: "Actual cash counted must be a whole peso amount." };
+  if (!isMoney(actualCash)) {
+    return { error: "Actual cash counted must have no more than two decimal places." };
   }
 
   return {
     value: {
-      actualCash
+      actualCash: moneyValue(actualCash)
     }
   };
 }
@@ -8813,7 +8860,7 @@ app.get("/api/teller-cash-count", async (request, response) => {
     expected: {
       ...buildTellerBatchSummary(tellerBatch),
       openingFunding,
-      expectedEndingCash: openingFunding + buildTellerBatchSummary(tellerBatch).netCash
+      expectedEndingCash: addMoney(openingFunding, buildTellerBatchSummary(tellerBatch).netCash)
     },
     latestCashCount: await getLatestTellerCashCount()
   });
@@ -9056,14 +9103,21 @@ app.post("/api/ledger/opening-balance-import-batches", async (request, response)
     return;
   }
 
-  const result = await createOpeningBalanceImportBatch(request.body, user);
+  try {
+    const result = await createOpeningBalanceImportBatch(request.body, user);
 
-  if (result.error) {
-    response.status(result.statusCode).json({ error: result.error });
-    return;
+    if (result.error) {
+      response.status(result.statusCode).json({ error: result.error });
+      return;
+    }
+
+    response.status(201).json(result);
+  } catch (error) {
+    console.error("Opening balance import failed:", error);
+    response.status(500).json({
+      error: "Opening balance import could not be saved. Review the mapped balance columns and row issues."
+    });
   }
-
-  response.status(201).json(result);
 });
 
 app.get("/api/ledger/opening-balance-import-batches/:importNo", async (request, response) => {

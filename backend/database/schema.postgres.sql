@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS members (
   full_name VARCHAR(180) NOT NULL,
   cluster_name VARCHAR(160) NOT NULL,
   status VARCHAR(30) NOT NULL DEFAULT 'Active',
-  share_capital INTEGER NOT NULL DEFAULT 0,
-  savings_balance INTEGER NOT NULL DEFAULT 0,
+  share_capital NUMERIC(18,2) NOT NULL DEFAULT 0,
+  savings_balance NUMERIC(18,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -31,14 +31,14 @@ CREATE TABLE IF NOT EXISTS loan_products (
   product_code VARCHAR(40) NOT NULL UNIQUE,
   product_name VARCHAR(160) NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  minimum_principal INTEGER NOT NULL DEFAULT 0,
-  maximum_principal INTEGER NOT NULL DEFAULT 0,
+  minimum_principal NUMERIC(18,2) NOT NULL DEFAULT 0,
+  maximum_principal NUMERIC(18,2) NOT NULL DEFAULT 0,
   minimum_term_months INTEGER NOT NULL DEFAULT 1,
   maximum_term_months INTEGER NOT NULL DEFAULT 1,
   annual_interest_rate_bps INTEGER NOT NULL DEFAULT 0,
   interest_method VARCHAR(40) NOT NULL DEFAULT 'Flat Interest',
   payment_frequency VARCHAR(40) NOT NULL DEFAULT 'Monthly',
-  processing_fee INTEGER NOT NULL DEFAULT 0,
+  processing_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
   penalty_rate_bps INTEGER NOT NULL DEFAULT 0,
   loans_receivable_account VARCHAR(40) NOT NULL DEFAULT '1050',
   interest_income_account VARCHAR(40) NOT NULL DEFAULT '4010',
@@ -57,14 +57,14 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   member_name VARCHAR(180) NOT NULL,
   product_code VARCHAR(40) NOT NULL,
   product_name VARCHAR(160) NOT NULL,
-  requested_principal INTEGER NOT NULL DEFAULT 0,
+  requested_principal NUMERIC(18,2) NOT NULL DEFAULT 0,
   requested_term_months INTEGER NOT NULL DEFAULT 1,
   purpose TEXT NOT NULL DEFAULT '',
   application_date DATE NOT NULL DEFAULT CURRENT_DATE,
   annual_interest_rate_bps INTEGER NOT NULL DEFAULT 0,
   interest_method VARCHAR(40) NOT NULL,
   payment_frequency VARCHAR(40) NOT NULL,
-  processing_fee INTEGER NOT NULL DEFAULT 0,
+  processing_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
   penalty_rate_bps INTEGER NOT NULL DEFAULT 0,
   loans_receivable_account VARCHAR(40) NOT NULL,
   interest_income_account VARCHAR(40) NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   submitted_by VARCHAR(80),
   submitted_at TIMESTAMPTZ,
   credit_assessment_notes TEXT NOT NULL DEFAULT '',
-  recommended_principal INTEGER NOT NULL DEFAULT 0,
+  recommended_principal NUMERIC(18,2) NOT NULL DEFAULT 0,
   recommended_term_months INTEGER NOT NULL DEFAULT 0,
   decision VARCHAR(30),
   decision_remarks TEXT NOT NULL DEFAULT '',
@@ -104,15 +104,15 @@ CREATE TABLE IF NOT EXISTS loans (
   member_name VARCHAR(180) NOT NULL,
   product_code VARCHAR(40) NOT NULL,
   product_name VARCHAR(160) NOT NULL,
-  principal INTEGER NOT NULL DEFAULT 0,
+  principal NUMERIC(18,2) NOT NULL DEFAULT 0,
   term_months INTEGER NOT NULL DEFAULT 1,
   annual_interest_rate_bps INTEGER NOT NULL DEFAULT 0,
   interest_method VARCHAR(40) NOT NULL,
   payment_frequency VARCHAR(40) NOT NULL,
-  processing_fee INTEGER NOT NULL DEFAULT 0,
-  total_interest INTEGER NOT NULL DEFAULT 0,
-  total_payable INTEGER NOT NULL DEFAULT 0,
-  net_proceeds INTEGER NOT NULL DEFAULT 0,
+  processing_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
+  total_interest NUMERIC(18,2) NOT NULL DEFAULT 0,
+  total_payable NUMERIC(18,2) NOT NULL DEFAULT 0,
+  net_proceeds NUMERIC(18,2) NOT NULL DEFAULT 0,
   installment_count INTEGER NOT NULL DEFAULT 0,
   first_payment_date DATE NOT NULL,
   maturity_date DATE NOT NULL,
@@ -127,9 +127,9 @@ CREATE TABLE IF NOT EXISTS loan_installments (
   loan_no VARCHAR(40) NOT NULL,
   installment_no INTEGER NOT NULL,
   due_date DATE NOT NULL,
-  principal_due INTEGER NOT NULL DEFAULT 0,
-  interest_due INTEGER NOT NULL DEFAULT 0,
-  total_due INTEGER NOT NULL DEFAULT 0,
+  principal_due NUMERIC(18,2) NOT NULL DEFAULT 0,
+  interest_due NUMERIC(18,2) NOT NULL DEFAULT 0,
+  total_due NUMERIC(18,2) NOT NULL DEFAULT 0,
   status VARCHAR(30) NOT NULL DEFAULT 'Scheduled',
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (loan_no, installment_no)
@@ -142,10 +142,10 @@ CREATE TABLE IF NOT EXISTS loan_releases (
   batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
-  principal INTEGER NOT NULL DEFAULT 0,
-  processing_fee INTEGER NOT NULL DEFAULT 0,
-  net_proceeds INTEGER NOT NULL DEFAULT 0,
-  cash_released INTEGER NOT NULL DEFAULT 0,
+  principal NUMERIC(18,2) NOT NULL DEFAULT 0,
+  processing_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
+  net_proceeds NUMERIC(18,2) NOT NULL DEFAULT 0,
+  cash_released NUMERIC(18,2) NOT NULL DEFAULT 0,
   release_date DATE NOT NULL,
   reference_no VARCHAR(80) NOT NULL UNIQUE,
   released_by VARCHAR(80) NOT NULL,
@@ -164,9 +164,9 @@ CREATE TABLE IF NOT EXISTS loan_collections (
   batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
-  principal_amount INTEGER NOT NULL DEFAULT 0,
-  interest_amount INTEGER NOT NULL DEFAULT 0,
-  amount_received INTEGER NOT NULL DEFAULT 0,
+  principal_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  interest_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  amount_received NUMERIC(18,2) NOT NULL DEFAULT 0,
   collection_date DATE NOT NULL,
   reference_no VARCHAR(80) NOT NULL UNIQUE,
   received_by VARCHAR(80) NOT NULL,
@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS member_applications (
   full_name VARCHAR(180) NOT NULL,
   cluster_name VARCHAR(160) NOT NULL,
   contact_number VARCHAR(60) NOT NULL,
-  initial_share_capital INTEGER NOT NULL DEFAULT 0,
+  initial_share_capital NUMERIC(18,2) NOT NULL DEFAULT 0,
   status VARCHAR(40) NOT NULL DEFAULT 'Pending Approval',
   created_by VARCHAR(80) NOT NULL,
   approved_by VARCHAR(80),
@@ -239,8 +239,8 @@ CREATE TABLE IF NOT EXISTS opening_balance_import_batches (
   total_rows INTEGER NOT NULL DEFAULT 0,
   ready_rows INTEGER NOT NULL DEFAULT 0,
   issue_rows INTEGER NOT NULL DEFAULT 0,
-  total_share_capital INTEGER NOT NULL DEFAULT 0,
-  total_savings INTEGER NOT NULL DEFAULT 0,
+  total_share_capital NUMERIC(18,2) NOT NULL DEFAULT 0,
+  total_savings NUMERIC(18,2) NOT NULL DEFAULT 0,
   created_by VARCHAR(80) NOT NULL,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   finalized_by VARCHAR(80),
@@ -255,8 +255,8 @@ CREATE TABLE IF NOT EXISTS opening_balance_import_rows (
   row_no INTEGER NOT NULL,
   member_no VARCHAR(40) NOT NULL DEFAULT '',
   member_name VARCHAR(180) NOT NULL DEFAULT '',
-  share_capital_opening_balance INTEGER NOT NULL DEFAULT 0,
-  savings_opening_balance INTEGER NOT NULL DEFAULT 0,
+  share_capital_opening_balance NUMERIC(18,2) NOT NULL DEFAULT 0,
+  savings_opening_balance NUMERIC(18,2) NOT NULL DEFAULT 0,
   cutover_date DATE,
   source_reference VARCHAR(120) NOT NULL DEFAULT '',
   row_status VARCHAR(40) NOT NULL DEFAULT 'Ready',
@@ -274,10 +274,10 @@ CREATE TABLE IF NOT EXISTS initial_member_payments (
   batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
-  share_capital_amount INTEGER NOT NULL DEFAULT 0,
-  membership_fee_amount INTEGER NOT NULL DEFAULT 0,
-  savings_deposit_amount INTEGER NOT NULL DEFAULT 0,
-  cash_received INTEGER NOT NULL DEFAULT 0,
+  share_capital_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  membership_fee_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  savings_deposit_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  cash_received NUMERIC(18,2) NOT NULL DEFAULT 0,
   reference_no VARCHAR(80) NOT NULL UNIQUE,
   received_by VARCHAR(80) NOT NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
@@ -293,8 +293,8 @@ CREATE TABLE IF NOT EXISTS savings_deposits (
   batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
-  amount INTEGER NOT NULL DEFAULT 0,
-  cash_received INTEGER NOT NULL DEFAULT 0,
+  amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  cash_received NUMERIC(18,2) NOT NULL DEFAULT 0,
   reference_no VARCHAR(80) NOT NULL UNIQUE,
   received_by VARCHAR(80) NOT NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
@@ -310,8 +310,8 @@ CREATE TABLE IF NOT EXISTS share_capital_contributions (
   batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
-  amount INTEGER NOT NULL DEFAULT 0,
-  cash_received INTEGER NOT NULL DEFAULT 0,
+  amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  cash_received NUMERIC(18,2) NOT NULL DEFAULT 0,
   reference_no VARCHAR(80) NOT NULL UNIQUE,
   received_by VARCHAR(80) NOT NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS savings_withdrawals (
   batch_no VARCHAR(40) NOT NULL,
   member_no VARCHAR(40) NOT NULL,
   member_name VARCHAR(180) NOT NULL,
-  amount INTEGER NOT NULL DEFAULT 0,
+  amount NUMERIC(18,2) NOT NULL DEFAULT 0,
   reference_no VARCHAR(80) NOT NULL UNIQUE,
   released_by VARCHAR(80) NOT NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'Teller Batch',
@@ -352,8 +352,8 @@ CREATE TABLE IF NOT EXISTS journal_entry_lines (
   entry_no VARCHAR(40) NOT NULL,
   account_code VARCHAR(40) NOT NULL,
   account_name VARCHAR(160) NOT NULL,
-  debit INTEGER NOT NULL DEFAULT 0,
-  credit INTEGER NOT NULL DEFAULT 0,
+  debit NUMERIC(18,2) NOT NULL DEFAULT 0,
+  credit NUMERIC(18,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -369,9 +369,9 @@ CREATE TABLE IF NOT EXISTS teller_batches (
   closed_at TIMESTAMPTZ,
   closed_by VARCHAR(80),
   closing_note TEXT,
-  expected_cash INTEGER NOT NULL DEFAULT 0,
-  actual_cash INTEGER NOT NULL DEFAULT 0,
-  variance INTEGER NOT NULL DEFAULT 0,
+  expected_cash NUMERIC(18,2) NOT NULL DEFAULT 0,
+  actual_cash NUMERIC(18,2) NOT NULL DEFAULT 0,
+  variance NUMERIC(18,2) NOT NULL DEFAULT 0,
   transaction_count INTEGER NOT NULL DEFAULT 0,
   variance_note TEXT,
   variance_noted_by VARCHAR(80),
@@ -382,9 +382,9 @@ CREATE TABLE IF NOT EXISTS teller_cash_counts (
   id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   count_no VARCHAR(40) NOT NULL UNIQUE,
   batch_no VARCHAR(40) NOT NULL,
-  expected_cash INTEGER NOT NULL DEFAULT 0,
-  actual_cash INTEGER NOT NULL DEFAULT 0,
-  variance INTEGER NOT NULL DEFAULT 0,
+  expected_cash NUMERIC(18,2) NOT NULL DEFAULT 0,
+  actual_cash NUMERIC(18,2) NOT NULL DEFAULT 0,
+  variance NUMERIC(18,2) NOT NULL DEFAULT 0,
   transaction_count INTEGER NOT NULL DEFAULT 0,
   submitted_by VARCHAR(80) NOT NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'Submitted',
@@ -396,7 +396,7 @@ CREATE TABLE IF NOT EXISTS teller_fundings (
   funding_no VARCHAR(40) NOT NULL UNIQUE,
   batch_no VARCHAR(40),
   teller_username VARCHAR(80) NOT NULL,
-  amount INTEGER NOT NULL DEFAULT 0,
+  amount NUMERIC(18,2) NOT NULL DEFAULT 0,
   source_account_code VARCHAR(40) NOT NULL DEFAULT '1020',
   source_account_name VARCHAR(160) NOT NULL DEFAULT 'Cash in Bank',
   reference_no VARCHAR(80) NOT NULL UNIQUE,
@@ -416,3 +416,68 @@ CREATE TABLE IF NOT EXISTS teller_fundings (
 ALTER TABLE teller_fundings ADD COLUMN IF NOT EXISTS posted_by VARCHAR(80);
 ALTER TABLE teller_fundings ADD COLUMN IF NOT EXISTS posted_entry_no VARCHAR(40);
 ALTER TABLE teller_fundings ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ;
+
+ALTER TABLE members
+  ALTER COLUMN share_capital TYPE NUMERIC(18,2) USING share_capital::NUMERIC,
+  ALTER COLUMN savings_balance TYPE NUMERIC(18,2) USING savings_balance::NUMERIC;
+ALTER TABLE loan_products
+  ALTER COLUMN minimum_principal TYPE NUMERIC(18,2) USING minimum_principal::NUMERIC,
+  ALTER COLUMN maximum_principal TYPE NUMERIC(18,2) USING maximum_principal::NUMERIC,
+  ALTER COLUMN processing_fee TYPE NUMERIC(18,2) USING processing_fee::NUMERIC;
+ALTER TABLE loan_applications
+  ALTER COLUMN requested_principal TYPE NUMERIC(18,2) USING requested_principal::NUMERIC,
+  ALTER COLUMN processing_fee TYPE NUMERIC(18,2) USING processing_fee::NUMERIC,
+  ALTER COLUMN recommended_principal TYPE NUMERIC(18,2) USING recommended_principal::NUMERIC;
+ALTER TABLE loans
+  ALTER COLUMN principal TYPE NUMERIC(18,2) USING principal::NUMERIC,
+  ALTER COLUMN processing_fee TYPE NUMERIC(18,2) USING processing_fee::NUMERIC,
+  ALTER COLUMN total_interest TYPE NUMERIC(18,2) USING total_interest::NUMERIC,
+  ALTER COLUMN total_payable TYPE NUMERIC(18,2) USING total_payable::NUMERIC,
+  ALTER COLUMN net_proceeds TYPE NUMERIC(18,2) USING net_proceeds::NUMERIC;
+ALTER TABLE loan_installments
+  ALTER COLUMN principal_due TYPE NUMERIC(18,2) USING principal_due::NUMERIC,
+  ALTER COLUMN interest_due TYPE NUMERIC(18,2) USING interest_due::NUMERIC,
+  ALTER COLUMN total_due TYPE NUMERIC(18,2) USING total_due::NUMERIC;
+ALTER TABLE loan_releases
+  ALTER COLUMN principal TYPE NUMERIC(18,2) USING principal::NUMERIC,
+  ALTER COLUMN processing_fee TYPE NUMERIC(18,2) USING processing_fee::NUMERIC,
+  ALTER COLUMN net_proceeds TYPE NUMERIC(18,2) USING net_proceeds::NUMERIC,
+  ALTER COLUMN cash_released TYPE NUMERIC(18,2) USING cash_released::NUMERIC;
+ALTER TABLE loan_collections
+  ALTER COLUMN principal_amount TYPE NUMERIC(18,2) USING principal_amount::NUMERIC,
+  ALTER COLUMN interest_amount TYPE NUMERIC(18,2) USING interest_amount::NUMERIC,
+  ALTER COLUMN amount_received TYPE NUMERIC(18,2) USING amount_received::NUMERIC;
+ALTER TABLE member_applications
+  ALTER COLUMN initial_share_capital TYPE NUMERIC(18,2) USING initial_share_capital::NUMERIC;
+ALTER TABLE opening_balance_import_batches
+  ALTER COLUMN total_share_capital TYPE NUMERIC(18,2) USING total_share_capital::NUMERIC,
+  ALTER COLUMN total_savings TYPE NUMERIC(18,2) USING total_savings::NUMERIC;
+ALTER TABLE opening_balance_import_rows
+  ALTER COLUMN share_capital_opening_balance TYPE NUMERIC(18,2) USING share_capital_opening_balance::NUMERIC,
+  ALTER COLUMN savings_opening_balance TYPE NUMERIC(18,2) USING savings_opening_balance::NUMERIC;
+ALTER TABLE initial_member_payments
+  ALTER COLUMN share_capital_amount TYPE NUMERIC(18,2) USING share_capital_amount::NUMERIC,
+  ALTER COLUMN membership_fee_amount TYPE NUMERIC(18,2) USING membership_fee_amount::NUMERIC,
+  ALTER COLUMN savings_deposit_amount TYPE NUMERIC(18,2) USING savings_deposit_amount::NUMERIC,
+  ALTER COLUMN cash_received TYPE NUMERIC(18,2) USING cash_received::NUMERIC;
+ALTER TABLE savings_deposits
+  ALTER COLUMN amount TYPE NUMERIC(18,2) USING amount::NUMERIC,
+  ALTER COLUMN cash_received TYPE NUMERIC(18,2) USING cash_received::NUMERIC;
+ALTER TABLE share_capital_contributions
+  ALTER COLUMN amount TYPE NUMERIC(18,2) USING amount::NUMERIC,
+  ALTER COLUMN cash_received TYPE NUMERIC(18,2) USING cash_received::NUMERIC;
+ALTER TABLE savings_withdrawals
+  ALTER COLUMN amount TYPE NUMERIC(18,2) USING amount::NUMERIC;
+ALTER TABLE journal_entry_lines
+  ALTER COLUMN debit TYPE NUMERIC(18,2) USING debit::NUMERIC,
+  ALTER COLUMN credit TYPE NUMERIC(18,2) USING credit::NUMERIC;
+ALTER TABLE teller_batches
+  ALTER COLUMN expected_cash TYPE NUMERIC(18,2) USING expected_cash::NUMERIC,
+  ALTER COLUMN actual_cash TYPE NUMERIC(18,2) USING actual_cash::NUMERIC,
+  ALTER COLUMN variance TYPE NUMERIC(18,2) USING variance::NUMERIC;
+ALTER TABLE teller_cash_counts
+  ALTER COLUMN expected_cash TYPE NUMERIC(18,2) USING expected_cash::NUMERIC,
+  ALTER COLUMN actual_cash TYPE NUMERIC(18,2) USING actual_cash::NUMERIC,
+  ALTER COLUMN variance TYPE NUMERIC(18,2) USING variance::NUMERIC;
+ALTER TABLE teller_fundings
+  ALTER COLUMN amount TYPE NUMERIC(18,2) USING amount::NUMERIC;

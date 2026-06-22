@@ -687,6 +687,40 @@ async function run() {
       throw new Error("Manager should be denied opening balance staged batches.");
     }
 
+    const decimalOpeningBalance = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: bookkeeperCookie
+      },
+      body: JSON.stringify({
+        sourceLabel: "Invalid Decimal Opening Balance",
+        rows: [
+          {
+            rowNumber: 2,
+            memberNo: "M-NOT-FOUND",
+            memberName: "Incorrectly Mapped Row",
+            shareCapitalOpeningBalance: "199613.22533",
+            savingsOpeningBalance: 0,
+            cutoverDate: "2026-06-30",
+            sourceReference: "Wrong CSV Layout"
+          }
+        ]
+      })
+    });
+    const decimalOpeningBalanceBody = await decimalOpeningBalance.json();
+
+    if (
+      !decimalOpeningBalance.ok ||
+      decimalOpeningBalanceBody.batch.readyRows !== 0 ||
+      decimalOpeningBalanceBody.batch.issueRows !== 1 ||
+      !decimalOpeningBalanceBody.rows[0].issues.includes(
+        "Share capital: Amount must have no more than two decimal places"
+      )
+    ) {
+      throw new Error("Decimal or incorrectly mapped opening balances should become row issues without terminating the API.");
+    }
+
     const stagedOpeningBalance = await fetch(`${baseUrl}/api/ledger/opening-balance-import-batches`, {
       method: "POST",
       headers: {
@@ -700,8 +734,8 @@ async function run() {
             rowNumber: 2,
             memberNo: approvalBody.member.id,
             memberName: approvalBody.member.name,
-            shareCapitalOpeningBalance: 1000,
-            savingsOpeningBalance: 500,
+            shareCapitalOpeningBalance: 1000.25,
+            savingsOpeningBalance: 500.75,
             cutoverDate: "2026-06-30",
             sourceReference: "Smoke CSV",
             rawData: {
@@ -718,8 +752,8 @@ async function run() {
       !stagedOpeningBalance.ok ||
       stagedOpeningBalanceBody.batch.status !== "Staged" ||
       stagedOpeningBalanceBody.batch.readyRows !== 1 ||
-      stagedOpeningBalanceBody.batch.totalShareCapital !== 1000 ||
-      stagedOpeningBalanceBody.batch.totalSavings !== 500
+      stagedOpeningBalanceBody.batch.totalShareCapital !== 1000.25 ||
+      stagedOpeningBalanceBody.batch.totalSavings !== 500.75
     ) {
       throw new Error("Bookkeeper should be able to stage opening balance imports.");
     }
@@ -2410,7 +2444,7 @@ async function run() {
       previewSchedule.maturityDate !== "2027-02-19" ||
       previewSchedule.installments.reduce((sum, item) => sum + item.totalDue, 0) !== 14040
     ) {
-      throw new Error("Flat-interest preview should produce a balanced whole-peso amortization schedule.");
+      throw new Error("Flat-interest preview should produce a balanced centavo-accurate amortization schedule.");
     }
 
     const saveLoanComputation = await fetch(
