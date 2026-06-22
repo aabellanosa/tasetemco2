@@ -186,6 +186,29 @@ async function run() {
       throw new Error("Admin should have member application approval permission.");
     }
 
+    const managerDashboard = await fetch(`${baseUrl}/api/dashboard`, {
+      headers: { Cookie: managerCookie }
+    });
+    const managerDashboardBody = await managerDashboard.json();
+
+    if (!managerDashboard.ok || Object.hasOwn(managerDashboardBody, "outstandingBatch")) {
+      throw new Error("Outstanding teller batch dashboard data should be restricted to admin.");
+    }
+
+    const adminDashboard = await fetch(`${baseUrl}/api/dashboard`, {
+      headers: { Cookie: adminCookie }
+    });
+    const adminDashboardBody = await adminDashboard.json();
+
+    if (
+      !adminDashboard.ok ||
+      !adminDashboardBody.outstandingBatch?.activeBatch?.id ||
+      !Array.isArray(adminDashboardBody.outstandingBatch.rows) ||
+      typeof adminDashboardBody.outstandingBatch.openingFunding !== "number"
+    ) {
+      throw new Error("Admin dashboard should include the current outstanding teller batch summary.");
+    }
+
     const forbiddenUsers = await fetch(`${baseUrl}/api/admin/users`, {
       headers: { Cookie: managerCookie }
     });

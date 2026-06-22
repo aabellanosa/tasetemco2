@@ -7888,7 +7888,7 @@ app.get("/api/me", (request, response) => {
   response.json({ user: parseSession(request) });
 });
 
-app.get("/api/dashboard", (request, response) => {
+app.get("/api/dashboard", async (request, response) => {
   const user = parseSession(request);
 
   if (!user) {
@@ -7896,7 +7896,24 @@ app.get("/api/dashboard", (request, response) => {
     return;
   }
 
-  response.json(dashboard);
+  if (!isAdminUser(user)) {
+    response.json(dashboard);
+    return;
+  }
+
+  const activeBatch = await getCurrentTellerBatch({ username: "teller01" });
+  const rows = await listTellerBatchRows(activeBatch.id);
+  const openingFunding = await getAcknowledgedFundingTotal(activeBatch.id);
+
+  response.json({
+    ...dashboard,
+    outstandingBatch: {
+      activeBatch,
+      openingFunding,
+      rows,
+      latestCashCount: await getLatestTellerCashCount()
+    }
+  });
 });
 
 app.get("/api/loan-products", async (request, response) => {

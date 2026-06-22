@@ -1061,11 +1061,120 @@ function MemberImportPreview({ existingMembers, user }) {
   );
 }
 
-function Dashboard() {
+function TellerBatchCashPosition({
+  activeBatch,
+  openingFunding = 0,
+  rows = [],
+  title = "Teller Batch Cash Position",
+  description = "Unposted transactions waiting for Bookkeeper posting."
+}) {
+  const summary = buildTellerBatchSummary(rows);
+
+  return (
+    <Box>
+      <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+        <Box>
+          <Heading size="sm">{title}</Heading>
+          <Text color="gray.600" mt={1}>
+            {description}
+          </Text>
+        </Box>
+        <HStack alignSelf="flex-start" flexWrap="wrap">
+          <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : activeBatch ? "purple" : "gray"}>
+            {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
+          </Badge>
+          <Badge colorScheme={summary.transactionCount ? "blue" : "gray"}>
+            {summary.transactionCount} unposted
+          </Badge>
+        </HStack>
+      </Flex>
+      <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={4} mb={4}>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Opening Funding</Text>
+          <Text fontWeight="bold">{formatMoney(openingFunding)}</Text>
+        </Box>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Cash In</Text>
+          <Text fontWeight="bold">{formatMoney(summary.cashIn)}</Text>
+        </Box>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Cash Out</Text>
+          <Text fontWeight="bold">{formatMoney(summary.cashOut)}</Text>
+        </Box>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Expected Ending Cash</Text>
+          <Text fontWeight="bold">
+            {formatMoney(addMoney(openingFunding, summary.cashIn, -summary.cashOut))}
+          </Text>
+        </Box>
+        <Box borderWidth="1px" borderRadius="md" p={4}>
+          <Text color="gray.500" fontSize="sm">Transaction Mix</Text>
+          <VStack align="stretch" spacing={0} mt={1}>
+            <Text fontWeight="bold">Initial payments: {summary.initialPaymentCount}</Text>
+            <Text fontWeight="bold">Share capital: {summary.shareCapitalContributionCount}</Text>
+            <Text fontWeight="bold">Deposits: {summary.savingsDepositCount}</Text>
+            <Text fontWeight="bold">Withdrawals: {summary.savingsWithdrawalCount}</Text>
+            <Text fontWeight="bold">Loan releases: {summary.loanReleaseCount}</Text>
+            <Text fontWeight="bold">Loan collections: {summary.loanCollectionCount}</Text>
+          </VStack>
+        </Box>
+      </Grid>
+      <TableContainer>
+        <Table size="sm">
+          <Thead>
+            <Tr>
+              <Th>No.</Th>
+              <Th>Type</Th>
+              <Th>Member</Th>
+              <Th isNumeric>Cash In</Th>
+              <Th isNumeric>Cash Out</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {rows.slice(0, 5).map((row) => (
+              <Tr key={`${row.batchType}-${row.id}`}>
+                <Td>{row.id}</Td>
+                <Td>{row.batchType}</Td>
+                <Td>{row.memberName}</Td>
+                <Td isNumeric>{row.cashReceived ? formatMoney(row.cashReceived) : ""}</Td>
+                <Td isNumeric>{row.cashOut ? formatMoney(row.cashOut) : ""}</Td>
+              </Tr>
+            ))}
+            {rows.length === 0 ? (
+              <Tr>
+                <Td colSpan={5} color="gray.500">
+                  No unposted teller transactions.
+                </Td>
+              </Tr>
+            ) : null}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+}
+
+function Dashboard({ user }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    api("/api/dashboard").then(setData);
+    let isActive = true;
+
+    const loadDashboard = () => {
+      api("/api/dashboard").then((nextData) => {
+        if (isActive) {
+          setData(nextData);
+        }
+      });
+    };
+
+    loadDashboard();
+    const timerId = window.setInterval(loadDashboard, membersPollingMs);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(timerId);
+    };
   }, []);
 
   if (!data) {
@@ -1085,6 +1194,17 @@ function Dashboard() {
           </Box>
         ))}
       </Grid>
+      {user.role === "System Administrator" && data.outstandingBatch ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <TellerBatchCashPosition
+            activeBatch={data.outstandingBatch.activeBatch}
+            openingFunding={data.outstandingBatch.openingFunding}
+            rows={data.outstandingBatch.rows}
+            title="Outstanding Teller Batch"
+            description="Current teller activity and the cash expected for day closing."
+          />
+        </Box>
+      ) : null}
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Heading size="md" mb={4}>
           Risk Watch
@@ -2630,96 +2750,11 @@ function Members({ user }) {
           ) : null}
 
           <Box mt={6} borderTopWidth="1px" pt={5}>
-            <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
-              <Box>
-                <Heading size="sm">Teller Batch Cash Position</Heading>
-                <Text color="gray.600" mt={1}>
-                  Unposted transactions waiting for Bookkeeper posting.
-                </Text>
-              </Box>
-              <HStack alignSelf="flex-start" flexWrap="wrap">
-                <Badge colorScheme={activeBatch?.status === "Open" ? "blue" : "purple"}>
-                  {activeBatch ? `${activeBatch.id} - ${activeBatch.status}` : "No batch"}
-                </Badge>
-                <Badge colorScheme={tellerBatchSummary.transactionCount ? "blue" : "gray"}>
-                  {tellerBatchSummary.transactionCount} unposted
-                </Badge>
-              </HStack>
-            </Flex>
-            <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={4} mb={4}>
-              <Box borderWidth="1px" borderRadius="md" p={4}>
-                <Text color="gray.500" fontSize="sm">
-                  Opening Funding
-                </Text>
-                <Text fontWeight="bold">{formatMoney(openingFunding)}</Text>
-              </Box>
-              <Box borderWidth="1px" borderRadius="md" p={4}>
-                <Text color="gray.500" fontSize="sm">
-                  Cash In
-                </Text>
-                <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashIn)}</Text>
-              </Box>
-              <Box borderWidth="1px" borderRadius="md" p={4}>
-                <Text color="gray.500" fontSize="sm">
-                  Cash Out
-                </Text>
-                <Text fontWeight="bold">{formatMoney(tellerBatchSummary.cashOut)}</Text>
-              </Box>
-              <Box borderWidth="1px" borderRadius="md" p={4}>
-                <Text color="gray.500" fontSize="sm">
-                  Expected Ending Cash
-                </Text>
-                <Text fontWeight="bold">
-                  {formatMoney(addMoney(openingFunding, tellerBatchSummary.cashIn, -tellerBatchSummary.cashOut))}
-                </Text>
-              </Box>
-              <Box borderWidth="1px" borderRadius="md" p={4}>
-                <Text color="gray.500" fontSize="sm">
-                  Transaction Mix
-                </Text>
-                <VStack align="stretch" spacing={0} mt={1}>
-                  <Text fontWeight="bold">Initial payments: {tellerBatchSummary.initialPaymentCount}</Text>
-                  <Text fontWeight="bold">
-                    Share capital: {tellerBatchSummary.shareCapitalContributionCount}
-                  </Text>
-                  <Text fontWeight="bold">Deposits: {tellerBatchSummary.savingsDepositCount}</Text>
-                  <Text fontWeight="bold">Withdrawals: {tellerBatchSummary.savingsWithdrawalCount}</Text>
-                  <Text fontWeight="bold">Loan releases: {tellerBatchSummary.loanReleaseCount}</Text>
-                  <Text fontWeight="bold">Loan collections: {tellerBatchSummary.loanCollectionCount}</Text>
-                </VStack>
-              </Box>
-            </Grid>
-            <TableContainer>
-              <Table size="sm">
-                <Thead>
-                  <Tr>
-                    <Th>No.</Th>
-                    <Th>Type</Th>
-                    <Th>Member</Th>
-                    <Th isNumeric>Cash In</Th>
-                    <Th isNumeric>Cash Out</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {tellerBatchRows.slice(0, 5).map((row) => (
-                    <Tr key={`${row.batchType}-${row.id}`}>
-                      <Td>{row.id}</Td>
-                      <Td>{row.batchType}</Td>
-                      <Td>{row.memberName}</Td>
-                      <Td isNumeric>{row.cashReceived ? formatMoney(row.cashReceived) : ""}</Td>
-                      <Td isNumeric>{row.cashOut ? formatMoney(row.cashOut) : ""}</Td>
-                    </Tr>
-                  ))}
-                  {tellerBatchRows.length === 0 ? (
-                    <Tr>
-                      <Td colSpan={5} color="gray.500">
-                        No unposted teller transactions.
-                      </Td>
-                    </Tr>
-                  ) : null}
-                </Tbody>
-              </Table>
-            </TableContainer>
+            <TellerBatchCashPosition
+              activeBatch={activeBatch}
+              openingFunding={openingFunding}
+              rows={tellerBatchRows}
+            />
             {canCreateTellerCashCount ? (
               <Box as="form" onSubmit={submitCashCount} mt={5} borderTopWidth="1px" pt={5}>
                 <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
@@ -7069,7 +7104,7 @@ function Shell({ user, onLogout }) {
 
   function renderView() {
     if (view === "dashboard") {
-      return <Dashboard />;
+      return <Dashboard user={user} />;
     }
 
     if (view === "members") {
@@ -7119,6 +7154,23 @@ function Shell({ user, onLogout }) {
               {viewTitles[item]}
             </Button>
           ))}
+          <Box borderTopWidth="1px" borderColor="whiteAlpha.400" pt={4} mt={4}>
+            <Button
+              as="a"
+              href="https://docs.tasetem.co/"
+              target="_blank"
+              rel="noopener noreferrer"
+              width="full"
+              justifyContent="flex-start"
+              colorScheme="whiteAlpha"
+              variant="ghost"
+            >
+              <Box as="span" aria-hidden="true" mr={2}>
+                🛟
+              </Box>
+              Workflow Help
+            </Button>
+          </Box>
         </VStack>
       </GridItem>
       <GridItem p={{ base: 4, md: 8 }} minW={0} overflowX="hidden">
