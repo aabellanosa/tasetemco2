@@ -6,6 +6,7 @@ const dotenv = require("dotenv");
 const port = String(4300 + Math.floor(Math.random() * 500));
 const baseUrl = `http://127.0.0.1:${port}`;
 const smokeMode = process.env.SMOKE_DB_MODE || "memory";
+const expectedAppName = process.env.APP_NAME || "ACME Cooperative";
 
 if (smokeMode === "postgres") {
   dotenv.config({ path: path.join(process.cwd(), "backend", ".env") });
@@ -22,7 +23,7 @@ async function waitForHealth() {
       const response = await fetch(`${baseUrl}/api/health`);
       const body = await response.json();
 
-      if (response.ok && body.ok && body.app === "TASETEMCO") {
+      if (response.ok && body.ok && body.app === expectedAppName) {
         return body;
       }
     } catch (error) {
@@ -3309,7 +3310,7 @@ async function run() {
       throw new Error("Membership Officer should not receive loan collection access.");
     }
 
-    console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
+    console.log(`${expectedAppName} API ${smokeMode} smoke test passed.`);
   } catch (error) {
     error.message = `${error.message}\n\nServer output:\n${output}`;
     throw error;

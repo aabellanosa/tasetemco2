@@ -100,6 +100,9 @@ const schemaSqlPath = databaseDirPath ? path.join(databaseDirPath, "schema.postg
 const seedSqlPath = databaseDirPath ? path.join(databaseDirPath, "seed.postgres.sql") : "";
 const sessions = new Map();
 let pool = null;
+const appName = process.env.APP_NAME || "ACME Cooperative";
+const sessionCookieName = process.env.SESSION_COOKIE_NAME || "acme_demo_session";
+const resetConfirmationText = process.env.RESET_CONFIRMATION_TEXT || "RESET ACME";
 
 const persistedTables = [
   "journal_entry_lines",
@@ -446,7 +449,7 @@ async function getPool() {
 
 function parseSession(request) {
   const cookies = cookie.parse(request.headers.cookie || "");
-  return sessions.get(cookies.tasetemco_spike_session) || null;
+  return sessions.get(cookies[sessionCookieName]) || null;
 }
 
 function setSession(response, user) {
@@ -454,7 +457,7 @@ function setSession(response, user) {
   sessions.set(sessionId, user);
   response.setHeader(
     "Set-Cookie",
-    cookie.serialize("tasetemco_spike_session", sessionId, {
+    cookie.serialize(sessionCookieName, sessionId, {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
@@ -465,10 +468,10 @@ function setSession(response, user) {
 
 function clearSession(request, response) {
   const cookies = cookie.parse(request.headers.cookie || "");
-  sessions.delete(cookies.tasetemco_spike_session);
+  sessions.delete(cookies[sessionCookieName]);
   response.setHeader(
     "Set-Cookie",
-    cookie.serialize("tasetemco_spike_session", "", {
+    cookie.serialize(sessionCookieName, "", {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
@@ -7781,7 +7784,7 @@ async function getDemoMaintenanceStatus() {
 async function buildDemoBackup() {
   const db = await getPool();
   const backup = {
-    app: "TASETEMCO",
+    app: appName,
     engine: db ? "postgres" : "seed-memory",
     backedUpAt: new Date().toISOString(),
     tables: {}
@@ -7856,8 +7859,8 @@ app.get("/api/health", async (request, response) => {
 
   response.json({
     ok: schema.status !== "missing-columns",
-    app: "TASETEMCO",
-    stack: "react-chakra-postgres-spike",
+    app: appName,
+    stack: "react-chakra-postgres-demo",
     database,
     schema: schema.status,
     missingSchema: schema.missing
@@ -8439,8 +8442,8 @@ app.post("/api/admin/demo-maintenance/reset", async (request, response) => {
     return;
   }
 
-  if (confirmation !== "RESET TASETEMCO") {
-    response.status(400).json({ error: "Type RESET TASETEMCO to confirm demo reset." });
+  if (confirmation !== resetConfirmationText) {
+    response.status(400).json({ error: `Type ${resetConfirmationText} to confirm demo reset.` });
     return;
   }
 
@@ -9441,5 +9444,5 @@ if (frontendDistPath) {
 }
 
 app.listen(port, host, () => {
-  console.log(`TASETEMCO spike API running at http://${host}:${port}`);
+  console.log(`${appName} API running at http://${host}:${port}`);
 });

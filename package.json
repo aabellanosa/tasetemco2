@@ -2,7 +2,7 @@
   "name": "tasetemco",
   "version": "0.1.0",
   "private": true,
-  "description": "TASETEMCO cooperative system prototype spike.",
+  "description": "ACME Cooperative generic demo application.",
   "workspaces": [
     "frontend",
     "backend"

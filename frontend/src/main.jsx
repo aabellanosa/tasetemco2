@@ -47,6 +47,10 @@ import {
 import { createRoot as createReactRoot } from "react-dom/client";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "";
+const appName = import.meta.env.VITE_APP_NAME || "ACME Cooperative";
+const workflowHelpUrl =
+  import.meta.env.VITE_WORKFLOW_HELP_URL || "https://acme-coop-docs.netlify.app/";
+const resetConfirmationText = "RESET ACME";
 const membersPollingMs = 5000;
 
 const theme = extendTheme({
@@ -590,7 +594,7 @@ function Login({ onLogin }) {
               Cooperative Operations and Accounting
             </Badge>
             <Heading size="3xl" lineHeight="1">
-              TASETEMCO
+              {appName}
             </Heading>
             <Text mt={5} fontSize="xl" color="green.50" maxW="2xl">
               Secure staff access to member services, teller operations, loans,
@@ -4855,7 +4859,7 @@ function AdminDemoMaintenance({ user }) {
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const canReset = confirmation.trim() === "RESET TASETEMCO";
+  const canReset = confirmation.trim() === resetConfirmationText;
 
   const loadStatus = useCallback(async () => {
     setError("");
@@ -4892,7 +4896,7 @@ function AdminDemoMaintenance({ user }) {
     try {
       const data = await api("/api/admin/demo-maintenance/backup", { method: "POST" });
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      downloadJson(data, `tasetemco-demo-backup-${stamp}.json`);
+      downloadJson(data, `acme-demo-backup-${stamp}.json`);
       setMessage("Backup JSON downloaded.");
     } catch (requestError) {
       setError(requestError.message);
@@ -4912,7 +4916,7 @@ function AdminDemoMaintenance({ user }) {
         body: JSON.stringify({ confirmation })
       });
       const stamp = new Date(data.resetAt).toISOString().replace(/[:.]/g, "-");
-      downloadJson(data.backup, `tasetemco-pre-reset-backup-${stamp}.json`);
+      downloadJson(data.backup, `acme-pre-reset-backup-${stamp}.json`);
       setConfirmation("");
       setMessage("Demo data reset to seed. A pre-reset backup JSON was downloaded.");
       await loadStatus();
@@ -5027,7 +5031,7 @@ function AdminDemoMaintenance({ user }) {
           <Input
             value={confirmation}
             onChange={(event) => setConfirmation(event.target.value)}
-            placeholder="RESET TASETEMCO"
+            placeholder={resetConfirmationText}
           />
         </FormControl>
         <Button
@@ -7138,7 +7142,7 @@ function Shell({ user, onLogout }) {
   return (
     <Grid minH="100vh" templateColumns={{ base: "minmax(0, 1fr)", lg: "280px minmax(0, 1fr)" }} bg="gray.50" maxW="100vw">
       <GridItem bg="green.900" color="white" p={5} minW={0}>
-        <Heading size="md">TASETEMCO</Heading>
+        <Heading size="md">{appName}</Heading>
         <Text color="green.100" mt={1} fontSize="sm">
           Cooperative Management System
         </Text>
@@ -7157,7 +7161,7 @@ function Shell({ user, onLogout }) {
           <Box borderTopWidth="1px" borderColor="whiteAlpha.400" pt={4} mt={4}>
             <Button
               as="a"
-              href="https://docs.tasetem.co/"
+              href={workflowHelpUrl}
               target="_blank"
               rel="noopener noreferrer"
               width="full"
