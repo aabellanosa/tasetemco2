@@ -1,4 +1,4 @@
-# TASETEMCO Static Documentation Site
+# ACME Cooperative Static Documentation Site
 
 Upload the contents of this folder to the document root of the Namecheap subdomain.
 

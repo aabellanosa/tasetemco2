@@ -1,10 +1,10 @@
-# TASETEMCO
+# ACME Cooperative
 
-TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. This branch documents the React, Chakra UI, Node.js, Render, and Postgres working prototype.
+ACME Cooperative is a generic cooperative core ledger demo for Philippine cooperatives. This branch documents the React, Chakra UI, Node.js, Render, and Postgres working prototype.
 
 ## React/Postgres Working Prototype
 
-The spike is split into:
+The application is split into:
 
 - `frontend/` - Vite, React, Chakra UI
 - `backend/` - Node.js, Express, in-memory seed mode or Postgres persistence
@@ -30,7 +30,7 @@ npm run pg:reset-demo
 npm run pg:backup
 ```
 
-The hosted Render demo uses Postgres. The `admin` user has a Demo Maintenance panel under Users to download a JSON backup and reset hosted demo data to seed rows. Reset requires typing `RESET TASETEMCO` and downloads a pre-reset backup automatically.
+The hosted Render demo uses Postgres. The `admin` user has a Demo Maintenance panel under Users to download a JSON backup and reset hosted demo data to seed rows. Reset requires typing `RESET ACME` and downloads a pre-reset backup automatically.
 
 On Render free services, run schema migrations manually from your local terminal with the Render External Database URL before deploying app code that changes database columns:
 
@@ -44,7 +44,7 @@ Remove-Item Env:PGSSLMODE
 
 Run `pg:migrate` only for schema changes. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless the intent is to overwrite or reset tester data.
 
-## Running The Spike
+## Running The Demo
 
 Install dependencies:
 
@@ -72,14 +72,14 @@ http://127.0.0.1:5173
 
 The Vite dev server proxies `/api` requests to `http://127.0.0.1:4000`.
 
-## Spike Checks
+## Demo Checks
 
 ```powershell
 npm run check
 npm test
 ```
 
-`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test. In Postgres mode, `/api/health` also reports schema status so missing migration columns are visible before normal screens fail.
+`npm test` starts the demo API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test. In Postgres mode, `/api/health` also reports schema status so missing migration columns are visible before normal screens fail.
 
 After `backend/.env` points to a local Postgres database, run the persistence smoke test with:
 
@@ -99,9 +99,9 @@ All seeded users currently use this prototype password:
 p@55@LL
 ```
 
-The current spike uses one shared prototype password in code. Production behavior should move passwords into the database as salted hashes with forced password changes.
+The current demo uses one shared prototype password in code. Production behavior should move passwords into the database as salted hashes with forced password changes.
 
-The `admin` user can manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; per-user password storage belongs to a later security spike.
+The `admin` user can manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; per-user password storage belongs to a later security hardening pass.
 
 The Auditor / Compliance Officer has read-only User / Security access. Auditor can inspect usernames, roles, default screens, and account status, but cannot see the shared password, create or update users, download backups, or reset demo data.
 
@@ -143,19 +143,19 @@ Member Profile v1 expands member master data with contact number, address, birth
 
 Member Import Preview v0 lets `admin` and `membership` paste a CSV export from Excel, map source columns to member profile fields, and review validation issues before any database write exists. It checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses. This is intentionally preview-only while client Excel formats are still being discovered.
 
-Member Import Staging v1 adds a controlled save step after preview. `admin` and `membership` can create a staged import batch from the mapped rows, review batch history, and inspect row-level validation results. Staged rows do not create or update active members yet; final import remains a later approval/finalization spike. This spike adds Postgres tables, so run `npm run pg:migrate` against the target database before deploying the app code.
+Member Import Staging v1 adds a controlled save step after preview. `admin` and `membership` can create a staged import batch from the mapped rows, review batch history, and inspect row-level validation results. Staged rows do not create or update active members yet; final import remains a later approval/finalization pass. This feature adds Postgres tables, so run `npm run pg:migrate` against the target database before deploying the app code.
 
-Member Import Finalize v1 lets the `admin` user finalize a staged import batch. Only rows still marked Ready become active member records; issue rows stay unresolved in the batch. Imported members start with zero share capital and zero savings because financial balances remain teller/accounting transactions. This spike adds finalization columns to import batches, so run `npm run pg:migrate` against the target database before deploying the app code.
+Member Import Finalize v1 lets the `admin` user finalize a staged import batch. Only rows still marked Ready become active member records; issue rows stay unresolved in the batch. Imported members start with zero share capital and zero savings because financial balances remain teller/accounting transactions. This feature adds finalization columns to import batches, so run `npm run pg:migrate` against the target database before deploying the app code.
 
 Opening Balance Import Planning v0 adds a preview-only Ledger panel for existing member financial balances at cutover. Admin and Bookkeeper can paste CSV rows, map member number/name, share capital opening balance, savings opening balance, cutover date, and source reference, then review validation issues before any balance write exists. Unknown columns remain visible but unmapped.
 
 The Ledger workspace uses role-aware tabs so users open one ledger work area at a time. Batch Review contains cash count, review/post/close actions, and unposted teller batch rows; Opening Balances contains the cutover balance preview; Batch History contains closed/submitted batch evidence; Posted Entries contains journal entries.
 
-Opening Balance Import Staging v1 lets Admin and Bookkeeper save the mapped cutover balance preview as a staged batch. Validation flags missing or unknown member numbers, duplicate member numbers in the upload, members already present in another staged opening-balance batch, invalid/negative amounts, invalid cutover dates, and missing source references. Staging preserves the review queue only; member balances, reports, and journal entries do not change until a later finalization spike.
+Opening Balance Import Staging v1 lets Admin and Bookkeeper save the mapped cutover balance preview as a staged batch. Validation flags missing or unknown member numbers, duplicate member numbers in the upload, members already present in another staged opening-balance batch, invalid/negative amounts, invalid cutover dates, and missing source references. Staging preserves the review queue only; member balances, reports, and journal entries do not change until a later finalization pass.
 
 Opening Balance Import Details v1 lets Admin and Bookkeeper open each staged batch to inspect row status, validation issues, and raw source values. Admin can reject a staged batch; rejected batches remain visible for audit evidence and no longer block a corrected upload for the same members.
 
-Opening Balance Import Finalization v1d.1 lets Admin finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. General-ledger journal entries remain for the next accounting spike.
+Opening Balance Import Finalization v1d.1 lets Admin finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. General-ledger journal entries remain for the next accounting pass.
 
 Opening Balance Accounting Entries v1d.2 now creates one balanced journal automatically during finalization: debit `1090 Opening Balance Clearing`, credit `3010 Share Capital`, and credit `2020 Savings Deposits Payable`. Only finalized rows are included. The journal is linked to the batch, appears in Posted Entries and reports, and brings opening balances into Control Account Reconciliation. Older finalized batches without a journal expose an Admin-only `Post Missing Journal` repair action.
 
@@ -249,7 +249,7 @@ Initial member payment is a one-time onboarding transaction. After it exists for
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, savings deposits, and loan collections. Withdrawal voucher/reference numbers are unique across savings withdrawals.
 
-Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
+Bookkeeper posts Teller Batch payments to the general ledger. The current workflow creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 Member statements show each member's share capital balance, savings balance, initial payment activity, share capital contributions, savings transactions, posting status, and linked journal entry number once posted.
 
@@ -263,7 +263,7 @@ The Teller/Cashier UI now uses a member-first transaction workspace: select the 
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
-Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
+Teller/Cashier records transactions into the current Open teller batch. In this workflow, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
 Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning, and non-zero variance requires a Bookkeeper variance note before review.
 

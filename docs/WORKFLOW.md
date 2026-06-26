@@ -1,8 +1,8 @@
-# TASETEMCO Workflow Document
+# ACME Cooperative Workflow Document
 
 ## 1. Purpose
 
-TASETEMCO is a cooperative operations and accounting system prototype. Its goal is to support day-to-day cooperative transactions and produce reliable ledger-based financial reports, especially the Statement of Financial Condition and Statement of Operations.
+ACME Cooperative is a generic cooperative operations and accounting system prototype. Its goal is to support day-to-day cooperative transactions and produce reliable ledger-based financial reports, especially the Statement of Financial Condition and Statement of Operations.
 
 The system should be built around a simple rule: operational transactions create accounting entries, and financial statements are generated from the general ledger.
 
@@ -212,11 +212,11 @@ Opening Balance Import Planning v0 adds a preview-only Ledger panel for cutover 
 
 The Ledger workspace uses role-aware tabs so users open one ledger work area at a time. Batch Review contains cash count, review/post/close actions, and unposted teller batch rows; Opening Balances contains the cutover balance preview; Batch History contains closed/submitted batch evidence; Posted Entries contains journal entries.
 
-Opening Balance Import Staging v1 lets the System Administrator and Accountant / Bookkeeper save the mapped cutover balance preview as a staged batch. Validation flags missing or unknown member numbers, duplicate member numbers in the upload, members already present in another staged opening-balance batch, invalid/negative amounts, invalid cutover dates, and missing source references. Staging preserves the review queue only; member balances, reports, and journal entries do not change until a later finalization spike.
+Opening Balance Import Staging v1 lets the System Administrator and Accountant / Bookkeeper save the mapped cutover balance preview as a staged batch. Validation flags missing or unknown member numbers, duplicate member numbers in the upload, members already present in another staged opening-balance batch, invalid/negative amounts, invalid cutover dates, and missing source references. Staging preserves the review queue only; member balances, reports, and journal entries do not change until a later finalization pass.
 
 Opening Balance Import Details v1 lets the System Administrator and Accountant / Bookkeeper open each staged batch to inspect row status, validation issues, and raw source values. The System Administrator can reject a staged batch; rejected batches remain visible for audit evidence and no longer block a corrected upload for the same members.
 
-Opening Balance Import Finalization v1d.1 lets the System Administrator finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. General-ledger journal entries remain for the next accounting spike.
+Opening Balance Import Finalization v1d.1 lets the System Administrator finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. General-ledger journal entries remain for the next accounting pass.
 
 Opening Balance Accounting Entries v1d.2 now creates one balanced journal automatically during finalization: debit `1090 Opening Balance Clearing`, credit `3010 Share Capital`, and credit `2020 Savings Deposits Payable`. Only finalized rows are included. The journal is linked to the batch, appears in Posted Entries and reports, and brings opening balances into Control Account Reconciliation. Older finalized batches without a journal expose an Admin-only `Post Missing Journal` repair action.
 
@@ -310,7 +310,7 @@ Initial member payment is a one-time onboarding transaction. After it exists for
 
 Cash-in OR/reference numbers are unique across initial member payments, share capital contributions, savings deposits, and loan collections. Withdrawal voucher/reference numbers are unique across savings withdrawals.
 
-Bookkeeper posts Teller Batch payments to the general ledger. The current slice creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
+Bookkeeper posts Teller Batch payments to the general ledger. The current workflow creates a balanced journal entry: debit Cash on Hand; credit Share Capital, Membership Fee Income, and Savings Deposits Payable.
 
 Member statements show each member's share capital balance, savings balance, initial payment activity, share capital contributions, savings transactions, posting status, and linked journal entry number once posted.
 
@@ -324,7 +324,7 @@ The Teller/Cashier UI uses a member-first transaction workspace: select the memb
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
-Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
+Teller/Cashier records transactions into the current Open teller batch. In this workflow, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
 Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning, and non-zero variance requires a Bookkeeper variance note before review.
 
@@ -587,7 +587,7 @@ Priority reports:
 
 ## 6. Access Control Principles
 
-TASETEMCO should use role-based access control with optional permission overrides.
+ACME Cooperative should use role-based access control with optional permission overrides.
 
 Recommended rules:
 
@@ -669,11 +669,11 @@ Remove-Item Env:PGSSLMODE
 
 Run `pg:migrate` for schema changes only. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless the intent is to overwrite or reset hosted tester data. The health endpoint reports schema status so missing migration columns are visible before normal screens fail.
 
-The hosted Render demo includes admin-only Demo Maintenance controls under Users. The `admin` user can view table counts, download a JSON backup, and reset hosted demo data to the seed rows. Reset requires the typed confirmation `RESET TASETEMCO` and downloads a pre-reset backup automatically.
+The hosted Render demo includes admin-only Demo Maintenance controls under Users. The `admin` user can view table counts, download a JSON backup, and reset hosted demo data to the seed rows. Reset requires the typed confirmation `RESET ACME` and downloads a pre-reset backup automatically.
 
 Maintenance controls are intentionally limited to the System Administrator. Other users should not be able to access these actions through the UI or direct API calls.
 
-The System Administrator also manages prototype staff users under Users. Admin can create a staff user, assign role and default screen, and activate or deactivate non-admin accounts. All users continue to share the prototype password `p@55@LL` until a later authentication security spike introduces per-user password storage and reset flows.
+The System Administrator also manages prototype staff users under Users. Admin can create a staff user, assign role and default screen, and activate or deactivate non-admin accounts. All users continue to share the prototype password `p@55@LL` until a later authentication security pass introduces per-user password storage and reset flows.
 
 The Auditor / Compliance Officer has read-only User / Security access. Auditor can inspect usernames, roles, default screens, and account status, but cannot see the shared password, create or update users, download backups, or reset demo data.
 
@@ -681,17 +681,17 @@ Member Profile v1 adds editable master-data fields for contact number, address, 
 
 Member Import Preview v0 supports client discovery of existing Excel columns before a write-enabled importer is built. Admin and Membership Officer can paste CSV text, map fields, and review validation results. The preview does not create or update member records.
 
-Member Import Staging v1 persists the preview into `member_import_batches` and `member_import_rows`. It is still a review queue, not a final import. Because this spike adds Postgres tables, run `npm run pg:migrate` against the local or hosted target database before deploying the app code.
+Member Import Staging v1 persists the preview into `member_import_batches` and `member_import_rows`. It is still a review queue, not a final import. Because this feature adds Postgres tables, run `npm run pg:migrate` against the local or hosted target database before deploying the app code.
 
 Member Import Finalize v1 adds finalization fields to import batches and keeps the accounting boundary intact: imported profile rows do not carry share capital or savings balances. Run `npm run pg:migrate` before deploying this app build to any Postgres target.
 
 Opening Balance Import Planning v0 is intentionally read-only. It prepares the future migration path for existing members' share capital and savings balances without asking Teller/Cashier to encode historical balances one by one. Later staging/finalization should reconcile subsidiary opening balances to general ledger opening balances.
 
-Opening Balance Import Staging v1 stores the preview into the opening-balance staging tables and lists saved batches in Ledger. It remains a review queue only; a later finalization spike should apply approved opening balances and create the related accounting evidence.
+Opening Balance Import Staging v1 stores the preview into the opening-balance staging tables and lists saved batches in Ledger. It remains a review queue only; a later finalization pass should apply approved opening balances and create the related accounting evidence.
 
 Opening Balance Import Details v1 adds row-level batch inspection and Admin-only rejection. Rejection changes the batch status to `Rejected`, keeps the batch in history, and releases its member numbers for a corrected staged upload.
 
-Opening Balance Import Finalization v1d.1 applies ready staged rows to member share capital and savings balances with Admin confirmation and transactional persistence. Issue rows remain unapplied. The following accounting spike must create balanced opening journal entries so these subsidiary balances reconcile to the general ledger.
+Opening Balance Import Finalization v1d.1 applies ready staged rows to member share capital and savings balances with Admin confirmation and transactional persistence. Issue rows remain unapplied. The following accounting pass must create balanced opening journal entries so these subsidiary balances reconcile to the general ledger.
 
 Opening Balance Accounting Entries v1d.2 completes that accounting link. Opening Balance Clearing is a temporary bridge for historical balances whose underlying asset accounts have not yet been mapped; it does not represent current Teller/Cashier receipts. A future full opening-trial-balance migration should reconcile this clearing amount to the cooperative's confirmed accounts.
 
@@ -699,15 +699,15 @@ Opening Balance Visibility v1e makes the audit trail readable from member-facing
 
 Loan Product Foundation v1 adds the `loan_products` Postgres table and seeded lending rules. Run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying this app build. The product-only seed does not reset unrelated hosted data. Products define future application constraints but do not create loans, schedules, releases, repayments, or journal entries yet.
 
-Loan Application v1 adds the `loan_applications` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. Product terms are copied into each application as an audit snapshot. A full demo reset includes one Submitted sample application, while normal operation preserves existing tester data. This slice does not create a loan account, release, schedule, collection, or journal entry.
+Loan Application v1 adds the `loan_applications` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. Product terms are copied into each application as an audit snapshot. A full demo reset includes one Submitted sample application, while normal operation preserves existing tester data. This feature does not create a loan account, release, schedule, collection, or journal entry.
 
 Loan Credit Review v1 adds assessment notes, recommendations, decision, remarks, date, actor, and timestamp columns to `loan_applications`. Run `npm run pg:migrate` before deploying the matching app build. The migration preserves existing applications and initializes the new review fields without seeding or resetting hosted tester data.
 
-Loan Computation and Amortization Preview v1 adds the `loans` and `loan_installments` Postgres tables. Run `npm run pg:migrate` before deploying the matching app build. No seed is required: Approved applications are computed through the Loan Officer UI. Saving is transactional and unique per application, preventing partial or duplicate schedules. No release transaction or accounting journal is created by this slice.
+Loan Computation and Amortization Preview v1 adds the `loans` and `loan_installments` Postgres tables. Run `npm run pg:migrate` before deploying the matching app build. No seed is required: Approved applications are computed through the Loan Officer UI. Saving is transactional and unique per application, preventing partial or duplicate schedules. No release transaction or accounting journal is created by this feature.
 
 Loan Release v1a adds the `loan_releases` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. No seed is required. Release vouchers are unique across loan releases and savings withdrawals, each loan can be released only once, and the release is linked to a teller batch. The release remains `Teller Batch` until Loan Release v1b adds Bookkeeper posting and the balanced journal.
 
-Loan Release v1b requires no new migration. It uses the journal tables and posting fields already introduced in earlier spikes. A Posted release is excluded from the unposted batch and cannot create a duplicate journal.
+Loan Release v1b requires no new migration. It uses the journal tables and posting fields already introduced in earlier passes. A Posted release is excluded from the unposted batch and cannot create a duplicate journal.
 
 Teller Cash Funding v1a adds the `teller_fundings` Postgres table. Run `npm run pg:migrate` before deploying the matching app build. No seed is required. Funding follows `Prepared -> Approved -> Acknowledged`; only acknowledged funding contributes to Opening Funding.
 

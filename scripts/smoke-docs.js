@@ -23,8 +23,8 @@ function validateSite(directory) {
 
   readRequiredFile(stylesPath);
 
-  assert(index.includes("<title>TASETEMCO Workflow Reference</title>"), "Document title is missing or incorrect.");
-  assert(index.includes("TASETEMCO Workflow Guide"), "Hero heading is missing.");
+  assert(index.includes("<title>ACME Cooperative Workflow Reference</title>"), "Document title is missing or incorrect.");
+  assert(index.includes("ACME Cooperative Workflow Guide"), "Hero heading is missing.");
   assert(index.includes('id="roles"'), "Roles section is missing.");
   assert(index.includes('id="workflows"'), "Workflows section is missing.");
   assert(index.includes('id="reports"'), "Reports section is missing.");
