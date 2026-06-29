@@ -12,6 +12,7 @@ import {
   Grid,
   GridItem,
   Heading,
+  Image,
   Input,
   Modal,
   ModalBody,
@@ -582,50 +583,191 @@ function Login({ onLogin }) {
   }
 
   return (
-    <Flex minH="100vh" bg="brand.700" color="white" align="center">
-      <Container maxW="6xl">
-        <Grid templateColumns={{ base: "1fr", lg: "1.2fr 420px" }} gap={10} alignItems="center">
+    <Flex
+      minH="100vh"
+      bg="#f5f3f4"
+      color="#142319"
+      align="center"
+      overflow="hidden"
+      position="relative"
+      py={{ base: 8, lg: 12 }}
+    >
+      <Box
+        position="absolute"
+        insetX="0"
+        top="0"
+        bottom="0"
+        bg={{
+          base: "#014709",
+          lg: "linear-gradient(135deg, #014709 0%, #0f6b25 58%, #f5f3f4 58%)"
+        }}
+        opacity="0.98"
+      />
+      <Box
+        position="absolute"
+        right={{ base: "-26%", md: "-12%", xl: "1%" }}
+        bottom={{ base: "2%", lg: "6%" }}
+        w={{ base: "82vw", md: "56vw", xl: "42vw" }}
+        maxW="720px"
+        opacity={{ base: 0.18, lg: 1 }}
+        pointerEvents="none"
+      >
+        <Image src="/brand/tasetemco-building.png" alt="TASETEMCO cooperative building" w="100%" />
+      </Box>
+
+      <Container maxW="7xl" position="relative" zIndex="1">
+        <Grid
+          templateColumns={{ base: "1fr", lg: "minmax(0, 1fr) 430px minmax(260px, 0.72fr)" }}
+          gap={{ base: 8, lg: 10 }}
+          alignItems="center"
+        >
           <GridItem>
-            <Badge bg="yellow.300" color="green.900" mb={5}>
-              Cooperative Operations and Accounting
-            </Badge>
-            <Heading size="3xl" lineHeight="1">
-              TASETEMCO
-            </Heading>
-            <Text mt={5} fontSize="xl" color="green.50" maxW="2xl">
-              Secure staff access to member services, teller operations, loans,
-              accounting records, and management reports.
-            </Text>
+            <VStack align="flex-start" spacing={{ base: 5, lg: 7 }}>
+              <HStack spacing={4} align="center">
+                <Image
+                  src="/brand/tasetemco-seal.png"
+                  alt="TASETEMCO seal"
+                  boxSize={{ base: "76px", md: "92px" }}
+                  objectFit="contain"
+                  flexShrink={0}
+                />
+                <Box>
+                  <Badge bg="#FFBE00" color="#014709" mb={3} px={3} py={1} borderRadius="md">
+                    Cooperative Operations and Accounting
+                  </Badge>
+                  <Heading color="white" size={{ base: "xl", md: "2xl" }} lineHeight="1">
+                    TASETEMCO
+                  </Heading>
+                </Box>
+              </HStack>
+
+              <Box maxW="620px">
+                <Heading
+                  as="h1"
+                  color="white"
+                  fontSize={{ base: "3xl", md: "5xl" }}
+                  lineHeight="1.05"
+                  fontWeight="800"
+                >
+                  Tabon Secondary Teachers, Employees and Community Multi-Purpose Cooperative
+                </Heading>
+                <Text mt={5} fontSize={{ base: "md", md: "lg" }} color="green.50">
+                  Secure staff access to member services, teller operations, loans,
+                  accounting records, and management reports.
+                </Text>
+              </Box>
+
+              <Box
+                bg="rgba(255, 255, 255, 0.9)"
+                border="1px solid"
+                borderColor="green.100"
+                borderRadius="md"
+                p={{ base: 4, md: 5 }}
+                maxW="620px"
+                boxShadow="0 14px 35px rgba(1, 71, 9, 0.08)"
+              >
+                <HStack align="center" spacing={4}>
+                  <Image
+                    src="/brand/pftec.png"
+                    alt="Cooperative registration mark"
+                    boxSize={{ base: "54px", md: "64px" }}
+                    objectFit="contain"
+                    flexShrink={0}
+                  />
+                  <Box>
+                    <Text fontWeight="700" color="#014709">
+                      Registered under the Laws of the Philippines
+                    </Text>
+                    <Text mt={1} fontSize="sm" color="gray.600">
+                      RN: CARA-0146, 02.16.97 | RN: RA9520-13005802, 01.07.10
+                    </Text>
+                    <Text fontSize="sm" color="gray.600">
+                      CIN: 0104130163 | TIN: 004-393-599
+                    </Text>
+                  </Box>
+                </HStack>
+              </Box>
+            </VStack>
           </GridItem>
+
           <GridItem>
-            <Box as="form" onSubmit={submit} bg="white" color="gray.800" p={7} borderRadius="lg">
-              <Heading size="lg" mb={6}>
-                Staff sign in
+            <Box
+              as="form"
+              onSubmit={submit}
+              bg="white"
+              color="gray.800"
+              p={{ base: 6, md: 8 }}
+              borderRadius="md"
+              boxShadow="0 28px 70px rgba(1, 35, 7, 0.22)"
+              border="1px solid"
+              borderColor="whiteAlpha.800"
+            >
+              <Text color="#014709" fontWeight="800" fontSize="sm" textTransform="uppercase">
+                Staff access
+              </Text>
+              <Heading size="lg" mt={2} mb={6}>
+                Login
               </Heading>
-              <VStack spacing={4}>
+              <VStack spacing={5}>
                 <FormControl>
-                  <FormLabel>Username</FormLabel>
-                  <Input value={username} onChange={(event) => setUsername(event.target.value)} />
+                  <FormLabel color="gray.700" fontWeight="700">
+                    User
+                  </FormLabel>
+                  <Input
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    variant="flushed"
+                    borderColor="gray.500"
+                    focusBorderColor="#014709"
+                    placeholder="Enter username"
+                    autoComplete="username"
+                  />
                 </FormControl>
                 <FormControl>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel color="gray.700" fontWeight="700">
+                    Password
+                  </FormLabel>
                   <Input
                     type="password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
+                    variant="flushed"
+                    borderColor="gray.500"
+                    focusBorderColor="#014709"
+                    placeholder="Enter password"
+                    autoComplete="current-password"
                   />
                 </FormControl>
-                {error ? <Text color="red.500">{error}</Text> : null}
-                <Button type="submit" colorScheme="green" width="full">
-                  Sign in
+                {error ? (
+                  <Text color="red.500" fontSize="sm" alignSelf="stretch">
+                    {error}
+                  </Text>
+                ) : null}
+                <Button
+                  type="submit"
+                  width="full"
+                  h="48px"
+                  bg="#014709"
+                  color="#FFBE00"
+                  _hover={{ bg: "#0f5f18" }}
+                  _active={{ bg: "#013b08" }}
+                >
+                  Login
                 </Button>
               </VStack>
-              <Text mt={5} fontSize="sm" color="gray.500">
-                Try admin, manager, bookkeeper, loanofficer, approver, teller01,
-                membership, auditor, or board. Password: p@55@LL
-              </Text>
+              <Box mt={6} pt={5} borderTop="1px solid" borderColor="gray.200">
+                <Text fontSize="xs" fontWeight="700" color="gray.600" textTransform="uppercase">
+                  Demo access
+                </Text>
+                <Text mt={2} fontSize="sm" color="gray.500">
+                  Try admin, manager, bookkeeper, loanofficer, approver, teller01,
+                  membership, auditor, or board. Password: p@55@LL
+                </Text>
+              </Box>
             </Box>
           </GridItem>
+
+          <GridItem display={{ base: "none", lg: "block" }} />
         </Grid>
       </Container>
     </Flex>
