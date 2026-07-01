@@ -5887,6 +5887,33 @@ const defaultLoanApplicationForm = {
   purpose: "",
   applicationDate: new Date().toISOString().slice(0, 10)
 };
+const commonLoanTermMonths = [1, 6, 9, 12, 18, 24, 36, 48, 60];
+
+function formatLoanTermLabel(months) {
+  if (months === 1) {
+    return "1 month";
+  }
+  if (months % 12 === 0) {
+    const years = months / 12;
+    return `${years} ${years === 1 ? "year" : "years"}`;
+  }
+  return `${months} months`;
+}
+
+function allowedCommonLoanTerms(product) {
+  if (!product) {
+    return commonLoanTermMonths;
+  }
+
+  return commonLoanTermMonths.filter(
+    (term) => term >= Number(product.minimumTermMonths || 0) && term <= Number(product.maximumTermMonths || 0)
+  );
+}
+
+function defaultLoanTermForProduct(product, currentTerm = 0) {
+  const terms = allowedCommonLoanTerms(product);
+  return terms.includes(Number(currentTerm)) ? Number(currentTerm) : terms[0] || Number(product?.minimumTermMonths || 1);
+}
 
 function LoanApplications({ user }) {
   const [applications, setApplications] = useState([]);
@@ -5913,6 +5940,7 @@ function LoanApplications({ user }) {
   const canDecide = user.permissions.includes("loans:applications:decide");
   const activeProducts = products.filter((product) => product.status === "Active");
   const selectedProduct = products.find((product) => product.code === form.productCode);
+  const termOptions = allowedCommonLoanTerms(selectedProduct);
 
   const loadWorkspace = useCallback(async () => {
     setError("");
@@ -5935,7 +5963,7 @@ function LoanApplications({ user }) {
               ...current,
               productCode: firstActive.code,
               requestedPrincipal: firstActive.minimumPrincipal,
-              requestedTermMonths: firstActive.minimumTermMonths
+              requestedTermMonths: defaultLoanTermForProduct(firstActive)
             }
           : current;
       });
@@ -5958,7 +5986,7 @@ function LoanApplications({ user }) {
       ...current,
       productCode: code,
       requestedPrincipal: product?.minimumPrincipal || current.requestedPrincipal,
-      requestedTermMonths: product?.minimumTermMonths || current.requestedTermMonths
+      requestedTermMonths: product ? defaultLoanTermForProduct(product) : current.requestedTermMonths
     }));
   }
 
@@ -5998,7 +6026,7 @@ function LoanApplications({ user }) {
       ...defaultLoanApplicationForm,
       productCode: firstActive?.code || "",
       requestedPrincipal: firstActive?.minimumPrincipal || 5000,
-      requestedTermMonths: firstActive?.minimumTermMonths || 3
+      requestedTermMonths: firstActive ? defaultLoanTermForProduct(firstActive) : 3
     });
   }
 
@@ -6140,14 +6168,27 @@ function LoanApplications({ user }) {
             </FormControl>
             <FormControl isRequired>
               <FormLabel>Term (months)</FormLabel>
-              <NumberInput
-                min={selectedProduct?.minimumTermMonths || 1}
-                max={selectedProduct?.maximumTermMonths}
+              <Select
                 value={form.requestedTermMonths}
-                onChange={(value) => updateForm("requestedTermMonths", Number(value || 0))}
+                onChange={(event) => updateForm("requestedTermMonths", Number(event.target.value))}
+                isDisabled={!selectedProduct || termOptions.length <= 1}
               >
-                <NumberInputField />
-              </NumberInput>
+                {!selectedProduct ? <option value="">Select product first</option> : null}
+                {termOptions.map((term) => (
+                  <option key={term} value={term}>
+                    {formatLoanTermLabel(term)}
+                  </option>
+                ))}
+              </Select>
+              {selectedProduct ? (
+                <Text color="gray.500" fontSize="xs" mt={1}>
+                  {termOptions.length === 1
+                    ? `${selectedProduct.name} is fixed at ${formatLoanTermLabel(termOptions[0])}.`
+                    : `Common terms allowed for ${selectedProduct.name}: ${termOptions
+                        .map(formatLoanTermLabel)
+                        .join(", ")}.`}
+                </Text>
+              ) : null}
             </FormControl>
             <FormControl isRequired>
               <FormLabel>Application Date</FormLabel>
