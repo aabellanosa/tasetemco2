@@ -3676,12 +3676,7 @@ async function createOpeningBalanceJournalInDatabase(connection, importNo, user)
     return "";
   }
 
-  const [countRows] = await connection.execute(
-    `SELECT COUNT(*) AS countValue
-     FROM journal_entries
-     WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-  );
-  const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+  const entryNo = await nextJournalEntryNumberInDatabase(connection);
   const cutoverDate = formatDateOnly(totals.cutoverDate);
   const postedAt = cutoverDate ? `${cutoverDate} 00:00:00+08` : new Date();
 
@@ -4511,6 +4506,24 @@ async function hasWithdrawalReferenceInDatabase(connection, referenceNo) {
 function nextJournalEntryNumber() {
   const next = journalEntries.length + 1;
   return `JE-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
+async function nextJournalEntryNumberInDatabase(connection) {
+  const year = new Date().getFullYear();
+  await connection.execute("LOCK TABLE journal_entries IN EXCLUSIVE MODE");
+
+  const [rows] = await connection.execute(
+    `SELECT entry_no AS entryNo
+     FROM journal_entries
+     WHERE entry_no LIKE ?`,
+    [`JE-${year}-%`]
+  );
+  const maxSequence = rows.reduce((max, row) => {
+    const match = String(row.entryNo || "").match(new RegExp(`^JE-${year}-(\\d+)$`));
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+
+  return `JE-${year}-${String(maxSequence + 1).padStart(4, "0")}`;
 }
 
 function buildInitialPaymentJournalLines(payment) {
@@ -6497,12 +6510,7 @@ async function postInitialPayment(paymentId, user) {
       return batchResult;
     }
 
-    const [countRows] = await connection.execute(
-      `SELECT COUNT(*) AS countValue
-       FROM journal_entries
-       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-    );
-    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
 
     await connection.execute(
       `INSERT INTO journal_entries (
@@ -6629,12 +6637,7 @@ async function postSavingsDeposit(depositId, user) {
       return batchResult;
     }
 
-    const [countRows] = await connection.execute(
-      `SELECT COUNT(*) AS countValue
-       FROM journal_entries
-       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-    );
-    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
 
     await connection.execute(
       `INSERT INTO journal_entries (
@@ -6761,12 +6764,7 @@ async function postShareCapitalContribution(contributionId, user) {
       return batchResult;
     }
 
-    const [countRows] = await connection.execute(
-      `SELECT COUNT(*) AS countValue
-       FROM journal_entries
-       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-    );
-    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
 
     await connection.execute(
       `INSERT INTO journal_entries (
@@ -6892,12 +6890,7 @@ async function postSavingsWithdrawal(withdrawalId, user) {
       return batchResult;
     }
 
-    const [countRows] = await connection.execute(
-      `SELECT COUNT(*) AS countValue
-       FROM journal_entries
-       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-    );
-    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
 
     await connection.execute(
       `INSERT INTO journal_entries (
@@ -7050,12 +7043,7 @@ async function postLoanRelease(releaseId, user) {
       await connection.rollback();
       return batchResult;
     }
-    const [countRows] = await connection.execute(
-      `SELECT COUNT(*) AS countValue
-       FROM journal_entries
-       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-    );
-    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
     await connection.execute(
       `INSERT INTO journal_entries (
          entry_no, source_type, source_no, description, posted_by
@@ -7198,12 +7186,7 @@ async function postLoanCollection(collectionNo, user) {
       await connection.rollback();
       return batchResult;
     }
-    const [countRows] = await connection.execute(
-      `SELECT COUNT(*) AS countValue
-       FROM journal_entries
-       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-    );
-    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
     await connection.execute(
       `INSERT INTO journal_entries (
          entry_no, source_type, source_no, description, posted_by
@@ -7324,12 +7307,7 @@ async function postTellerFunding(fundingNo, user) {
       await connection.rollback();
       return batchResult;
     }
-    const [countRows] = await connection.execute(
-      `SELECT COUNT(*) AS countValue
-       FROM journal_entries
-       WHERE YEAR(posted_at) = YEAR(CURRENT_DATE)`
-    );
-    const entryNo = `JE-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
     await connection.execute(
       `INSERT INTO journal_entries (
          entry_no, source_type, source_no, description, posted_by
