@@ -194,6 +194,15 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 const memberImportFields = [
   { key: "memberNo", label: "Member No.", aliases: ["member no", "member number", "member id", "account no", "account number"] },
   { key: "name", label: "Full Name", aliases: ["full name", "name", "member name"] },
@@ -5328,6 +5337,251 @@ function formatRateBps(value) {
   return `${(Number(value || 0) / 100).toFixed(2)}%`;
 }
 
+function buildLoanBreakdownPrintHtml(loan, preparedBy = "") {
+  const totalDeductions = addMoney(
+    loan.processingFee,
+    loan.insuranceFee,
+    loan.cbuAmount,
+    loan.savingsRetentionAmount
+  );
+  const generatedAt = new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date());
+  const deductionRows = [
+    ["Service Fee", loan.processingFee, formatRateBps(loan.serviceFeeRateBps)],
+    ["Insurance", loan.insuranceFee, formatRateBps(loan.insuranceFeeRateBps)],
+    ["CBU / Capital Build-Up", loan.cbuAmount, loan.cbuApplied ? formatRateBps(loan.cbuRateBps) : "Not applied"],
+    ["Savings Retention", loan.savingsRetentionAmount, formatRateBps(loan.savingsRetentionRateBps)]
+  ];
+  const scheduleRows = (loan.installments || [])
+    .map(
+      (installment) => `
+        <tr>
+          <td>${escapeHtml(installment.installmentNo)}</td>
+          <td>${escapeHtml(formatDate(installment.dueDate))}</td>
+          <td class="amount">${escapeHtml(formatMoney(installment.principalDue))}</td>
+          <td class="amount">${escapeHtml(formatMoney(installment.interestDue))}</td>
+          <td class="amount strong">${escapeHtml(formatMoney(installment.totalDue))}</td>
+        </tr>`
+    )
+    .join("");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>${escapeHtml(loan.loanNo)} Loan Breakdown</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: #172018;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .page {
+        width: 8.5in;
+        min-height: 11in;
+        margin: 0 auto;
+        padding: 0.45in;
+      }
+      .header {
+        border-bottom: 2px solid #014709;
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+      }
+      .eyebrow {
+        color: #014709;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: 20px; margin-top: 4px; }
+      h2 { font-size: 14px; margin-bottom: 8px; }
+      .muted { color: #667166; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .field {
+        border: 1px solid #d9e2d9;
+        padding: 8px;
+      }
+      .label {
+        color: #667166;
+        display: block;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .value {
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        margin-top: 2px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 16px;
+      }
+      th, td {
+        border: 1px solid #d9e2d9;
+        padding: 6px 7px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #eef6ef;
+        color: #014709;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .amount { text-align: right; white-space: nowrap; }
+      .strong { font-weight: 700; }
+      .summary {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .box {
+        border: 1px solid #d9e2d9;
+        padding: 10px;
+      }
+      .signature-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-top: 34px;
+      }
+      .signature-line {
+        border-top: 1px solid #172018;
+        padding-top: 6px;
+        text-align: center;
+      }
+      .no-print {
+        margin: 12px auto;
+        max-width: 8.5in;
+        text-align: right;
+      }
+      .print-button {
+        background: #014709;
+        border: 0;
+        color: white;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 8px 12px;
+      }
+      @media print {
+        .no-print { display: none; }
+        .page { margin: 0; width: auto; min-height: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="no-print">
+      <button class="print-button" onclick="window.print()">Print</button>
+    </div>
+    <main class="page">
+      <section class="header">
+        <p class="eyebrow">Member loan copy</p>
+        <h1>TASETEMCO Loan Breakdown and Amortization</h1>
+        <p class="muted">Tabon Secondary Teachers, Employees and Community Multi-Purpose Cooperative</p>
+      </section>
+
+      <section class="grid">
+        <div class="field"><span class="label">Loan No.</span><span class="value">${escapeHtml(loan.loanNo)}</span></div>
+        <div class="field"><span class="label">Application No.</span><span class="value">${escapeHtml(loan.applicationNo)}</span></div>
+        <div class="field"><span class="label">Status</span><span class="value">${escapeHtml(loan.status)}</span></div>
+        <div class="field"><span class="label">Prepared</span><span class="value">${escapeHtml(generatedAt)}</span></div>
+        <div class="field"><span class="label">Member No.</span><span class="value">${escapeHtml(loan.memberNo)}</span></div>
+        <div class="field"><span class="label">Member Name</span><span class="value">${escapeHtml(loan.memberName)}</span></div>
+        <div class="field"><span class="label">Product</span><span class="value">${escapeHtml(loan.productName)}</span></div>
+        <div class="field"><span class="label">Prepared By</span><span class="value">${escapeHtml(preparedBy || loan.computedBy || "-")}</span></div>
+      </section>
+
+      <section class="summary">
+        <div class="box">
+          <h2>Loan Terms</h2>
+          <table>
+            <tbody>
+              <tr><td>Principal</td><td class="amount strong">${escapeHtml(formatMoney(loan.principal))}</td></tr>
+              <tr><td>Term</td><td class="amount">${escapeHtml(loan.termMonths)} months</td></tr>
+              <tr><td>Interest</td><td class="amount">${escapeHtml(formatRateBps(loan.annualInterestRateBps))} annual, ${escapeHtml(loan.interestMethod)}</td></tr>
+              <tr><td>Payment Frequency</td><td class="amount">${escapeHtml(loan.paymentFrequency)}</td></tr>
+              <tr><td>First Payment</td><td class="amount">${escapeHtml(formatDate(loan.firstPaymentDate))}</td></tr>
+              <tr><td>Maturity</td><td class="amount">${escapeHtml(formatDate(loan.maturityDate))}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="box">
+          <h2>Release Breakdown</h2>
+          <table>
+            <tbody>
+              <tr><td>Approved Principal</td><td class="amount strong">${escapeHtml(formatMoney(loan.principal))}</td></tr>
+              <tr><td>Total Deductions</td><td class="amount">${escapeHtml(formatMoney(totalDeductions))}</td></tr>
+              <tr><td>Net Proceeds</td><td class="amount strong">${escapeHtml(formatMoney(loan.netProceeds))}</td></tr>
+              <tr><td>Total Interest</td><td class="amount">${escapeHtml(formatMoney(loan.totalInterest))}</td></tr>
+              <tr><td>Total Payable</td><td class="amount strong">${escapeHtml(formatMoney(loan.totalPayable))}</td></tr>
+              <tr><td>Installments</td><td class="amount">${escapeHtml(loan.installmentCount)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Deductions From Principal</h2>
+        <table>
+          <thead>
+            <tr><th>Deduction</th><th>Rate</th><th class="amount">Amount</th></tr>
+          </thead>
+          <tbody>
+            ${deductionRows
+              .map(
+                ([label, amount, rate]) => `
+                  <tr>
+                    <td>${escapeHtml(label)}</td>
+                    <td>${escapeHtml(rate)}</td>
+                    <td class="amount">${escapeHtml(formatMoney(amount))}</td>
+                  </tr>`
+              )
+              .join("")}
+            <tr><td class="strong" colspan="2">Total Deductions</td><td class="amount strong">${escapeHtml(formatMoney(totalDeductions))}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Amortization Schedule</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Due Date</th>
+              <th class="amount">Principal</th>
+              <th class="amount">Interest</th>
+              <th class="amount">Monthly Obligation</th>
+            </tr>
+          </thead>
+          <tbody>${scheduleRows}</tbody>
+        </table>
+      </section>
+
+      <section class="signature-grid">
+        <div class="signature-line">Member / Borrower</div>
+        <div class="signature-line">Prepared / Explained By</div>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
 function LoanProducts({ user }) {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(defaultLoanProductForm);
@@ -6150,6 +6404,7 @@ function LoanComputations({ user }) {
   const [busyAction, setBusyAction] = useState("");
   const computationModal = useDisclosure();
   const scheduleModal = useDisclosure();
+  const printModal = useDisclosure();
   const canCreate = user.permissions.includes("loans:computations:create");
 
   const loadComputations = useCallback(async () => {
@@ -6233,6 +6488,24 @@ function LoanComputations({ user }) {
     scheduleModal.onOpen();
   }
 
+  function previewPrintBreakdown(loan) {
+    setSelectedLoan(loan);
+    printModal.onOpen();
+  }
+
+  function printLoanBreakdown(loan) {
+    const printWindow = window.open("", "_blank", "width=900,height=1100");
+    if (!printWindow) {
+      setError("Allow pop-ups for this site to print the loan breakdown.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(buildLoanBreakdownPrintHtml(loan, user.username));
+    printWindow.document.close();
+    printWindow.focus();
+  }
+
   function scheduleTable(schedule) {
     return (
       <TableContainer>
@@ -6286,6 +6559,109 @@ function LoanComputations({ user }) {
           </Box>
         ))}
       </Grid>
+    );
+  }
+
+  function loanBreakdownPreview(loan) {
+    const totalDeductions = addMoney(
+      loan.processingFee,
+      loan.insuranceFee,
+      loan.cbuAmount,
+      loan.savingsRetentionAmount
+    );
+
+    return (
+      <VStack align="stretch" spacing={5}>
+        <Box borderBottomWidth="2px" borderColor="green.700" pb={4}>
+          <Text color="green.700" fontSize="xs" fontWeight="bold" textTransform="uppercase">
+            Member loan copy
+          </Text>
+          <Heading size="md" mt={1}>TASETEMCO Loan Breakdown and Amortization</Heading>
+          <Text color="gray.600" fontSize="sm" mt={1}>
+            Tabon Secondary Teachers, Employees and Community Multi-Purpose Cooperative
+          </Text>
+        </Box>
+
+        <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3}>
+          {[
+            ["Loan No.", loan.loanNo],
+            ["Application No.", loan.applicationNo],
+            ["Status", loan.status],
+            ["Prepared By", user.username],
+            ["Member No.", loan.memberNo],
+            ["Member Name", loan.memberName],
+            ["Product", loan.productName],
+            ["Prepared", formatDate(new Date().toISOString())]
+          ].map(([label, value]) => (
+            <Box key={label} borderWidth="1px" borderRadius="md" p={3}>
+              <Text color="gray.500" fontSize="xs" textTransform="uppercase">{label}</Text>
+              <Text fontWeight="bold">{value}</Text>
+            </Box>
+          ))}
+        </Grid>
+
+        <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4}>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Heading size="sm" mb={3}>Loan Terms</Heading>
+            <VStack align="stretch" spacing={2}>
+              <Flex justify="space-between"><Text>Principal</Text><Text fontWeight="bold">{formatMoney(loan.principal)}</Text></Flex>
+              <Flex justify="space-between"><Text>Term</Text><Text>{loan.termMonths} months</Text></Flex>
+              <Flex justify="space-between"><Text>Interest</Text><Text>{formatRateBps(loan.annualInterestRateBps)} annual</Text></Flex>
+              <Flex justify="space-between"><Text>Method</Text><Text>{loan.interestMethod}</Text></Flex>
+              <Flex justify="space-between"><Text>First Payment</Text><Text>{formatDate(loan.firstPaymentDate)}</Text></Flex>
+              <Flex justify="space-between"><Text>Maturity</Text><Text>{formatDate(loan.maturityDate)}</Text></Flex>
+            </VStack>
+          </Box>
+          <Box borderWidth="1px" borderRadius="md" p={4}>
+            <Heading size="sm" mb={3}>Release Breakdown</Heading>
+            <VStack align="stretch" spacing={2}>
+              <Flex justify="space-between"><Text>Total Deductions</Text><Text>{formatMoney(totalDeductions)}</Text></Flex>
+              <Flex justify="space-between"><Text>Net Proceeds</Text><Text fontWeight="bold">{formatMoney(loan.netProceeds)}</Text></Flex>
+              <Flex justify="space-between"><Text>Total Interest</Text><Text>{formatMoney(loan.totalInterest)}</Text></Flex>
+              <Flex justify="space-between"><Text>Total Payable</Text><Text fontWeight="bold">{formatMoney(loan.totalPayable)}</Text></Flex>
+              <Flex justify="space-between"><Text>Installments</Text><Text>{loan.installmentCount}</Text></Flex>
+            </VStack>
+          </Box>
+        </Grid>
+
+        <Box>
+          <Heading size="sm" mb={3}>Deductions From Principal</Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead>
+                <Tr>
+                  <Th>Deduction</Th>
+                  <Th>Rate</Th>
+                  <Th isNumeric>Amount</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {[
+                  ["Service Fee", formatRateBps(loan.serviceFeeRateBps), loan.processingFee],
+                  ["Insurance", formatRateBps(loan.insuranceFeeRateBps), loan.insuranceFee],
+                  ["CBU / Capital Build-Up", loan.cbuApplied ? formatRateBps(loan.cbuRateBps) : "Not applied", loan.cbuAmount],
+                  ["Savings Retention", formatRateBps(loan.savingsRetentionRateBps), loan.savingsRetentionAmount]
+                ].map(([label, rate, amount]) => (
+                  <Tr key={label}>
+                    <Td>{label}</Td>
+                    <Td>{rate}</Td>
+                    <Td isNumeric>{formatMoney(amount)}</Td>
+                  </Tr>
+                ))}
+                <Tr>
+                  <Td colSpan={2} fontWeight="bold">Total Deductions</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(totalDeductions)}</Td>
+                </Tr>
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+
+        <Box>
+          <Heading size="sm" mb={3}>Amortization Schedule</Heading>
+          {scheduleTable(loan.installments)}
+        </Box>
+      </VStack>
     );
   }
 
@@ -6376,7 +6752,14 @@ function LoanComputations({ user }) {
                   <Td isNumeric>{formatMoney(loan.totalPayable)}</Td>
                   <Td>{loan.maturityDate}</Td>
                   <Td><Badge colorScheme="purple">{loan.status}</Badge></Td>
-                  <Td><Button size="sm" onClick={() => viewSchedule(loan)}>View Schedule</Button></Td>
+                  <Td>
+                    <Flex gap={2} wrap="wrap">
+                      <Button size="sm" onClick={() => viewSchedule(loan)}>View Schedule</Button>
+                      <Button size="sm" variant="outline" onClick={() => previewPrintBreakdown(loan)}>
+                        Print Breakdown
+                      </Button>
+                    </Flex>
+                  </Td>
                 </Tr>
               ))}
             </Tbody>
@@ -6473,6 +6856,22 @@ function LoanComputations({ user }) {
           </ModalBody>
           <ModalFooter>
             <Button onClick={scheduleModal.onClose}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={printModal.isOpen} onClose={printModal.onClose} size="6xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>{selectedLoan ? `${selectedLoan.loanNo} Member Copy` : "Loan Breakdown"}</ModalHeader>
+          <ModalBody>
+            {selectedLoan ? loanBreakdownPreview(selectedLoan) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={printModal.onClose}>Close</Button>
+            <Button colorScheme="green" onClick={() => selectedLoan && printLoanBreakdown(selectedLoan)}>
+              Print
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
