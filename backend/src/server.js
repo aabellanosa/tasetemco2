@@ -9601,7 +9601,17 @@ app.post("/api/ledger/teller-batches/:batchId/post-reviewed", async (request, re
     return;
   }
 
-  const result = await postReviewedTellerBatch(request.params.batchId, user);
+  let result;
+
+  try {
+    result = await postReviewedTellerBatch(request.params.batchId, user);
+  } catch (error) {
+    console.error(`Reviewed teller batch posting failed for ${request.params.batchId}:`, error);
+    response.status(500).json({
+      error: "Reviewed teller batch posting failed. Check server logs for the database error."
+    });
+    return;
+  }
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });
