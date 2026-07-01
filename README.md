@@ -1,8 +1,8 @@
 # TASETEMCO
 
-TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. This branch documents the React, Chakra UI, Node.js, Render, and Postgres working prototype.
+TASETEMCO is a prototype cooperative core ledger system for Philippine cooperatives. This branch is the React, Chakra UI, Node.js, and Postgres pivot for the next working prototype.
 
-## React/Postgres Working Prototype
+## React/Postgres Pivot
 
 The spike is split into:
 
@@ -11,7 +11,7 @@ The spike is split into:
 
 The backend runs with in-memory seed data when `DATABASE_URL` is blank. Set `DATABASE_URL` to use local or hosted Postgres persistence.
 
-To prepare a local Postgres database, copy `backend/.env.example` to `backend/.env`, set `DATABASE_URL`, then run:
+To prepare a local Postgres database for the pivot, copy `backend/.env.example` to `backend/.env`, set `DATABASE_URL`, then run:
 
 ```powershell
 npm run pg:migrate
@@ -24,25 +24,11 @@ If tester input becomes messy, reset the configured database back to the demo se
 npm run pg:reset-demo
 ```
 
-`pg:reset-demo` writes a JSON backup under `data/backups/` before clearing and reseeding the configured database. You can also run a backup manually:
+`pg:reset-demo` writes a JSON backup under `data/backups/` before clearing and reseeding the configured Postgres database. You can also run a backup manually:
 
 ```powershell
 npm run pg:backup
 ```
-
-The hosted Render demo uses Postgres. The `admin` user has a Demo Maintenance panel under Users to download a JSON backup and reset hosted demo data to seed rows. Reset requires typing `RESET TASETEMCO` and downloads a pre-reset backup automatically.
-
-On Render free services, run schema migrations manually from your local terminal with the Render External Database URL before deploying app code that changes database columns:
-
-```powershell
-$env:DATABASE_URL="paste_render_external_database_url_here"
-$env:PGSSLMODE="require"
-npm run pg:migrate
-Remove-Item Env:DATABASE_URL
-Remove-Item Env:PGSSLMODE
-```
-
-Run `pg:migrate` only for schema changes. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless the intent is to overwrite or reset tester data.
 
 ## Running The Spike
 
@@ -72,6 +58,44 @@ http://127.0.0.1:5173
 
 The Vite dev server proxies `/api` requests to `http://127.0.0.1:4000`.
 
+## Render Deployment
+
+This branch can run as a single Render Web Service. The backend serves the built React app from `frontend/dist`, so the deployed service handles both the UI and `/api` routes.
+
+Recommended manual Render settings:
+
+```text
+Runtime: Node
+Build Command: npm install && npm run build
+Pre-Deploy Command: npm run render:predeploy
+Start Command: npm start
+Health Check Path: /api/health
+```
+
+Create a Render Postgres database and set the web service `DATABASE_URL` from the database connection string. If using a Render Blueprint, `render.yaml` defines the web service and Postgres database together.
+
+Render free services do not expose an editable Pre-Deploy Command. On the free tier, run migrations from your local terminal with the Render External Database URL before deploying code that changes the database shape:
+
+```powershell
+$env:DATABASE_URL="paste_render_external_database_url_here"
+$env:PGSSLMODE="require"
+npm run pg:migrate
+Remove-Item Env:DATABASE_URL
+Remove-Item Env:PGSSLMODE
+```
+
+Run `pg:migrate` for schema changes only. Do not run `pg:seed` or `pg:reset-demo` against the hosted demo unless you intentionally want to overwrite or reset tester data.
+
+After the first deploy, seed the demo data once from the Render Shell:
+
+```powershell
+npm run render:seed
+```
+
+Do not use `pg:reset-demo` on the hosted demo unless you intentionally want to wipe tester input and restore the seed.
+
+The `admin` user also has a Demo Maintenance panel under Users. It can download a JSON backup of hosted demo data and reset the Postgres database to the seed rows. Reset requires typing `RESET TASETEMCO` and automatically downloads a pre-reset backup.
+
 ## Spike Checks
 
 ```powershell
@@ -79,7 +103,7 @@ npm run check
 npm test
 ```
 
-`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test. In Postgres mode, `/api/health` also reports schema status so missing migration columns are visible before normal screens fail.
+`npm test` starts the spike API in in-memory mode, checks `/api/health`, and runs the core workflow smoke test. In Postgres mode, `/api/health` also reports `schema: "ok"` or lists missing schema columns.
 
 After `backend/.env` points to a local Postgres database, run the persistence smoke test with:
 
@@ -101,10 +125,6 @@ p@55@LL
 
 The current spike uses one shared prototype password in code. Production behavior should move passwords into the database as salted hashes with forced password changes.
 
-The `admin` user can manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; per-user password storage belongs to a later security spike.
-
-The Auditor / Compliance Officer has read-only User / Security access. Auditor can inspect usernames, roles, default screens, and account status, but cannot see the shared password, create or update users, download backups, or reset demo data.
-
 | Username | Role | Default Screen |
 | --- | --- | --- |
 | `admin` | System Administrator | Users and Roles |
@@ -119,7 +139,7 @@ The Auditor / Compliance Officer has read-only User / Security access. Auditor c
 
 ## Spike Role Permissions
 
-The React/Postgres prototype uses action-level permissions, not just screen access. For membership workflows:
+The React/Postgres pivot uses action-level permissions, not just screen access. For membership workflows:
 
 | Role | View Members | View Applications | Create Applications | Approve Applications | Member Import Preview | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -139,6 +159,10 @@ Members Workspace UI Refactor v1 organizes the Members screen into role-aware ta
 
 Only the `admin` user can access Demo Maintenance controls. Other roles are blocked by the API even if they attempt to call the maintenance endpoints directly.
 
+The `admin` user can also manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; production password storage is intentionally left for a later security spike.
+
+The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, and account status, but cannot see the shared prototype password, create or modify users, download backups, or reset demo data.
+
 Member Profile v1 expands member master data with contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. `admin` and `membership` can update profile fields; other member-view roles can inspect them read-only. Share capital and savings balances stay read-only because they are derived from transactions.
 
 Member Import Preview v0 lets `admin` and `membership` paste a CSV export from Excel, map source columns to member profile fields, and review validation issues before any database write exists. It checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses. This is intentionally preview-only while client Excel formats are still being discovered.
@@ -151,17 +175,19 @@ Opening Balance Import Planning v0 adds a preview-only Ledger panel for existing
 
 The Ledger workspace uses role-aware tabs so users open one ledger work area at a time. Batch Review contains cash count, review/post/close actions, and unposted teller batch rows; Opening Balances contains the cutover balance preview; Batch History contains closed/submitted batch evidence; Posted Entries contains journal entries.
 
-Opening Balance Import Staging v1 lets Admin and Bookkeeper save the mapped cutover balance preview as a staged batch. Validation flags missing or unknown member numbers, duplicate member numbers in the upload, members already present in another staged opening-balance batch, invalid/negative amounts, invalid cutover dates, and missing source references. Staging preserves the review queue only; member balances, reports, and journal entries do not change until a later finalization spike.
+Opening Balance Import Staging schema v1 adds Postgres tables for future staged cutover balance batches and rows. It does not yet save or finalize opening balances from the UI. Run `npm run pg:migrate` against the target database before deploying this app build.
 
-Opening Balance Import Details v1 lets Admin and Bookkeeper open each staged batch to inspect row status, validation issues, and raw source values. Admin can reject a staged batch; rejected batches remain visible for audit evidence and no longer block a corrected upload for the same members.
+Opening Balance Import Staging v1 lets Admin and Bookkeeper save the mapped opening-balance preview as a staged batch. Staged batches show ready rows, issue rows, share capital total, savings total, source label, creator, and timestamp. This still does not finalize balances, update member statements, or create journal entries.
 
-Opening Balance Import Finalization v1d.1 lets Admin finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. General-ledger journal entries remain for the next accounting spike.
+Opening Balance Import Details v1 lets Admin and Bookkeeper open staged batches to inspect row-level status, validation issues, and raw source values. Admin can reject a staged batch when it should be excluded from future finalization; rejected batches remain visible as audit evidence.
 
-Opening Balance Accounting Entries v1d.2 now creates one balanced journal automatically during finalization: debit `1090 Opening Balance Clearing`, credit `3010 Share Capital`, and credit `2020 Savings Deposits Payable`. Only finalized rows are included. The journal is linked to the batch, appears in Posted Entries and reports, and brings opening balances into Control Account Reconciliation. Older finalized batches without a journal expose an Admin-only `Post Missing Journal` repair action.
+Opening Balance Import Finalization v1d.1 lets Admin finalize ready rows after confirmation. Ready-row share capital and savings amounts are added to member balances; issue or conflicting rows are skipped; finalized/skipped counts, actor, timestamp, and row status are retained. Finalized batches cannot run twice, and later uploads flag members whose opening balances were already finalized. This spike does not create general-ledger journal entries yet.
+
+Opening Balance Accounting Entries v1d.2 creates one balanced journal when an opening-balance batch is finalized: debit `1090 Opening Balance Clearing`, credit `3010 Share Capital`, and credit `2020 Savings Deposits Payable`. The journal uses only finalized rows, links back to the import batch, appears in Posted Entries and financial reports, and brings opening-balance subsidiary totals into Control Account Reconciliation. Finalized batches created before this spike show an Admin-only `Post Missing Journal` repair action.
 
 Opening Balance Visibility v1e adds finalized opening balances to each member statement with batch number, cutover date, source reference, amounts, and linked journal number. The Member Subsidiary Ledger separately shows opening share capital and opening savings beside normal transaction movements and current balances.
 
-Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit amount/term limits, annual rate, interest method, payment frequency, fees, penalties, accounting mappings, and status. Manager, Loan Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only access. Seeded products are Regular Loan, Emergency Loan, and Small Business Loan.
+Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. Manager, Loan Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, and Appliance Loan. This spike adds the `loan_products` Postgres table, so run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying the app build.
 
 | Loan Product Access | View | Create / Edit |
 | --- | --- | --- |
@@ -175,25 +201,23 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 
 Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, and application date, then saves a Draft. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application.
 
-Loan Credit Review v1 lets the Credit Committee / Approver review Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable.
+Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the member's requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable.
 
-Loan Computation and Amortization Preview v1 lets the originating Loan Officer compute an Approved application using its snapshotted Flat Interest terms. The Loan Officer selects the first payment date, previews principal, interest, processing fee, net proceeds, total payable, maturity, and every installment, then saves the schedule once as `For Release`. Whole-peso rounding differences are placed in the final installment. Monthly, semi-monthly, and weekly schedules are supported. Saving creates an immutable loan header and installment rows but does not release cash or create journal entries.
+Loan Computation and Amortization Preview v1 lets the originating Loan Officer compute an Approved application using its snapshotted product terms. TASETEMCO products use 2.5% monthly diminishing-balance interest and deduct a 4.5% service fee from principal. Salary, Educational, and Appliance loans also deduct 1.5% insurance, 2% CBU, and 1% savings retention; CBU can be removed during computation when the member is fully subscribed. The preview shows principal, interest, all deductions, net proceeds, total payable, maturity, and every installment, then saves the schedule once as `For Release`.
 
-Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Teller confirms the release date, unique voucher/reference number, and cash released, which must exactly equal computed net proceeds. The release is immutable, linked to the current Open teller batch, counted as cash-out, and changes the loan and application status to `Released`. Loan Officer, Approver, Admin, Manager, and Auditor have read-only release visibility.
+Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Teller confirms the release date, unique voucher/reference number, and cash released, which must exactly equal computed net proceeds. The release is immutable, linked to the current Open teller batch, counted as cash-out, and changes the loan and application status to `Released`. Loan Officer, Approver, Admin, Manager, and Auditor have read-only release visibility. Bookkeeper journal posting remains Loan Release v1b.
 
-Loan Release v1b brings released loans into the reviewed-batch posting control. After Teller submits cash count and Bookkeeper marks the batch Reviewed, one-button posting debits Loans Receivable for principal, credits Cash on Hand for net proceeds, and credits Processing Fee Income for the deducted fee. The release, loan, and application become `Posted`, and release history and batch details retain the journal number. Reposting cannot create a duplicate journal.
+Loan Release v1b brings released loans into the existing reviewed-batch posting control. After Teller submits cash count and Bookkeeper marks the batch Reviewed, one-button posting creates a balanced journal from the frozen application mappings: debit Loans Receivable for principal; credit Cash on Hand for net proceeds; credit Service Fee Other Income and Insurance Other Income for deducted fees; and credit Share Capital and Savings Deposits Payable for CBU/savings retention. Posted CBU and savings retention update member balances. The release, loan, and application become `Posted`, and release history and batch details retain the linked journal number. Reposting is idempotent.
 
-Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares funding with assigned Teller, amount, source account, date, and unique reference; General Manager approves it; the assigned Teller acknowledges receipt into the Open batch. Acknowledged funding becomes Opening Funding, so expected ending cash is `Opening Funding + Cash In - Cash Out`. Batch details retain the control evidence.
+Teller Cash Funding v1a establishes custody before payouts. Bookkeeper prepares a whole-peso funding amount with Teller, source account, date, and unique reference; General Manager approves it; the assigned Teller acknowledges receipt into the current Open batch. Acknowledged funding becomes Opening Funding, so expected ending cash is `Opening Funding + Cash In - Cash Out`. Funding evidence remains visible in batch details.
 
-After Teller acknowledges funding, the Loans workspace opens the Releases tab. A Release button depends only on a computed loan having `For Release` status and an Open teller batch; it does not require an unrelated deposit or member transaction. An empty queue means no computed loan is currently marked `For Release`.
+Teller Cash Funding v1b gives Bookkeeper a funding-demand view of every loan currently marked `For Release`, including member, computation date, net proceeds, total demand, acknowledged funding, other batch receipts, existing payouts, available teller cash, and shortage. Teller sees the same available-cash control in the release queue. A release is disabled in the UI and rejected by the API when net proceeds exceed `Acknowledged Funding + Cash In - Cash Out`. The database path locks and rechecks the Open batch before insert so concurrent releases cannot spend the same available cash. Only acknowledged funding counts; Prepared or Approved funding does not.
 
-Teller Cash Funding v1b gives Bookkeeper a funding-demand view of every loan marked `For Release`, including net proceeds, total demand, acknowledged funding, other receipts, existing payouts, available teller cash, and shortage. Teller sees the available cash in the release queue. The UI disables and the API rejects any release whose net proceeds exceed `Acknowledged Funding + Cash In - Cash Out`. Prepared or Approved funding does not count until Teller acknowledges it.
+Teller Cash Funding v1c completes the accounting transfer during reviewed-batch posting. The Bookkeeper's existing `Post reviewed batch` action posts each unposted acknowledged funding as debit `1010 - Cash on Hand` and credit the funding's recorded source account, normally `1020 - Cash in Bank`. The same action continues posting the loan release journal. Funding remains `Acknowledged` as custody evidence while `postedBy`, `postedAt`, and `postedEntryNo` prove accounting completion. Batch details and funding history show the linked journal, closing is blocked while acknowledged funding remains unposted, and reposting cannot create duplicates.
 
-Teller Cash Funding v1c completes the accounting transfer through `Post reviewed batch`. Each unposted acknowledged funding debits `1010 - Cash on Hand` and credits its recorded source account, normally `1020 - Cash in Bank`; loan release and other teller journals post in the same action. Funding stays `Acknowledged` as custody evidence while its linked journal proves accounting completion. Batch closing and duplicate posting are blocked until the funding transfer is safely recorded.
+Loan Collection v1a starts the repayment series with one exact scheduled installment at a time. Teller/Cashier sees only posted loans and their earliest unpaid installment, may collect it on or before the due date, and records a unique official receipt/reference. The amount and principal-interest allocation come from the frozen schedule and cannot be edited. Recording marks that installment `Paid` and adds the receipt to the Open teller batch. After cash count and review, `Post reviewed batch` debits Cash on Hand, credits Loans Receivable for principal, and credits Interest Income for interest. Partial, excess, skipped-installment, penalty, and payoff handling are intentionally deferred.
 
-Loan Collection v1a lets Teller/Cashier collect one exact scheduled installment from a posted loan. The Collections tab shows only the earliest unpaid installment; early payment is allowed after release, while partial, excess, and skipped-installment payments remain deferred. Recording requires a unique official receipt/reference, marks the installment Paid, and adds the amount to the Open teller batch. Teller then submits cash count from Members → Teller Transactions; Bookkeeper reviews and posts the batch as debit Cash on Hand, credit Loans Receivable for principal, and credit Interest Income.
-
-| Current Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
+| Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
 | General Manager | Yes | No | No | No |
@@ -324,7 +348,8 @@ Example server directory:
 
 - Frontend: Vite, React, Chakra UI in `frontend/`
 - Backend: Node.js, Express in `backend/`
-- Database: in-memory seed mode by default, Postgres when `DATABASE_URL` is configured
+- Database: in-memory seed mode by default; Postgres persistence is being introduced in mini-spikes
+- Deployment: single Render Web Service with Render Postgres
 - Auth: multi-user prototype login with role-based access control
 - Reporting: ledger-driven reports generated from posted transactions
 
