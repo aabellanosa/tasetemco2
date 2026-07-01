@@ -33,6 +33,7 @@ function validateSite(directory) {
   assert(index.includes("Loan Product Deductions"), "Loan product deductions section is missing.");
   assert(index.includes("2.5% monthly diminishing interest"), "TASETEMCO loan interest rule is missing.");
   assert(index.includes("1.5% insurance, 2% CBU, and 1% savings retention"), "TASETEMCO loan deduction rates are missing.");
+  assert(index.includes("print a member loan breakdown"), "Printable loan breakdown workflow note is missing.");
   assert(!/Tabon|tabon|TABON/.test(index), "Old Tabon branding is still present.");
 }
 
