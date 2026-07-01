@@ -5995,11 +5995,24 @@ function LoanApplications({ user }) {
     decisionRemarks: "",
     decisionDate: new Date().toISOString().slice(0, 10)
   });
+  const [documentApplication, setDocumentApplication] = useState(null);
+  const [documentForm, setDocumentForm] = useState({
+    borrowerAddress: "",
+    spouseName: "",
+    coMakerName: "",
+    otherLoanType: "",
+    bookkeeperNotes: "",
+    approvalNotes: "",
+    promissoryNoteNo: "",
+    placeSigned: "Bislig City"
+  });
   const reviewModal = useDisclosure();
+  const documentModal = useDisclosure();
   const canCreate = user.permissions.includes("loans:applications:create");
   const canEdit = user.permissions.includes("loans:applications:edit");
   const canSubmit = user.permissions.includes("loans:applications:submit");
   const canDecide = user.permissions.includes("loans:applications:decide");
+  const canPrepareDocument = canCreate || canEdit || user.username === "admin";
   const activeProducts = products.filter((product) => product.status === "Active");
   const selectedProduct = products.find((product) => product.code === form.productCode);
   const termOptions = allowedCommonLoanTerms(selectedProduct);
@@ -6079,6 +6092,49 @@ function LoanApplications({ user }) {
     setMessage("");
     setError("");
     reviewModal.onOpen();
+  }
+
+  async function startDocumentForm(application) {
+    setBusyAction(`document-${application.applicationNo}`);
+    setMessage("");
+    setError("");
+    try {
+      const result = await api(`/api/loan-applications/${application.applicationNo}/document-form`);
+      setDocumentApplication(result.application);
+      setDocumentForm(result.form);
+      documentModal.onOpen();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  function updateDocumentForm(field, value) {
+    setDocumentForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveDocumentForm() {
+    if (!documentApplication) {
+      return;
+    }
+
+    setBusyAction("document-save");
+    setMessage("");
+    setError("");
+    try {
+      const result = await api(`/api/loan-applications/${documentApplication.applicationNo}/document-form`, {
+        method: "PUT",
+        body: JSON.stringify({ formData: documentForm })
+      });
+      setDocumentForm(result.form);
+      setMessage(`${documentApplication.applicationNo} loan document form saved.`);
+      documentModal.onClose();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyAction("");
+    }
   }
 
   function resetForm() {
@@ -6292,7 +6348,7 @@ function LoanApplications({ user }) {
                 <Th>Status</Th>
                 <Th>Prepared By</Th>
                 <Th>Latest Review</Th>
-                {(canEdit || canSubmit || canDecide) ? <Th>Action</Th> : null}
+                {(canPrepareDocument || canEdit || canSubmit || canDecide) ? <Th>Action</Th> : null}
               </Tr>
             </Thead>
             <Tbody>
@@ -6342,10 +6398,20 @@ function LoanApplications({ user }) {
                         </>
                       ) : <Text color="gray.500">Awaiting decision</Text>}
                     </Td>
-                    {(canEdit || canSubmit || canDecide) ? (
+                    {(canPrepareDocument || canEdit || canSubmit || canDecide) ? (
                       <Td>
                         {ownsEditable ? (
-                          <HStack spacing={2}>
+                          <Flex gap={2} wrap="wrap">
+                            {canPrepareDocument ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => startDocumentForm(application)}
+                                isLoading={busyAction === `document-${application.applicationNo}`}
+                              >
+                                Prepare Form
+                              </Button>
+                            ) : null}
                             {canEdit ? <Button size="sm" onClick={() => startEdit(application)}>Edit</Button> : null}
                             {canSubmit && ownsDraft ? (
                               <Button
@@ -6357,10 +6423,31 @@ function LoanApplications({ user }) {
                                 Submit
                               </Button>
                             ) : null}
-                          </HStack>
+                          </Flex>
                         ) : canDecide && application.status === "Submitted" ? (
-                          <Button size="sm" colorScheme="green" onClick={() => startReview(application)}>
-                            Review
+                          <Flex gap={2} wrap="wrap">
+                            {canPrepareDocument ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => startDocumentForm(application)}
+                                isLoading={busyAction === `document-${application.applicationNo}`}
+                              >
+                                Prepare Form
+                              </Button>
+                            ) : null}
+                            <Button size="sm" colorScheme="green" onClick={() => startReview(application)}>
+                              Review
+                            </Button>
+                          </Flex>
+                        ) : canPrepareDocument ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => startDocumentForm(application)}
+                            isLoading={busyAction === `document-${application.applicationNo}`}
+                          >
+                            Prepare Form
                           </Button>
                         ) : <Text color="gray.500">Read only</Text>}
                       </Td>
@@ -6480,6 +6567,98 @@ function LoanApplications({ user }) {
             </Button>
             <Button colorScheme="green" onClick={submitDecision} isLoading={busyAction === "decision"}>
               Record Decision
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={documentModal.isOpen} onClose={documentModal.onClose} size="3xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            Loan Document Form {documentApplication ? `- ${documentApplication.applicationNo}` : ""}
+          </ModalHeader>
+          <ModalBody>
+            {documentApplication ? (
+              <VStack align="stretch" spacing={4}>
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                  <Text fontWeight="bold">{documentApplication.memberName}</Text>
+                  <Text color="gray.600" fontSize="sm">
+                    {documentApplication.productName} / {formatMoney(documentApplication.requestedPrincipal)} /
+                    {" "}{documentApplication.requestedTermMonths} months
+                  </Text>
+                  <Text color="gray.600" fontSize="sm">{documentApplication.purpose}</Text>
+                </Box>
+                <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>
+                  <FormControl>
+                    <FormLabel>Borrower Address</FormLabel>
+                    <Textarea
+                      value={documentForm.borrowerAddress}
+                      onChange={(event) => updateDocumentForm("borrowerAddress", event.target.value)}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Name of Spouse</FormLabel>
+                    <Input
+                      value={documentForm.spouseName}
+                      onChange={(event) => updateDocumentForm("spouseName", event.target.value)}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Co-maker</FormLabel>
+                    <Input
+                      value={documentForm.coMakerName}
+                      onChange={(event) => updateDocumentForm("coMakerName", event.target.value)}
+                    />
+                    <Text color="gray.500" fontSize="xs" mt={1}>
+                      Manual entry for this phase. Member-linked co-maker selection can come later.
+                    </Text>
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Other Loan Type Label</FormLabel>
+                    <Input
+                      value={documentForm.otherLoanType}
+                      onChange={(event) => updateDocumentForm("otherLoanType", event.target.value)}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Promissory Note No.</FormLabel>
+                    <Input
+                      value={documentForm.promissoryNoteNo}
+                      onChange={(event) => updateDocumentForm("promissoryNoteNo", event.target.value)}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Place Signed</FormLabel>
+                    <Input
+                      value={documentForm.placeSigned}
+                      onChange={(event) => updateDocumentForm("placeSigned", event.target.value)}
+                    />
+                  </FormControl>
+                </Grid>
+                <FormControl>
+                  <FormLabel>Bookkeeper Notes</FormLabel>
+                  <Textarea
+                    value={documentForm.bookkeeperNotes}
+                    onChange={(event) => updateDocumentForm("bookkeeperNotes", event.target.value)}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Approval / Routing Notes</FormLabel>
+                  <Textarea
+                    value={documentForm.approvalNotes}
+                    onChange={(event) => updateDocumentForm("approvalNotes", event.target.value)}
+                  />
+                </FormControl>
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={documentModal.onClose}>
+              Cancel
+            </Button>
+            <Button colorScheme="green" onClick={saveDocumentForm} isLoading={busyAction === "document-save"}>
+              Save Form
             </Button>
           </ModalFooter>
         </ModalContent>

@@ -2143,6 +2143,49 @@ async function run() {
       throw new Error("Loan Officer should create a draft with snapshotted product terms.");
     }
 
+    const saveLoanDocumentForm = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/document-form`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({
+          formData: {
+            borrowerAddress: "Smoke borrower address",
+            spouseName: "Smoke Spouse",
+            coMakerName: "Manual Co Maker",
+            promissoryNoteNo: "PN-SMOKE-001",
+            placeSigned: "Bislig City"
+          }
+        })
+      }
+    );
+    const saveLoanDocumentFormBody = await saveLoanDocumentForm.json();
+
+    if (
+      !saveLoanDocumentForm.ok ||
+      saveLoanDocumentFormBody.form.coMakerName !== "Manual Co Maker" ||
+      saveLoanDocumentFormBody.form.spouseName !== "Smoke Spouse"
+    ) {
+      throw new Error("Loan Officer should save manual loan document form fields.");
+    }
+
+    const getLoanDocumentForm = await fetch(
+      `${baseUrl}/api/loan-applications/${smokeApplicationNo}/document-form`,
+      { headers: { Cookie: loanOfficerCookie } }
+    );
+    const getLoanDocumentFormBody = await getLoanDocumentForm.json();
+
+    if (
+      !getLoanDocumentForm.ok ||
+      getLoanDocumentFormBody.form.coMakerName !== "Manual Co Maker" ||
+      getLoanDocumentFormBody.application.applicationNo !== smokeApplicationNo
+    ) {
+      throw new Error("Loan document form should be returned with its loan application.");
+    }
+
     const updateLoanApplication = await fetch(
       `${baseUrl}/api/loan-applications/${smokeApplicationNo}`,
       {

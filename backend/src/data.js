@@ -469,6 +469,8 @@ export const loanApplications = [
   }
 ];
 
+export const loanDocumentForms = [];
+
 export const loans = [];
 
 export const loanInstallments = [];

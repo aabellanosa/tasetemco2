@@ -11,6 +11,7 @@ import {
   initialPayments,
   journalEntries,
   loanApplications,
+  loanDocumentForms,
   loanCollections,
   loanInstallments,
   loanProducts,
@@ -121,6 +122,7 @@ const persistedTables = [
   "teller_batches",
   "opening_balance_import_rows",
   "opening_balance_import_batches",
+  "loan_document_forms",
   "loan_applications",
   "loan_products",
   "member_import_rows",
@@ -269,6 +271,14 @@ const requiredSchemaColumns = {
     "decision_date",
     "decided_by",
     "decided_at",
+    "created_at",
+    "updated_at"
+  ],
+  loan_document_forms: [
+    "application_no",
+    "form_data",
+    "created_by",
+    "updated_by",
     "created_at",
     "updated_at"
   ],
@@ -1202,6 +1212,134 @@ async function updateLoanApplication(applicationNo, input, user) {
   );
 
   return { application: (await listLoanApplications()).find((item) => item.applicationNo === applicationNo) };
+}
+
+function safeJsonParse(value, fallback = {}) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeLoanDocumentFormData(body) {
+  const formData = body?.formData && typeof body.formData === "object" ? body.formData : body || {};
+  const text = (field, max = 500) => String(formData[field] || "").trim().slice(0, max);
+
+  return {
+    borrowerAddress: text("borrowerAddress", 1000),
+    spouseName: text("spouseName", 180),
+    coMakerName: text("coMakerName", 180),
+    otherLoanType: text("otherLoanType", 120),
+    bookkeeperNotes: text("bookkeeperNotes", 1000),
+    approvalNotes: text("approvalNotes", 1000),
+    promissoryNoteNo: text("promissoryNoteNo", 80),
+    placeSigned: text("placeSigned", 180)
+  };
+}
+
+async function defaultLoanDocumentForm(applicationNo) {
+  const applications = await listLoanApplications();
+  const application = applications.find((item) => item.applicationNo === applicationNo);
+
+  if (!application) {
+    return { error: "Loan application was not found.", statusCode: 404 };
+  }
+
+  const memberRows = await listMembers();
+  const member = memberRows.find((item) => item.id === application.memberNo);
+
+  return {
+    application,
+    form: {
+      borrowerAddress: member?.address || "",
+      spouseName: "",
+      coMakerName: "",
+      otherLoanType: "",
+      bookkeeperNotes: "",
+      approvalNotes: "",
+      promissoryNoteNo: "",
+      placeSigned: "Bislig City"
+    }
+  };
+}
+
+async function getLoanDocumentForm(applicationNo) {
+  const base = await defaultLoanDocumentForm(applicationNo);
+  if (base.error) {
+    return base;
+  }
+
+  const db = await getPool();
+  if (!db) {
+    const existing = loanDocumentForms.find((item) => item.applicationNo === applicationNo);
+    return {
+      application: base.application,
+      form: existing ? { ...base.form, ...existing.formData } : base.form,
+      updatedBy: existing?.updatedBy || "",
+      updatedAt: existing?.updatedAt || ""
+    };
+  }
+
+  const [rows] = await db.execute(
+    `SELECT form_data AS formData, updated_by AS updatedBy, updated_at AS updatedAt
+     FROM loan_document_forms
+     WHERE application_no = ?
+     LIMIT 1`,
+    [applicationNo]
+  );
+  const existing = rows[0];
+
+  return {
+    application: base.application,
+    form: existing ? { ...base.form, ...safeJsonParse(existing.formData) } : base.form,
+    updatedBy: existing?.updatedBy || "",
+    updatedAt: existing?.updatedAt || ""
+  };
+}
+
+async function saveLoanDocumentForm(applicationNo, body, user) {
+  const base = await defaultLoanDocumentForm(applicationNo);
+  if (base.error) {
+    return base;
+  }
+
+  const formData = sanitizeLoanDocumentFormData(body);
+  const db = await getPool();
+
+  if (!db) {
+    const existing = loanDocumentForms.find((item) => item.applicationNo === applicationNo);
+    const now = new Date().toISOString();
+    if (existing) {
+      existing.formData = formData;
+      existing.updatedBy = user.username;
+      existing.updatedAt = now;
+    } else {
+      loanDocumentForms.unshift({
+        applicationNo,
+        formData,
+        createdBy: user.username,
+        updatedBy: user.username,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+    return getLoanDocumentForm(applicationNo);
+  }
+
+  await db.execute(
+    `INSERT INTO loan_document_forms (
+       application_no, form_data, created_by, updated_by
+     )
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (application_no)
+     DO UPDATE SET form_data = EXCLUDED.form_data,
+                   updated_by = EXCLUDED.updated_by,
+                   updated_at = CURRENT_TIMESTAMP`,
+    [applicationNo, JSON.stringify(formData), user.username, user.username]
+  );
+
+  return getLoanDocumentForm(applicationNo);
 }
 
 async function submitLoanApplication(applicationNo, user) {
@@ -8284,6 +8422,54 @@ app.patch("/api/loan-applications/:applicationNo", async (request, response) => 
   }
 
   const result = await updateLoanApplication(request.params.applicationNo, validation.value, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.get("/api/loan-applications/:applicationNo/document-form", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "loans:applications:view")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await getLoanDocumentForm(request.params.applicationNo);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.put("/api/loan-applications/:applicationNo/document-form", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (
+    !hasPermission(user, "loans:applications:create") &&
+    !hasPermission(user, "loans:applications:edit") &&
+    !isAdminUser(user)
+  ) {
+    response.status(403).json({ error: "Loan Officer access required" });
+    return;
+  }
+
+  const result = await saveLoanDocumentForm(request.params.applicationNo, request.body, user);
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });
     return;

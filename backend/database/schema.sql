@@ -96,6 +96,16 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS loan_document_forms (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  application_no VARCHAR(40) NOT NULL UNIQUE,
+  form_data TEXT NOT NULL,
+  created_by VARCHAR(80) NOT NULL DEFAULT '',
+  updated_by VARCHAR(80) NOT NULL DEFAULT '',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS credit_assessment_notes TEXT NOT NULL DEFAULT '';
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS recommended_principal INT NOT NULL DEFAULT 0;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS recommended_term_months INT NOT NULL DEFAULT 0;
