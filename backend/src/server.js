@@ -1222,6 +1222,13 @@ function safeJsonParse(value, fallback = {}) {
   }
 }
 
+function isMissingLoanDocumentFormsTable(error) {
+  return (
+    String(error?.code || "") === "42P01" &&
+    String(error?.message || "").includes("loan_document_forms")
+  );
+}
+
 function sanitizeLoanDocumentFormData(body) {
   const formData = body?.formData && typeof body.formData === "object" ? body.formData : body || {};
   const text = (field, max = 500) => String(formData[field] || "").trim().slice(0, max);
@@ -8443,13 +8450,24 @@ app.get("/api/loan-applications/:applicationNo/document-form", async (request, r
     return;
   }
 
-  const result = await getLoanDocumentForm(request.params.applicationNo);
-  if (result.error) {
-    response.status(result.statusCode).json({ error: result.error });
-    return;
-  }
+  try {
+    const result = await getLoanDocumentForm(request.params.applicationNo);
+    if (result.error) {
+      response.status(result.statusCode).json({ error: result.error });
+      return;
+    }
 
-  response.json(result);
+    response.json(result);
+  } catch (error) {
+    console.error(`Loan document form load failed for ${request.params.applicationNo}:`, error);
+    if (isMissingLoanDocumentFormsTable(error)) {
+      response.status(409).json({
+        error: "Loan document form storage is not migrated yet. Run npm run pg:migrate, then try Prepare Form again."
+      });
+      return;
+    }
+    response.status(500).json({ error: "Loan document form failed to load. Check server logs for the database error." });
+  }
 });
 
 app.put("/api/loan-applications/:applicationNo/document-form", async (request, response) => {
@@ -8469,13 +8487,24 @@ app.put("/api/loan-applications/:applicationNo/document-form", async (request, r
     return;
   }
 
-  const result = await saveLoanDocumentForm(request.params.applicationNo, request.body, user);
-  if (result.error) {
-    response.status(result.statusCode).json({ error: result.error });
-    return;
-  }
+  try {
+    const result = await saveLoanDocumentForm(request.params.applicationNo, request.body, user);
+    if (result.error) {
+      response.status(result.statusCode).json({ error: result.error });
+      return;
+    }
 
-  response.json(result);
+    response.json(result);
+  } catch (error) {
+    console.error(`Loan document form save failed for ${request.params.applicationNo}:`, error);
+    if (isMissingLoanDocumentFormsTable(error)) {
+      response.status(409).json({
+        error: "Loan document form storage is not migrated yet. Run npm run pg:migrate, then try saving the form again."
+      });
+      return;
+    }
+    response.status(500).json({ error: "Loan document form failed to save. Check server logs for the database error." });
+  }
 });
 
 app.post("/api/loan-applications/:applicationNo/submit", async (request, response) => {
