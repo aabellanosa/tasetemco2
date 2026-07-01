@@ -30,6 +30,9 @@ function validateSite(directory) {
   assert(index.includes('id="reports"'), "Reports section is missing.");
   assert(index.includes("System Administrator"), "Role matrix is missing System Administrator.");
   assert(index.includes("Board / Read-Only Executive"), "Role matrix is missing Board / Read-Only Executive.");
+  assert(index.includes("Loan Product Deductions"), "Loan product deductions section is missing.");
+  assert(index.includes("2.5% monthly diminishing interest"), "TASETEMCO loan interest rule is missing.");
+  assert(index.includes("1.5% insurance, 2% CBU, and 1% savings retention"), "TASETEMCO loan deduction rates are missing.");
   assert(!/Tabon|tabon|TABON/.test(index), "Old Tabon branding is still present.");
 }
 

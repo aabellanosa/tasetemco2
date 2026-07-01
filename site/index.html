@@ -256,7 +256,11 @@
               <li>Credit Committee / Approver records assessment notes and a decision.</li>
               <li>Returned applications go back to Draft for Loan Officer revision.</li>
               <li>Approved and Rejected applications retain immutable decision evidence.</li>
-              <li>Loan Officer previews and saves the approved amortization schedule.</li>
+              <li>Loan Officer previews the schedule with 2.5% monthly diminishing interest.</li>
+              <li>System deducts the 4.5% service fee from principal before release.</li>
+              <li>Salary, Educational, and Appliance loans also deduct insurance, CBU, and savings retention.</li>
+              <li>CBU can be removed only when the member is fully subscribed.</li>
+              <li>Loan Officer saves the approved amortization schedule.</li>
               <li>Saved computations move to For Release without moving cash.</li>
               <li>Bookkeeper prepares Teller funding and Manager approves it.</li>
               <li>Assigned Teller acknowledges funding into the Open batch.</li>
@@ -268,11 +272,26 @@
           </article>
 
           <article>
+            <h3>Loan Product Deductions</h3>
+            <ol>
+              <li>Emergency Loan is fixed at 6 months with a 4.5% service fee.</li>
+              <li>Petty Cash Loan is fixed at 1 month with a 4.5% service fee.</li>
+              <li>Salary Loan supports PHP 10,000 to PHP 350,000.</li>
+              <li>Educational Loan supports PHP 5,000 to PHP 10,000.</li>
+              <li>Appliance Loan supports PHP 5,000 to PHP 100,000.</li>
+              <li>Salary, Educational, and Appliance loans deduct 1.5% insurance, 2% CBU, and 1% savings retention.</li>
+              <li>Service fee and insurance post to other income; CBU posts to share capital and savings retention posts to member savings.</li>
+            </ol>
+          </article>
+
+          <article>
             <h3>Ledger Posting</h3>
             <ol>
               <li>Teller payment remains in Teller Batch status.</li>
               <li>Bookkeeper reviews the supporting transaction.</li>
-              <li>Balanced entries are posted to Cash, receivables, capital, income, and deposit controls.</li>
+              <li>Loan releases debit Loans Receivable for principal.</li>
+              <li>Cash is credited only for net proceeds released to the member.</li>
+              <li>Deducted service fee, insurance, CBU, and savings retention are posted to their mapped accounts.</li>
               <li>Opening balance imports are previewed separately before any cutover balance write exists.</li>
               <li>Reports are generated from posted ledger entries.</li>
             </ol>
