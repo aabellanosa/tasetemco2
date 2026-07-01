@@ -5337,6 +5337,19 @@ function formatRateBps(value) {
   return `${(Number(value || 0) / 100).toFixed(2)}%`;
 }
 
+function percentTextFromBps(value) {
+  return String(Number(value || 0) / 100);
+}
+
+function parsePercentTextToBps(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return 0;
+  }
+  const amount = Number(text);
+  return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
+}
+
 function buildLoanBreakdownPrintHtml(loan, preparedBy = "") {
   const totalDeductions = addMoney(
     loan.processingFee,
@@ -5585,6 +5598,14 @@ function buildLoanBreakdownPrintHtml(loan, preparedBy = "") {
 function LoanProducts({ user }) {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(defaultLoanProductForm);
+  const [rateInputs, setRateInputs] = useState(() => ({
+    annualInterestRateBps: percentTextFromBps(defaultLoanProductForm.annualInterestRateBps),
+    serviceFeeRateBps: percentTextFromBps(defaultLoanProductForm.serviceFeeRateBps),
+    insuranceFeeRateBps: percentTextFromBps(defaultLoanProductForm.insuranceFeeRateBps),
+    cbuRateBps: percentTextFromBps(defaultLoanProductForm.cbuRateBps),
+    savingsRetentionRateBps: percentTextFromBps(defaultLoanProductForm.savingsRetentionRateBps),
+    penaltyRateBps: percentTextFromBps(defaultLoanProductForm.penaltyRateBps)
+  }));
   const [editingCode, setEditingCode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -5614,9 +5635,33 @@ function LoanProducts({ user }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function rateTextValues(product) {
+    return {
+      annualInterestRateBps: percentTextFromBps(product.annualInterestRateBps),
+      serviceFeeRateBps: percentTextFromBps(product.serviceFeeRateBps),
+      insuranceFeeRateBps: percentTextFromBps(product.insuranceFeeRateBps),
+      cbuRateBps: percentTextFromBps(product.cbuRateBps),
+      savingsRetentionRateBps: percentTextFromBps(product.savingsRetentionRateBps),
+      penaltyRateBps: percentTextFromBps(product.penaltyRateBps)
+    };
+  }
+
+  function updateRateField(field, value) {
+    if (!/^\d{0,3}(\.\d{0,4})?$/.test(value)) {
+      return;
+    }
+    const numericValue = Number(value || 0);
+    if (numericValue > 100) {
+      return;
+    }
+    setRateInputs((current) => ({ ...current, [field]: value }));
+    updateForm(field, parsePercentTextToBps(value));
+  }
+
   function startEdit(product) {
     setEditingCode(product.code);
     setForm({ ...product });
+    setRateInputs(rateTextValues(product));
     setMessage("");
     setError("");
   }
@@ -5624,6 +5669,7 @@ function LoanProducts({ user }) {
   function cancelEdit() {
     setEditingCode("");
     setForm(defaultLoanProductForm);
+    setRateInputs(rateTextValues(defaultLoanProductForm));
   }
 
   async function submitProduct(event) {
@@ -5640,6 +5686,7 @@ function LoanProducts({ user }) {
       setMessage(`${data.product.name} ${editingCode ? "updated" : "created"}.`);
       setEditingCode("");
       setForm(defaultLoanProductForm);
+      setRateInputs(rateTextValues(defaultLoanProductForm));
       await loadProducts();
     } catch (requestError) {
       setError(requestError.message);
@@ -5711,39 +5758,51 @@ function LoanProducts({ user }) {
             </FormControl>
             <FormControl>
               <FormLabel>Annual Interest (%)</FormLabel>
-              <NumberInput min={0} max={100} precision={2} value={form.annualInterestRateBps / 100} onChange={(value) => updateForm("annualInterestRateBps", Math.round(Number(value || 0) * 100))}>
-                <NumberInputField />
-              </NumberInput>
+              <Input
+                inputMode="decimal"
+                value={rateInputs.annualInterestRateBps}
+                onChange={(event) => updateRateField("annualInterestRateBps", event.target.value)}
+              />
             </FormControl>
             <FormControl>
               <FormLabel>Service Fee (%)</FormLabel>
-              <NumberInput min={0} max={100} precision={2} value={(form.serviceFeeRateBps || 0) / 100} onChange={(value) => updateForm("serviceFeeRateBps", Math.round(Number(value || 0) * 100))}>
-                <NumberInputField />
-              </NumberInput>
+              <Input
+                inputMode="decimal"
+                value={rateInputs.serviceFeeRateBps}
+                onChange={(event) => updateRateField("serviceFeeRateBps", event.target.value)}
+              />
             </FormControl>
             <FormControl>
               <FormLabel>Insurance (%)</FormLabel>
-              <NumberInput min={0} max={100} precision={2} value={(form.insuranceFeeRateBps || 0) / 100} onChange={(value) => updateForm("insuranceFeeRateBps", Math.round(Number(value || 0) * 100))}>
-                <NumberInputField />
-              </NumberInput>
+              <Input
+                inputMode="decimal"
+                value={rateInputs.insuranceFeeRateBps}
+                onChange={(event) => updateRateField("insuranceFeeRateBps", event.target.value)}
+              />
             </FormControl>
             <FormControl>
               <FormLabel>CBU (%)</FormLabel>
-              <NumberInput min={0} max={100} precision={2} value={(form.cbuRateBps || 0) / 100} onChange={(value) => updateForm("cbuRateBps", Math.round(Number(value || 0) * 100))}>
-                <NumberInputField />
-              </NumberInput>
+              <Input
+                inputMode="decimal"
+                value={rateInputs.cbuRateBps}
+                onChange={(event) => updateRateField("cbuRateBps", event.target.value)}
+              />
             </FormControl>
             <FormControl>
               <FormLabel>Savings Retention (%)</FormLabel>
-              <NumberInput min={0} max={100} precision={2} value={(form.savingsRetentionRateBps || 0) / 100} onChange={(value) => updateForm("savingsRetentionRateBps", Math.round(Number(value || 0) * 100))}>
-                <NumberInputField />
-              </NumberInput>
+              <Input
+                inputMode="decimal"
+                value={rateInputs.savingsRetentionRateBps}
+                onChange={(event) => updateRateField("savingsRetentionRateBps", event.target.value)}
+              />
             </FormControl>
             <FormControl>
               <FormLabel>Penalty Rate (%)</FormLabel>
-              <NumberInput min={0} max={100} precision={2} value={form.penaltyRateBps / 100} onChange={(value) => updateForm("penaltyRateBps", Math.round(Number(value || 0) * 100))}>
-                <NumberInputField />
-              </NumberInput>
+              <Input
+                inputMode="decimal"
+                value={rateInputs.penaltyRateBps}
+                onChange={(event) => updateRateField("penaltyRateBps", event.target.value)}
+              />
             </FormControl>
             <FormControl>
               <FormLabel>Interest Method</FormLabel>
@@ -5780,6 +5839,9 @@ function LoanProducts({ user }) {
             <FormLabel>Description</FormLabel>
             <Textarea value={form.description} onChange={(event) => updateForm("description", event.target.value)} />
           </FormControl>
+          <Text color="gray.500" fontSize="sm" mt={3}>
+            Enter rate fields as percentages, for example 1.5 for 1.5%.
+          </Text>
           <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={4} mt={4}>
             {[
               ["loansReceivableAccount", "Loans Receivable"],
