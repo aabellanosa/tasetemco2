@@ -252,6 +252,7 @@
               <li>Loan Officer selects an active member and active loan product.</li>
               <li>System validates requested principal and term against product limits.</li>
               <li>Loan Officer saves and may edit their own Draft.</li>
+              <li>Loan Officer can use Prepare Form to save editable paper-form fields such as address, spouse, manual co-maker, promissory note number, place signed, and routing notes.</li>
               <li>Loan Officer submits the Draft, making it read-only.</li>
               <li>Credit Committee / Approver records assessment notes and a decision.</li>
               <li>Returned applications go back to Draft for Loan Officer revision.</li>
@@ -313,6 +314,11 @@
             Database maintenance and deployment steps are handled by the implementation
             team. Staff users work through the application screens and do not need access
             to database tools or hosting settings.
+          </p>
+          <p>
+            Loan Document Form v1 adds the loan_document_forms table. The implementation
+            team should run npm run pg:migrate before deploying that app build; if the
+            app is deployed first, Prepare Form shows a migration message.
           </p>
           <p>
             The System Administrator can create demonstration staff users, assign roles and
