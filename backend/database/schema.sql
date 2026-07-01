@@ -32,10 +32,18 @@ CREATE TABLE IF NOT EXISTS loan_products (
   interest_method VARCHAR(40) NOT NULL DEFAULT 'Flat Interest',
   payment_frequency VARCHAR(40) NOT NULL DEFAULT 'Monthly',
   processing_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
+  service_fee_rate_bps INT NOT NULL DEFAULT 0,
+  insurance_fee_rate_bps INT NOT NULL DEFAULT 0,
+  cbu_rate_bps INT NOT NULL DEFAULT 0,
+  savings_retention_rate_bps INT NOT NULL DEFAULT 0,
+  cbu_optional BOOLEAN NOT NULL DEFAULT FALSE,
   penalty_rate_bps INT NOT NULL DEFAULT 0,
   loans_receivable_account VARCHAR(40) NOT NULL DEFAULT '1050',
   interest_income_account VARCHAR(40) NOT NULL DEFAULT '4010',
   processing_fee_account VARCHAR(40) NOT NULL DEFAULT '4030',
+  insurance_income_account VARCHAR(40) NOT NULL DEFAULT '4050',
+  share_capital_account VARCHAR(40) NOT NULL DEFAULT '3010',
+  savings_account VARCHAR(40) NOT NULL DEFAULT '2020',
   penalty_income_account VARCHAR(40) NOT NULL DEFAULT '4040',
   cash_account VARCHAR(40) NOT NULL DEFAULT '1010',
   status VARCHAR(30) NOT NULL DEFAULT 'Active',
@@ -58,10 +66,18 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   interest_method VARCHAR(40) NOT NULL,
   payment_frequency VARCHAR(40) NOT NULL,
   processing_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
+  service_fee_rate_bps INT NOT NULL DEFAULT 0,
+  insurance_fee_rate_bps INT NOT NULL DEFAULT 0,
+  cbu_rate_bps INT NOT NULL DEFAULT 0,
+  savings_retention_rate_bps INT NOT NULL DEFAULT 0,
+  cbu_optional BOOLEAN NOT NULL DEFAULT FALSE,
   penalty_rate_bps INT NOT NULL DEFAULT 0,
   loans_receivable_account VARCHAR(40) NOT NULL,
   interest_income_account VARCHAR(40) NOT NULL,
   processing_fee_account VARCHAR(40) NOT NULL,
+  insurance_income_account VARCHAR(40) NOT NULL DEFAULT '4050',
+  share_capital_account VARCHAR(40) NOT NULL DEFAULT '3010',
+  savings_account VARCHAR(40) NOT NULL DEFAULT '2020',
   penalty_income_account VARCHAR(40) NOT NULL,
   cash_account VARCHAR(40) NOT NULL,
   status VARCHAR(30) NOT NULL DEFAULT 'Draft',
@@ -88,6 +104,14 @@ ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision_remarks TEXT NOT
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision_date DATE;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decided_by VARCHAR(80);
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decided_at TIMESTAMP NULL;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS service_fee_rate_bps INT NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS insurance_fee_rate_bps INT NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS cbu_rate_bps INT NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS savings_retention_rate_bps INT NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS cbu_optional BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS insurance_income_account VARCHAR(40) NOT NULL DEFAULT '4050';
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS share_capital_account VARCHAR(40) NOT NULL DEFAULT '3010';
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS savings_account VARCHAR(40) NOT NULL DEFAULT '2020';
 
 CREATE TABLE IF NOT EXISTS loans (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -103,6 +127,14 @@ CREATE TABLE IF NOT EXISTS loans (
   interest_method VARCHAR(40) NOT NULL,
   payment_frequency VARCHAR(40) NOT NULL,
   processing_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
+  service_fee_rate_bps INT NOT NULL DEFAULT 0,
+  insurance_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
+  insurance_fee_rate_bps INT NOT NULL DEFAULT 0,
+  cbu_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  cbu_rate_bps INT NOT NULL DEFAULT 0,
+  cbu_applied BOOLEAN NOT NULL DEFAULT FALSE,
+  savings_retention_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  savings_retention_rate_bps INT NOT NULL DEFAULT 0,
   total_interest DECIMAL(18,2) NOT NULL DEFAULT 0,
   total_payable DECIMAL(18,2) NOT NULL DEFAULT 0,
   net_proceeds DECIMAL(18,2) NOT NULL DEFAULT 0,
@@ -137,6 +169,9 @@ CREATE TABLE IF NOT EXISTS loan_releases (
   member_name VARCHAR(180) NOT NULL,
   principal DECIMAL(18,2) NOT NULL DEFAULT 0,
   processing_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
+  insurance_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
+  cbu_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  savings_retention_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
   net_proceeds DECIMAL(18,2) NOT NULL DEFAULT 0,
   cash_released DECIMAL(18,2) NOT NULL DEFAULT 0,
   release_date DATE NOT NULL,

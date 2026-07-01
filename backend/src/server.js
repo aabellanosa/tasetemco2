@@ -79,6 +79,10 @@ function sumMoney(values) {
   return addMoney(...values);
 }
 
+function percentOfMoney(amount, rateBps) {
+  return Math.round((moneyCents(amount) * Number(rateBps || 0)) / 10000) / MONEY_SCALE;
+}
+
 const app = express();
 const host = process.env.HOST || (process.env.RENDER ? "0.0.0.0" : "127.0.0.1");
 const port = Number(process.env.PORT || 4000);
@@ -207,10 +211,18 @@ const requiredSchemaColumns = {
     "interest_method",
     "payment_frequency",
     "processing_fee",
+    "service_fee_rate_bps",
+    "insurance_fee_rate_bps",
+    "cbu_rate_bps",
+    "savings_retention_rate_bps",
+    "cbu_optional",
     "penalty_rate_bps",
     "loans_receivable_account",
     "interest_income_account",
     "processing_fee_account",
+    "insurance_income_account",
+    "share_capital_account",
+    "savings_account",
     "penalty_income_account",
     "cash_account",
     "status",
@@ -231,10 +243,18 @@ const requiredSchemaColumns = {
     "interest_method",
     "payment_frequency",
     "processing_fee",
+    "service_fee_rate_bps",
+    "insurance_fee_rate_bps",
+    "cbu_rate_bps",
+    "savings_retention_rate_bps",
+    "cbu_optional",
     "penalty_rate_bps",
     "loans_receivable_account",
     "interest_income_account",
     "processing_fee_account",
+    "insurance_income_account",
+    "share_capital_account",
+    "savings_account",
     "penalty_income_account",
     "cash_account",
     "status",
@@ -265,6 +285,14 @@ const requiredSchemaColumns = {
     "interest_method",
     "payment_frequency",
     "processing_fee",
+    "service_fee_rate_bps",
+    "insurance_fee",
+    "insurance_fee_rate_bps",
+    "cbu_amount",
+    "cbu_rate_bps",
+    "cbu_applied",
+    "savings_retention_amount",
+    "savings_retention_rate_bps",
     "total_interest",
     "total_payable",
     "net_proceeds",
@@ -294,6 +322,9 @@ const requiredSchemaColumns = {
     "member_name",
     "principal",
     "processing_fee",
+    "insurance_fee",
+    "cbu_amount",
+    "savings_retention_amount",
     "net_proceeds",
     "cash_released",
     "release_date",
@@ -533,10 +564,18 @@ function mapLoanProduct(row) {
     interestMethod: row.interestMethod,
     paymentFrequency: row.paymentFrequency,
     processingFee: Number(row.processingFee || 0),
+    serviceFeeRateBps: Number(row.serviceFeeRateBps || 0),
+    insuranceFeeRateBps: Number(row.insuranceFeeRateBps || 0),
+    cbuRateBps: Number(row.cbuRateBps || 0),
+    savingsRetentionRateBps: Number(row.savingsRetentionRateBps || 0),
+    cbuOptional: Boolean(row.cbuOptional),
     penaltyRateBps: Number(row.penaltyRateBps || 0),
     loansReceivableAccount: row.loansReceivableAccount,
     interestIncomeAccount: row.interestIncomeAccount,
     processingFeeAccount: row.processingFeeAccount,
+    insuranceIncomeAccount: row.insuranceIncomeAccount || "4050",
+    shareCapitalAccount: row.shareCapitalAccount || "3010",
+    savingsAccount: row.savingsAccount || "2020",
     penaltyIncomeAccount: row.penaltyIncomeAccount,
     cashAccount: row.cashAccount,
     status: row.status,
@@ -558,10 +597,16 @@ async function listLoanProducts() {
             minimum_term_months AS minimumTermMonths, maximum_term_months AS maximumTermMonths,
             annual_interest_rate_bps AS annualInterestRateBps,
             interest_method AS interestMethod, payment_frequency AS paymentFrequency,
-            processing_fee AS processingFee, penalty_rate_bps AS penaltyRateBps,
+            processing_fee AS processingFee, service_fee_rate_bps AS serviceFeeRateBps,
+            insurance_fee_rate_bps AS insuranceFeeRateBps, cbu_rate_bps AS cbuRateBps,
+            savings_retention_rate_bps AS savingsRetentionRateBps, cbu_optional AS cbuOptional,
+            penalty_rate_bps AS penaltyRateBps,
             loans_receivable_account AS loansReceivableAccount,
             interest_income_account AS interestIncomeAccount,
             processing_fee_account AS processingFeeAccount,
+            insurance_income_account AS insuranceIncomeAccount,
+            share_capital_account AS shareCapitalAccount,
+            savings_account AS savingsAccount,
             penalty_income_account AS penaltyIncomeAccount, cash_account AS cashAccount,
             status, created_at AS createdAt, updated_at AS updatedAt
      FROM loan_products
@@ -581,6 +626,11 @@ function validateLoanProductInput(body) {
   const maximumTermMonths = Number(body.maximumTermMonths);
   const annualInterestRateBps = Number(body.annualInterestRateBps);
   const processingFee = Number(body.processingFee);
+  const serviceFeeRateBps = Number(body.serviceFeeRateBps || 0);
+  const insuranceFeeRateBps = Number(body.insuranceFeeRateBps || 0);
+  const cbuRateBps = Number(body.cbuRateBps || 0);
+  const savingsRetentionRateBps = Number(body.savingsRetentionRateBps || 0);
+  const cbuOptional = Boolean(body.cbuOptional);
   const penaltyRateBps = Number(body.penaltyRateBps);
   const interestMethod = String(body.interestMethod || "Flat Interest").trim();
   const paymentFrequency = String(body.paymentFrequency || "Monthly").trim();
@@ -589,6 +639,9 @@ function validateLoanProductInput(body) {
     loansReceivableAccount: String(body.loansReceivableAccount || "1050").trim(),
     interestIncomeAccount: String(body.interestIncomeAccount || "4010").trim(),
     processingFeeAccount: String(body.processingFeeAccount || "4030").trim(),
+    insuranceIncomeAccount: String(body.insuranceIncomeAccount || "4050").trim(),
+    shareCapitalAccount: String(body.shareCapitalAccount || "3010").trim(),
+    savingsAccount: String(body.savingsAccount || "2020").trim(),
     penaltyIncomeAccount: String(body.penaltyIncomeAccount || "4040").trim(),
     cashAccount: String(body.cashAccount || "1010").trim()
   };
@@ -625,6 +678,17 @@ function validateLoanProductInput(body) {
     return { error: "Processing fee must be a non-negative amount with up to two decimal places." };
   }
 
+  for (const [label, value] of [
+    ["Service fee rate", serviceFeeRateBps],
+    ["Insurance fee rate", insuranceFeeRateBps],
+    ["CBU rate", cbuRateBps],
+    ["Savings retention rate", savingsRetentionRateBps]
+  ]) {
+    if (!Number.isInteger(value) || value < 0 || value > 10000) {
+      return { error: `${label} must be between 0% and 100%.` };
+    }
+  }
+
   if (!Number.isInteger(penaltyRateBps) || penaltyRateBps < 0 || penaltyRateBps > 10000) {
     return { error: "Penalty rate must be between 0% and 100%." };
   }
@@ -658,6 +722,11 @@ function validateLoanProductInput(body) {
       interestMethod,
       paymentFrequency,
       processingFee: moneyValue(processingFee),
+      serviceFeeRateBps,
+      insuranceFeeRateBps,
+      cbuRateBps,
+      savingsRetentionRateBps,
+      cbuOptional,
       penaltyRateBps,
       ...accounts,
       status
@@ -688,11 +757,13 @@ async function createLoanProduct(input) {
       `INSERT INTO loan_products (
          product_code, product_name, description, minimum_principal, maximum_principal,
          minimum_term_months, maximum_term_months, annual_interest_rate_bps,
-         interest_method, payment_frequency, processing_fee, penalty_rate_bps,
-         loans_receivable_account, interest_income_account, processing_fee_account,
-         penalty_income_account, cash_account, status
+         interest_method, payment_frequency, processing_fee, service_fee_rate_bps,
+         insurance_fee_rate_bps, cbu_rate_bps, savings_retention_rate_bps, cbu_optional,
+         penalty_rate_bps, loans_receivable_account, interest_income_account,
+         processing_fee_account, insurance_income_account, share_capital_account,
+         savings_account, penalty_income_account, cash_account, status
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.code,
         input.name,
@@ -705,10 +776,18 @@ async function createLoanProduct(input) {
         input.interestMethod,
         input.paymentFrequency,
         input.processingFee,
+        input.serviceFeeRateBps,
+        input.insuranceFeeRateBps,
+        input.cbuRateBps,
+        input.savingsRetentionRateBps,
+        input.cbuOptional,
         input.penaltyRateBps,
         input.loansReceivableAccount,
         input.interestIncomeAccount,
         input.processingFeeAccount,
+        input.insuranceIncomeAccount,
+        input.shareCapitalAccount,
+        input.savingsAccount,
         input.penaltyIncomeAccount,
         input.cashAccount,
         input.status
@@ -750,9 +829,12 @@ async function updateLoanProduct(code, input) {
     `UPDATE loan_products
      SET product_name = ?, description = ?, minimum_principal = ?, maximum_principal = ?,
          minimum_term_months = ?, maximum_term_months = ?, annual_interest_rate_bps = ?,
-         interest_method = ?, payment_frequency = ?, processing_fee = ?, penalty_rate_bps = ?,
-         loans_receivable_account = ?, interest_income_account = ?, processing_fee_account = ?,
-         penalty_income_account = ?, cash_account = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+         interest_method = ?, payment_frequency = ?, processing_fee = ?, service_fee_rate_bps = ?,
+         insurance_fee_rate_bps = ?, cbu_rate_bps = ?, savings_retention_rate_bps = ?,
+         cbu_optional = ?, penalty_rate_bps = ?, loans_receivable_account = ?,
+         interest_income_account = ?, processing_fee_account = ?, insurance_income_account = ?,
+         share_capital_account = ?, savings_account = ?, penalty_income_account = ?,
+         cash_account = ?, status = ?, updated_at = CURRENT_TIMESTAMP
      WHERE product_code = ?`,
     [
       input.name,
@@ -765,10 +847,18 @@ async function updateLoanProduct(code, input) {
       input.interestMethod,
       input.paymentFrequency,
       input.processingFee,
+      input.serviceFeeRateBps,
+      input.insuranceFeeRateBps,
+      input.cbuRateBps,
+      input.savingsRetentionRateBps,
+      input.cbuOptional,
       input.penaltyRateBps,
       input.loansReceivableAccount,
       input.interestIncomeAccount,
       input.processingFeeAccount,
+      input.insuranceIncomeAccount,
+      input.shareCapitalAccount,
+      input.savingsAccount,
       input.penaltyIncomeAccount,
       input.cashAccount,
       input.status,
@@ -796,10 +886,18 @@ function mapLoanApplication(row) {
     interestMethod: row.interestMethod,
     paymentFrequency: row.paymentFrequency,
     processingFee: Number(row.processingFee || 0),
+    serviceFeeRateBps: Number(row.serviceFeeRateBps || 0),
+    insuranceFeeRateBps: Number(row.insuranceFeeRateBps || 0),
+    cbuRateBps: Number(row.cbuRateBps || 0),
+    savingsRetentionRateBps: Number(row.savingsRetentionRateBps || 0),
+    cbuOptional: Boolean(row.cbuOptional),
     penaltyRateBps: Number(row.penaltyRateBps || 0),
     loansReceivableAccount: row.loansReceivableAccount,
     interestIncomeAccount: row.interestIncomeAccount,
     processingFeeAccount: row.processingFeeAccount,
+    insuranceIncomeAccount: row.insuranceIncomeAccount || "4050",
+    shareCapitalAccount: row.shareCapitalAccount || "3010",
+    savingsAccount: row.savingsAccount || "2020",
     penaltyIncomeAccount: row.penaltyIncomeAccount,
     cashAccount: row.cashAccount,
     status: row.status,
@@ -834,10 +932,16 @@ async function listLoanApplications() {
             application_date AS applicationDate,
             annual_interest_rate_bps AS annualInterestRateBps,
             interest_method AS interestMethod, payment_frequency AS paymentFrequency,
-            processing_fee AS processingFee, penalty_rate_bps AS penaltyRateBps,
+            processing_fee AS processingFee, service_fee_rate_bps AS serviceFeeRateBps,
+            insurance_fee_rate_bps AS insuranceFeeRateBps, cbu_rate_bps AS cbuRateBps,
+            savings_retention_rate_bps AS savingsRetentionRateBps, cbu_optional AS cbuOptional,
+            penalty_rate_bps AS penaltyRateBps,
             loans_receivable_account AS loansReceivableAccount,
             interest_income_account AS interestIncomeAccount,
             processing_fee_account AS processingFeeAccount,
+            insurance_income_account AS insuranceIncomeAccount,
+            share_capital_account AS shareCapitalAccount,
+            savings_account AS savingsAccount,
             penalty_income_account AS penaltyIncomeAccount, cash_account AS cashAccount,
             status, created_by AS createdBy, submitted_by AS submittedBy,
             submitted_at AS submittedAt,
@@ -931,10 +1035,18 @@ async function validateLoanApplicationInput(body) {
       interestMethod: product.interestMethod,
       paymentFrequency: product.paymentFrequency,
       processingFee: product.processingFee,
+      serviceFeeRateBps: product.serviceFeeRateBps,
+      insuranceFeeRateBps: product.insuranceFeeRateBps,
+      cbuRateBps: product.cbuRateBps,
+      savingsRetentionRateBps: product.savingsRetentionRateBps,
+      cbuOptional: product.cbuOptional,
       penaltyRateBps: product.penaltyRateBps,
       loansReceivableAccount: product.loansReceivableAccount,
       interestIncomeAccount: product.interestIncomeAccount,
       processingFeeAccount: product.processingFeeAccount,
+      insuranceIncomeAccount: product.insuranceIncomeAccount,
+      shareCapitalAccount: product.shareCapitalAccount,
+      savingsAccount: product.savingsAccount,
       penaltyIncomeAccount: product.penaltyIncomeAccount,
       cashAccount: product.cashAccount
     }
@@ -966,11 +1078,13 @@ async function createLoanApplication(input, user) {
        application_no, member_no, member_name, product_code, product_name,
        requested_principal, requested_term_months, purpose, application_date,
        annual_interest_rate_bps, interest_method, payment_frequency,
-       processing_fee, penalty_rate_bps, loans_receivable_account,
-       interest_income_account, processing_fee_account, penalty_income_account,
-       cash_account, status, created_by
+       processing_fee, service_fee_rate_bps, insurance_fee_rate_bps, cbu_rate_bps,
+       savings_retention_rate_bps, cbu_optional, penalty_rate_bps,
+       loans_receivable_account, interest_income_account, processing_fee_account,
+       insurance_income_account, share_capital_account, savings_account,
+       penalty_income_account, cash_account, status, created_by
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
     [
       applicationNo,
       input.memberNo,
@@ -985,10 +1099,18 @@ async function createLoanApplication(input, user) {
       input.interestMethod,
       input.paymentFrequency,
       input.processingFee,
+      input.serviceFeeRateBps,
+      input.insuranceFeeRateBps,
+      input.cbuRateBps,
+      input.savingsRetentionRateBps,
+      input.cbuOptional,
       input.penaltyRateBps,
       input.loansReceivableAccount,
       input.interestIncomeAccount,
       input.processingFeeAccount,
+      input.insuranceIncomeAccount,
+      input.shareCapitalAccount,
+      input.savingsAccount,
       input.penaltyIncomeAccount,
       input.cashAccount,
       user.username
@@ -1041,9 +1163,12 @@ async function updateLoanApplication(applicationNo, input, user) {
      SET member_no = ?, member_name = ?, product_code = ?, product_name = ?,
          requested_principal = ?, requested_term_months = ?, purpose = ?, application_date = ?,
          annual_interest_rate_bps = ?, interest_method = ?, payment_frequency = ?,
-         processing_fee = ?, penalty_rate_bps = ?, loans_receivable_account = ?,
-         interest_income_account = ?, processing_fee_account = ?, penalty_income_account = ?,
-         cash_account = ?, status = 'Draft', updated_at = CURRENT_TIMESTAMP
+         processing_fee = ?, service_fee_rate_bps = ?, insurance_fee_rate_bps = ?,
+         cbu_rate_bps = ?, savings_retention_rate_bps = ?, cbu_optional = ?,
+         penalty_rate_bps = ?, loans_receivable_account = ?, interest_income_account = ?,
+         processing_fee_account = ?, insurance_income_account = ?, share_capital_account = ?,
+         savings_account = ?, penalty_income_account = ?, cash_account = ?,
+         status = 'Draft', updated_at = CURRENT_TIMESTAMP
      WHERE application_no = ?`,
     [
       input.memberNo,
@@ -1058,10 +1183,18 @@ async function updateLoanApplication(applicationNo, input, user) {
       input.interestMethod,
       input.paymentFrequency,
       input.processingFee,
+      input.serviceFeeRateBps,
+      input.insuranceFeeRateBps,
+      input.cbuRateBps,
+      input.savingsRetentionRateBps,
+      input.cbuOptional,
       input.penaltyRateBps,
       input.loansReceivableAccount,
       input.interestIncomeAccount,
       input.processingFeeAccount,
+      input.insuranceIncomeAccount,
+      input.shareCapitalAccount,
+      input.savingsAccount,
       input.penaltyIncomeAccount,
       input.cashAccount,
       applicationNo
@@ -1294,6 +1427,14 @@ function mapLoan(row) {
     interestMethod: row.interestMethod,
     paymentFrequency: row.paymentFrequency,
     processingFee: Number(row.processingFee || 0),
+    serviceFeeRateBps: Number(row.serviceFeeRateBps || 0),
+    insuranceFee: Number(row.insuranceFee || 0),
+    insuranceFeeRateBps: Number(row.insuranceFeeRateBps || 0),
+    cbuAmount: Number(row.cbuAmount || 0),
+    cbuRateBps: Number(row.cbuRateBps || 0),
+    cbuApplied: Boolean(row.cbuApplied),
+    savingsRetentionAmount: Number(row.savingsRetentionAmount || 0),
+    savingsRetentionRateBps: Number(row.savingsRetentionRateBps || 0),
     totalInterest: Number(row.totalInterest || 0),
     totalPayable: Number(row.totalPayable || 0),
     netProceeds: Number(row.netProceeds || 0),
@@ -1333,7 +1474,12 @@ async function listLoans() {
             principal, term_months AS termMonths,
             annual_interest_rate_bps AS annualInterestRateBps,
             interest_method AS interestMethod, payment_frequency AS paymentFrequency,
-            processing_fee AS processingFee, total_interest AS totalInterest,
+            processing_fee AS processingFee, service_fee_rate_bps AS serviceFeeRateBps,
+            insurance_fee AS insuranceFee, insurance_fee_rate_bps AS insuranceFeeRateBps,
+            cbu_amount AS cbuAmount, cbu_rate_bps AS cbuRateBps,
+            cbu_applied AS cbuApplied, savings_retention_amount AS savingsRetentionAmount,
+            savings_retention_rate_bps AS savingsRetentionRateBps,
+            total_interest AS totalInterest,
             total_payable AS totalPayable, net_proceeds AS netProceeds,
             installment_count AS installmentCount, first_payment_date AS firstPaymentDate,
             maturity_date AS maturityDate, status, computed_by AS computedBy,
@@ -1401,11 +1547,30 @@ function allocateMoney(total, count) {
   );
 }
 
-function computeFlatLoanSchedule(application, firstPaymentDate) {
-  if (application.interestMethod !== "Flat Interest") {
-    return { error: "The current loan computation supports Flat Interest only." };
-  }
+function computeLoanDeductions(application, principal, applyCbu = true) {
+  const processingFee = percentOfMoney(principal, application.serviceFeeRateBps || 0);
+  const insuranceFee = percentOfMoney(principal, application.insuranceFeeRateBps || 0);
+  const cbuApplied = Boolean(applyCbu) && Number(application.cbuRateBps || 0) > 0;
+  const cbuAmount = cbuApplied ? percentOfMoney(principal, application.cbuRateBps) : 0;
+  const savingsRetentionAmount = percentOfMoney(principal, application.savingsRetentionRateBps || 0);
+  const totalDeductions = addMoney(processingFee, insuranceFee, cbuAmount, savingsRetentionAmount);
 
+  return {
+    processingFee,
+    serviceFeeRateBps: Number(application.serviceFeeRateBps || 0),
+    insuranceFee,
+    insuranceFeeRateBps: Number(application.insuranceFeeRateBps || 0),
+    cbuAmount,
+    cbuRateBps: Number(application.cbuRateBps || 0),
+    cbuApplied,
+    savingsRetentionAmount,
+    savingsRetentionRateBps: Number(application.savingsRetentionRateBps || 0),
+    totalDeductions,
+    netProceeds: subtractMoney(principal, totalDeductions)
+  };
+}
+
+function computeLoanSchedule(application, firstPaymentDate, options = {}) {
   if (!isValidIsoDate(firstPaymentDate) || !firstPaymentDate) {
     return { error: "First payment date must be a valid YYYY-MM-DD date." };
   }
@@ -1420,20 +1585,34 @@ function computeFlatLoanSchedule(application, firstPaymentDate) {
   if (!installmentCount) {
     return { error: "Payment frequency is not supported." };
   }
-  if (Number(application.processingFee) >= principal) {
-    return { error: "Processing fee must be less than the approved principal." };
+  if (application.interestMethod !== "Diminishing Balance" && application.interestMethod !== "Flat Interest") {
+    return { error: "Interest method is not supported." };
   }
 
-  const totalInterest =
+  const deductions = computeLoanDeductions(application, principal, options.applyCbu ?? true);
+  if (moneyCents(deductions.netProceeds) < 0) {
+    return { error: "Total loan deductions must be less than or equal to the approved principal." };
+  }
+
+  const principalParts = allocateMoney(principal, installmentCount);
+  let outstandingPrincipal = principal;
+  const periodicRateBps =
+    application.paymentFrequency === "Monthly"
+      ? Math.round(Number(application.annualInterestRateBps || 0) / 12)
+      : Math.round(Number(application.annualInterestRateBps || 0) / installmentCount);
+  const flatTotalInterest =
     Math.round(
       (moneyCents(principal) * Number(application.annualInterestRateBps) * termMonths) /
         (10000 * 12)
     ) / MONEY_SCALE;
-  const totalPayable = addMoney(principal, totalInterest);
-  const principalParts = allocateMoney(principal, installmentCount);
-  const interestParts = allocateMoney(totalInterest, installmentCount);
+  const flatInterestParts = allocateMoney(flatTotalInterest, installmentCount);
+
   const installments = principalParts.map((principalDue, index) => {
-    const interestDue = interestParts[index];
+    const interestDue =
+      application.interestMethod === "Diminishing Balance"
+        ? percentOfMoney(outstandingPrincipal, periodicRateBps)
+        : flatInterestParts[index];
+    outstandingPrincipal = subtractMoney(outstandingPrincipal, principalDue);
     return {
       installmentNo: index + 1,
       dueDate: installmentDate(firstPaymentDate, application.paymentFrequency, index),
@@ -1443,6 +1622,8 @@ function computeFlatLoanSchedule(application, firstPaymentDate) {
       status: "Scheduled"
     };
   });
+  const totalInterest = sumMoney(installments.map((installment) => installment.interestDue));
+  const totalPayable = addMoney(principal, totalInterest);
 
   return {
     value: {
@@ -1456,10 +1637,19 @@ function computeFlatLoanSchedule(application, firstPaymentDate) {
       annualInterestRateBps: application.annualInterestRateBps,
       interestMethod: application.interestMethod,
       paymentFrequency: application.paymentFrequency,
-      processingFee: application.processingFee,
+      processingFee: deductions.processingFee,
+      serviceFeeRateBps: deductions.serviceFeeRateBps,
+      insuranceFee: deductions.insuranceFee,
+      insuranceFeeRateBps: deductions.insuranceFeeRateBps,
+      cbuAmount: deductions.cbuAmount,
+      cbuRateBps: deductions.cbuRateBps,
+      cbuApplied: deductions.cbuApplied,
+      savingsRetentionAmount: deductions.savingsRetentionAmount,
+      savingsRetentionRateBps: deductions.savingsRetentionRateBps,
       totalInterest,
       totalPayable,
-      netProceeds: Math.max(0, subtractMoney(principal, application.processingFee)),
+      totalDeductions: deductions.totalDeductions,
+      netProceeds: deductions.netProceeds,
       installmentCount,
       firstPaymentDate,
       maturityDate: installments[installments.length - 1].dueDate,
@@ -1486,7 +1676,9 @@ async function previewLoanComputation(applicationNo, body, user) {
     return { error: "A loan computation already exists for this application.", statusCode: 409 };
   }
 
-  const computation = computeFlatLoanSchedule(application, formatDateOnly(body.firstPaymentDate));
+  const computation = computeLoanSchedule(application, formatDateOnly(body.firstPaymentDate), {
+    applyCbu: body.applyCbu !== false
+  });
   if (computation.error) {
     return { error: computation.error, statusCode: 400 };
   }
@@ -1549,15 +1741,20 @@ async function saveLoanComputation(applicationNo, body, user) {
       `INSERT INTO loans (
          loan_no, application_no, member_no, member_name, product_code, product_name,
          principal, term_months, annual_interest_rate_bps, interest_method,
-         payment_frequency, processing_fee, total_interest, total_payable,
+         payment_frequency, processing_fee, service_fee_rate_bps, insurance_fee,
+         insurance_fee_rate_bps, cbu_amount, cbu_rate_bps, cbu_applied,
+         savings_retention_amount, savings_retention_rate_bps, total_interest, total_payable,
          net_proceeds, installment_count, first_payment_date, maturity_date,
          status, computed_by
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'For Release', ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'For Release', ?)`,
       [
         loanNo, applicationNo, computation.memberNo, computation.memberName,
         computation.productCode, computation.productName, computation.principal,
         computation.termMonths, computation.annualInterestRateBps, computation.interestMethod,
-        computation.paymentFrequency, computation.processingFee, computation.totalInterest,
+        computation.paymentFrequency, computation.processingFee, computation.serviceFeeRateBps,
+        computation.insuranceFee, computation.insuranceFeeRateBps, computation.cbuAmount,
+        computation.cbuRateBps, computation.cbuApplied, computation.savingsRetentionAmount,
+        computation.savingsRetentionRateBps, computation.totalInterest,
         computation.totalPayable, computation.netProceeds, computation.installmentCount,
         computation.firstPaymentDate, computation.maturityDate, user.username
       ]
@@ -1600,6 +1797,9 @@ function mapLoanRelease(row) {
     memberName: row.memberName,
     principal: Number(row.principal || 0),
     processingFee: Number(row.processingFee || 0),
+    insuranceFee: Number(row.insuranceFee || 0),
+    cbuAmount: Number(row.cbuAmount || 0),
+    savingsRetentionAmount: Number(row.savingsRetentionAmount || 0),
     netProceeds: Number(row.netProceeds || 0),
     cashReleased: Number(row.cashReleased || 0),
     releaseDate: formatDateOnly(row.releaseDate),
@@ -1622,6 +1822,8 @@ async function listLoanReleases() {
     `SELECT release_no AS releaseNo, loan_no AS loanNo, batch_no AS batchId,
             member_no AS memberNo, member_name AS memberName, principal,
             processing_fee AS processingFee, net_proceeds AS netProceeds,
+            insurance_fee AS insuranceFee, cbu_amount AS cbuAmount,
+            savings_retention_amount AS savingsRetentionAmount,
             cash_released AS cashReleased, release_date AS releaseDate,
             reference_no AS referenceNo, released_by AS releasedBy, status,
             posted_by AS postedBy, posted_entry_no AS postedEntryNo,
@@ -1710,6 +1912,9 @@ async function releaseLoan(loanNo, body, user) {
       memberName: loan.memberName,
       principal: loan.principal,
       processingFee: loan.processingFee,
+      insuranceFee: loan.insuranceFee,
+      cbuAmount: loan.cbuAmount,
+      savingsRetentionAmount: loan.savingsRetentionAmount,
       netProceeds: loan.netProceeds,
       ...validation.value,
       releasedBy: user.username,
@@ -1746,6 +1951,8 @@ async function releaseLoan(loanNo, body, user) {
     const [loanRows] = await connection.execute(
       `SELECT loan_no AS loanNo, application_no AS applicationNo, member_no AS memberNo,
               member_name AS memberName, principal, processing_fee AS processingFee,
+              insurance_fee AS insuranceFee, cbu_amount AS cbuAmount,
+              savings_retention_amount AS savingsRetentionAmount,
               net_proceeds AS netProceeds, status
        FROM loans WHERE loan_no = ? LIMIT 1 FOR UPDATE`,
       [loanNo]
@@ -1780,12 +1987,14 @@ async function releaseLoan(loanNo, body, user) {
     await connection.execute(
       `INSERT INTO loan_releases (
          release_no, loan_no, batch_no, member_no, member_name, principal,
-         processing_fee, net_proceeds, cash_released, release_date,
+         processing_fee, insurance_fee, cbu_amount, savings_retention_amount,
+         net_proceeds, cash_released, release_date,
          reference_no, released_by, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
       [
         releaseNo, loanNo, batchResult.batch.id, lockedLoan.memberNo, lockedLoan.memberName,
-        lockedLoan.principal, lockedLoan.processingFee, lockedLoan.netProceeds,
+        lockedLoan.principal, lockedLoan.processingFee, lockedLoan.insuranceFee,
+        lockedLoan.cbuAmount, lockedLoan.savingsRetentionAmount, lockedLoan.netProceeds,
         validation.value.cashReleased, validation.value.releaseDate,
         validation.value.referenceNo, user.username
       ]
@@ -4400,9 +4609,27 @@ function buildLoanReleaseJournalLines(release) {
     },
     {
       accountCode: release.processingFeeAccount,
-      accountName: "Processing Fee Income",
+      accountName: "Other Income - Service Fee",
       debit: 0,
       credit: release.processingFee
+    },
+    {
+      accountCode: release.insuranceIncomeAccount,
+      accountName: "Other Income - Insurance",
+      debit: 0,
+      credit: release.insuranceFee
+    },
+    {
+      accountCode: release.shareCapitalAccount,
+      accountName: "Share Capital",
+      debit: 0,
+      credit: release.cbuAmount
+    },
+    {
+      accountCode: release.savingsAccount,
+      accountName: "Savings Deposits Payable",
+      debit: 0,
+      credit: release.savingsRetentionAmount
     }
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
@@ -5036,6 +5263,7 @@ async function getMemberSubsidiaryLedgerReport() {
   const savingsDepositRows = await listSavingsDeposits();
   const savingsWithdrawalRows = await listSavingsWithdrawals();
   const openingBalanceRows = await listFinalizedOpeningBalanceRows();
+  const postedLoanReleaseRows = (await listLoanReleases()).filter((release) => release.status === "Posted");
 
   const membersWithSubsidiary = memberRows.map((member) => {
     const memberOpeningBalanceRows = openingBalanceRows.filter(
@@ -5047,12 +5275,14 @@ async function getMemberSubsidiaryLedgerReport() {
     );
     const memberSavingsDeposits = savingsDepositRows.filter((deposit) => deposit.memberId === member.id);
     const memberSavingsWithdrawals = savingsWithdrawalRows.filter((withdrawal) => withdrawal.memberId === member.id);
+    const memberLoanReleases = postedLoanReleaseRows.filter((release) => release.memberNo === member.id);
     const transactions = [
       ...memberOpeningBalanceRows,
       ...memberInitialPayments,
       ...memberShareCapitalContributions,
       ...memberSavingsDeposits,
-      ...memberSavingsWithdrawals
+      ...memberSavingsWithdrawals,
+      ...memberLoanReleases
     ];
 
     return {
@@ -5067,9 +5297,11 @@ async function getMemberSubsidiaryLedgerReport() {
       shareCapitalContributionTotal: sumMoney(
         memberShareCapitalContributions.map((contribution) => contribution.amount)
       ),
+      loanCbuTotal: sumMoney(memberLoanReleases.map((release) => release.cbuAmount)),
       savingsDepositTotal: addMoney(
         sumMoney(memberInitialPayments.map((payment) => payment.savingsDepositAmount)),
-        sumMoney(memberSavingsDeposits.map((deposit) => deposit.amount))
+        sumMoney(memberSavingsDeposits.map((deposit) => deposit.amount)),
+        sumMoney(memberLoanReleases.map((release) => release.savingsRetentionAmount))
       ),
       savingsWithdrawalTotal: sumMoney(memberSavingsWithdrawals.map((withdrawal) => withdrawal.amount)),
       postedTransactionCount: transactions.filter(
@@ -5114,6 +5346,7 @@ async function getControlAccountReconciliationReport() {
   );
   const savingsDepositRows = (await listSavingsDeposits()).filter((deposit) => deposit.status === "Posted");
   const savingsWithdrawalRows = (await listSavingsWithdrawals()).filter((withdrawal) => withdrawal.status === "Posted");
+  const loanReleaseRows = (await listLoanReleases()).filter((release) => release.status === "Posted");
   const openingBalanceRows = await listFinalizedOpeningBalanceRows();
   const entries = await listJournalEntries();
 
@@ -5129,14 +5362,16 @@ async function getControlAccountReconciliationReport() {
   const shareCapitalSubsidiaryTotal = sumMoney([
     ...openingBalanceRows.map((row) => row.shareCapitalAmount),
     ...initialPaymentRows.map((payment) => payment.shareCapitalAmount),
-    ...shareCapitalContributionRows.map((contribution) => contribution.amount)
+    ...shareCapitalContributionRows.map((contribution) => contribution.amount),
+    ...loanReleaseRows.map((release) => release.cbuAmount)
   ]);
 
   const savingsSubsidiaryTotal = subtractMoney(
     sumMoney([
       ...openingBalanceRows.map((row) => row.savingsAmount),
       ...initialPaymentRows.map((payment) => payment.savingsDepositAmount),
-      ...savingsDepositRows.map((deposit) => deposit.amount)
+      ...savingsDepositRows.map((deposit) => deposit.amount),
+      ...loanReleaseRows.map((release) => release.savingsRetentionAmount)
     ]),
     sumMoney(savingsWithdrawalRows.map((withdrawal) => withdrawal.amount))
   );
@@ -6740,8 +6975,14 @@ async function postLoanRelease(releaseId, user) {
     }
     const accountingRelease = {
       ...release,
+      insuranceFee: loan.insuranceFee,
+      cbuAmount: loan.cbuAmount,
+      savingsRetentionAmount: loan.savingsRetentionAmount,
       loansReceivableAccount: application.loansReceivableAccount,
       processingFeeAccount: application.processingFeeAccount,
+      insuranceIncomeAccount: application.insuranceIncomeAccount,
+      shareCapitalAccount: application.shareCapitalAccount,
+      savingsAccount: application.savingsAccount,
       cashAccount: application.cashAccount
     };
     const entry = {
@@ -6760,6 +7001,11 @@ async function postLoanRelease(releaseId, user) {
     loan.status = "Posted";
     application.status = "Posted";
     application.updatedAt = entry.postedAt;
+    const member = members.find((item) => item.id === release.memberNo);
+    if (member) {
+      member.share = addMoney(member.share, loan.cbuAmount || 0);
+      member.savings = addMoney(member.savings, loan.savingsRetentionAmount || 0);
+    }
     journalEntries.unshift(entry);
     return { release: mapLoanRelease(release), entry };
   }
@@ -6771,12 +7017,16 @@ async function postLoanRelease(releaseId, user) {
       `SELECT lr.release_no AS releaseNo, lr.loan_no AS loanNo,
               lr.batch_no AS batchId, lr.member_no AS memberNo,
               lr.member_name AS memberName, lr.principal,
-              lr.processing_fee AS processingFee,
+              lr.processing_fee AS processingFee, lr.insurance_fee AS insuranceFee,
+              lr.cbu_amount AS cbuAmount, lr.savings_retention_amount AS savingsRetentionAmount,
               lr.net_proceeds AS netProceeds,
               lr.cash_released AS cashReleased, lr.reference_no AS referenceNo,
               lr.status, loan.application_no AS applicationNo,
               application.loans_receivable_account AS loansReceivableAccount,
               application.processing_fee_account AS processingFeeAccount,
+              application.insurance_income_account AS insuranceIncomeAccount,
+              application.share_capital_account AS shareCapitalAccount,
+              application.savings_account AS savingsAccount,
               application.cash_account AS cashAccount
        FROM loan_releases lr
        JOIN loans loan ON loan.loan_no = lr.loan_no
@@ -6828,6 +7078,12 @@ async function postLoanRelease(releaseId, user) {
       [user.username, entryNo, release.releaseNo]
     );
     await connection.execute(`UPDATE loans SET status = 'Posted' WHERE loan_no = ?`, [release.loanNo]);
+    await connection.execute(
+      `UPDATE members
+       SET share_capital = share_capital + ?, savings_balance = savings_balance + ?
+       WHERE member_no = ?`,
+      [release.cbuAmount, release.savingsRetentionAmount, release.memberNo]
+    );
     await connection.execute(
       `UPDATE loan_applications SET status = 'Posted', updated_at = CURRENT_TIMESTAMP
        WHERE application_no = ?`,

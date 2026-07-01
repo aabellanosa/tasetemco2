@@ -1893,7 +1893,7 @@ async function run() {
 
     if (
       !adminLoanProducts.ok ||
-      !adminLoanProductRows.some((product) => product.code === "REGULAR") ||
+      !adminLoanProductRows.some((product) => product.code === "SALARY") ||
       !adminLoanProductRows.some((product) => product.code === "EMERGENCY")
     ) {
       throw new Error("Admin should see seeded loan products.");
@@ -1907,14 +1907,22 @@ async function run() {
       maximumPrincipal: 30000,
       minimumTermMonths: 2,
       maximumTermMonths: 12,
-      annualInterestRateBps: 1000,
-      interestMethod: "Flat Interest",
+      annualInterestRateBps: 3000,
+      interestMethod: "Diminishing Balance",
       paymentFrequency: "Monthly",
-      processingFee: 150,
+      processingFee: 0,
+      serviceFeeRateBps: 450,
+      insuranceFeeRateBps: 150,
+      cbuRateBps: 200,
+      savingsRetentionRateBps: 100,
+      cbuOptional: true,
       penaltyRateBps: 200,
       loansReceivableAccount: "1050",
       interestIncomeAccount: "4010",
       processingFeeAccount: "4030",
+      insuranceIncomeAccount: "4050",
+      shareCapitalAccount: "3010",
+      savingsAccount: "2020",
       penaltyIncomeAccount: "4040",
       cashAccount: "1010",
       status: "Active"
@@ -1932,7 +1940,7 @@ async function run() {
     if (
       !createLoanProduct.ok ||
       createLoanProductBody.product.code !== "SMOKE-LOAN" ||
-      createLoanProductBody.product.annualInterestRateBps !== 1000
+      createLoanProductBody.product.serviceFeeRateBps !== 450
     ) {
       throw new Error("Admin should create validated loan products.");
     }
@@ -2008,7 +2016,7 @@ async function run() {
       },
       body: JSON.stringify({
         memberNo: "M-000517",
-        productCode: "REGULAR",
+        productCode: "SALARY",
         requestedPrincipal: 10000,
         requestedTermMonths: 6,
         purpose: "Admin must not originate loans",
@@ -2067,7 +2075,7 @@ async function run() {
     });
     const loanOfficerProductRows = await loanOfficerProducts.json();
 
-    if (!loanOfficerProducts.ok || !loanOfficerProductRows.some((product) => product.code === "REGULAR")) {
+    if (!loanOfficerProducts.ok || !loanOfficerProductRows.some((product) => product.code === "SALARY")) {
       throw new Error("Loan Officer should see loan product rules.");
     }
 
@@ -2095,7 +2103,7 @@ async function run() {
       },
       body: JSON.stringify({
         memberNo: "M-000517",
-        productCode: "REGULAR",
+        productCode: "SALARY",
         requestedPrincipal: 100,
         requestedTermMonths: 6,
         purpose: "Amount below the configured product minimum",
@@ -2115,7 +2123,7 @@ async function run() {
       },
       body: JSON.stringify({
         memberNo: "M-000517",
-        productCode: "REGULAR",
+        productCode: "SALARY",
         requestedPrincipal: 12000,
         requestedTermMonths: 6,
         purpose: "Smoke test livelihood supplies",
@@ -2129,7 +2137,8 @@ async function run() {
       !createLoanApplication.ok ||
       !smokeApplicationNo ||
       createLoanApplicationBody.application.status !== "Draft" ||
-      createLoanApplicationBody.application.annualInterestRateBps !== 1200
+      createLoanApplicationBody.application.annualInterestRateBps !== 3000 ||
+      createLoanApplicationBody.application.serviceFeeRateBps !== 450
     ) {
       throw new Error("Loan Officer should create a draft with snapshotted product terms.");
     }
@@ -2144,7 +2153,7 @@ async function run() {
         },
         body: JSON.stringify({
           memberNo: "M-000517",
-          productCode: "REGULAR",
+          productCode: "SALARY",
           requestedPrincipal: 15000,
           requestedTermMonths: 9,
           purpose: "Updated smoke test livelihood supplies",
@@ -2201,7 +2210,7 @@ async function run() {
         },
         body: JSON.stringify({
           memberNo: "M-000517",
-          productCode: "REGULAR",
+          productCode: "SALARY",
           requestedPrincipal: 16000,
           requestedTermMonths: 9,
           purpose: "Submitted records must be immutable",
@@ -2299,7 +2308,7 @@ async function run() {
         },
         body: JSON.stringify({
           memberNo: "M-000517",
-          productCode: "REGULAR",
+          productCode: "SALARY",
           requestedPrincipal: 14000,
           requestedTermMonths: 8,
           purpose: "Livelihood supplies with updated income details",
@@ -2459,15 +2468,19 @@ async function run() {
     if (
       !previewLoanComputation.ok ||
       previewSchedule.principal !== 13000 ||
-      previewSchedule.totalInterest !== 1040 ||
-      previewSchedule.totalPayable !== 14040 ||
-      previewSchedule.netProceeds !== 12750 ||
+      previewSchedule.totalInterest !== 1462.52 ||
+      previewSchedule.totalPayable !== 14462.52 ||
+      previewSchedule.processingFee !== 585 ||
+      previewSchedule.insuranceFee !== 195 ||
+      previewSchedule.cbuAmount !== 260 ||
+      previewSchedule.savingsRetentionAmount !== 130 ||
+      previewSchedule.netProceeds !== 11830 ||
       previewSchedule.installmentCount !== 8 ||
       previewSchedule.installments.length !== 8 ||
       previewSchedule.maturityDate !== "2027-02-19" ||
-      previewSchedule.installments.reduce((sum, item) => sum + item.totalDue, 0) !== 14040
+      Math.round(previewSchedule.installments.reduce((sum, item) => sum + item.totalDue, 0) * 100) / 100 !== 14462.52
     ) {
-      throw new Error("Flat-interest preview should produce a balanced centavo-accurate amortization schedule.");
+      throw new Error("Diminishing-interest preview should produce a balanced centavo-accurate amortization schedule.");
     }
 
     const saveLoanComputation = await fetch(
@@ -2601,7 +2614,7 @@ async function run() {
       body: JSON.stringify({
         releaseDate: "2026-07-01",
         referenceNo: "LV-SMOKE-NO-FUNDING",
-        cashReleased: 12750
+        cashReleased: 11830
       })
     });
     const unfundedLoanReleaseBody = await unfundedLoanRelease.json();
@@ -2621,11 +2634,11 @@ async function run() {
 
     if (
       !fundingPositionBeforeFunding.ok ||
-      fundingPositionBeforeFundingBody.totalReleaseDemand !== 12750 ||
+      fundingPositionBeforeFundingBody.totalReleaseDemand !== 11830 ||
       fundingPositionBeforeFundingBody.availableCash !== 0 ||
-      fundingPositionBeforeFundingBody.fundingShortage !== 12750 ||
+      fundingPositionBeforeFundingBody.fundingShortage !== 11830 ||
       !fundingPositionBeforeFundingBody.releaseQueue.some(
-        (loan) => loan.loanNo === smokeLoanNo && loan.netProceeds === 12750
+        (loan) => loan.loanNo === smokeLoanNo && loan.netProceeds === 11830
       )
     ) {
       throw new Error("Bookkeeper should see the For Release funding demand and current shortage.");
@@ -2794,7 +2807,7 @@ async function run() {
       body: JSON.stringify({
         releaseDate: "2026-07-01",
         referenceNo: "WV-SMOKE-001",
-        cashReleased: 12750
+        cashReleased: 11830
       })
     });
 
@@ -2811,7 +2824,7 @@ async function run() {
       body: JSON.stringify({
         releaseDate: "2026-07-01",
         referenceNo: "LV-SMOKE-001",
-        cashReleased: 12750
+        cashReleased: 11830
       })
     });
     const releaseLoanBody = await releaseLoan.json();
@@ -2821,7 +2834,7 @@ async function run() {
       !releaseLoan.ok ||
       !smokeReleaseNo ||
       releaseLoanBody.release.status !== "Teller Batch" ||
-      releaseLoanBody.release.cashReleased !== 12750 ||
+      releaseLoanBody.release.cashReleased !== 11830 ||
       releaseLoanBody.loan.status !== "Released"
     ) {
       throw new Error("Teller should record an immutable loan release in the open teller batch.");
@@ -2836,7 +2849,7 @@ async function run() {
       body: JSON.stringify({
         releaseDate: "2026-07-01",
         referenceNo: "LV-SMOKE-002",
-        cashReleased: 12750
+        cashReleased: 11830
       })
     });
 
@@ -2877,7 +2890,7 @@ async function run() {
     if (
       !tellerBatchesAfterRelease.ok ||
       !releaseBatchDetails.ok ||
-      cashOutAfterRelease !== cashOutBeforeRelease + 12750
+      cashOutAfterRelease !== cashOutBeforeRelease + 11830
     ) {
       throw new Error("Loan release net proceeds should increase teller batch cash-out.");
     }
@@ -2888,14 +2901,14 @@ async function run() {
         "Content-Type": "application/json",
         Cookie: tellerCookie
       },
-      body: JSON.stringify({ actualCash: 7250 })
+      body: JSON.stringify({ actualCash: 8170 })
     });
     const releaseCashCountBody = await releaseCashCount.json();
 
     if (
       !releaseCashCount.ok ||
       releaseCashCountBody.batch.status !== "Submitted" ||
-      releaseCashCountBody.cashCount.expectedCash !== 7250 ||
+      releaseCashCountBody.cashCount.expectedCash !== 8170 ||
       releaseCashCountBody.cashCount.variance !== 0
     ) {
       throw new Error("Opening funding less loan proceeds should produce the expected ending teller cash.");
@@ -2943,10 +2956,19 @@ async function run() {
       (line) => line.accountCode === "1050" && line.debit === 13000
     );
     const releaseCashLine = postedReleaseResult?.entry.lines.find(
-      (line) => line.accountCode === "1010" && line.credit === 12750
+      (line) => line.accountCode === "1010" && line.credit === 11830
     );
     const releaseFeeLine = postedReleaseResult?.entry.lines.find(
-      (line) => line.accountCode === "4030" && line.credit === 250
+      (line) => line.accountCode === "4030" && line.credit === 585
+    );
+    const releaseInsuranceLine = postedReleaseResult?.entry.lines.find(
+      (line) => line.accountCode === "4050" && line.credit === 195
+    );
+    const releaseCbuLine = postedReleaseResult?.entry.lines.find(
+      (line) => line.accountCode === "3010" && line.credit === 260
+    );
+    const releaseSavingsLine = postedReleaseResult?.entry.lines.find(
+      (line) => line.accountCode === "2020" && line.credit === 130
     );
     const fundingDebitTotal = postedFundingResult?.entry.lines.reduce(
       (sum, line) => sum + Number(line.debit || 0),
@@ -2975,6 +2997,9 @@ async function run() {
       !releaseReceivableLine ||
       !releaseCashLine ||
       !releaseFeeLine ||
+      !releaseInsuranceLine ||
+      !releaseCbuLine ||
+      !releaseSavingsLine ||
       fundingDebitTotal !== 20000 ||
       fundingCreditTotal !== 20000 ||
       !fundingCashLine ||
@@ -3097,7 +3122,7 @@ async function run() {
         body: JSON.stringify({
           collectionDate: "2026-06-30",
           referenceNo: "OR-LOAN-EARLY-DATE",
-          amountReceived: 1755
+          amountReceived: 1950
         })
       }
     );
@@ -3137,7 +3162,7 @@ async function run() {
         body: JSON.stringify({
           collectionDate: "2026-07-02",
           referenceNo: "OR-LOAN-SMOKE-001",
-          amountReceived: 1755
+          amountReceived: 1950
         })
       }
     );
@@ -3149,8 +3174,8 @@ async function run() {
       !smokeCollectionNo ||
       recordLoanCollectionBody.collection.installmentNo !== 1 ||
       recordLoanCollectionBody.collection.principalAmount !== 1625 ||
-      recordLoanCollectionBody.collection.interestAmount !== 130 ||
-      recordLoanCollectionBody.collection.amountReceived !== 1755 ||
+      recordLoanCollectionBody.collection.interestAmount !== 325 ||
+      recordLoanCollectionBody.collection.amountReceived !== 1950 ||
       recordLoanCollectionBody.collection.status !== "Teller Batch"
     ) {
       throw new Error("Teller should record the exact next scheduled installment in the Open batch.");
@@ -3175,7 +3200,7 @@ async function run() {
         body: JSON.stringify({
           collectionDate: "2026-07-02",
           referenceNo: "OR-LOAN-SMOKE-001",
-          amountReceived: 1755
+          amountReceived: 1909.38
         })
       }
     );
@@ -3190,13 +3215,13 @@ async function run() {
         "Content-Type": "application/json",
         Cookie: tellerCookie
       },
-      body: JSON.stringify({ actualCash: 1755 })
+      body: JSON.stringify({ actualCash: 1950 })
     });
     const collectionCashCountBody = await collectionCashCount.json();
 
     if (
       !collectionCashCount.ok ||
-      collectionCashCountBody.cashCount.expectedCash !== 1755 ||
+      collectionCashCountBody.cashCount.expectedCash !== 1950 ||
       collectionCashCountBody.cashCount.variance !== 0
     ) {
       throw new Error("The exact installment receipt should increase expected Teller cash.");
@@ -3231,13 +3256,13 @@ async function run() {
       (result) => result.id === smokeCollectionNo && result.batchType === "Loan Collection"
     );
     const collectionCashLine = postedCollectionResult?.entry.lines.find(
-      (line) => line.accountCode === "1010" && line.debit === 1755
+      (line) => line.accountCode === "1010" && line.debit === 1950
     );
     const collectionPrincipalLine = postedCollectionResult?.entry.lines.find(
       (line) => line.accountCode === "1050" && line.credit === 1625
     );
     const collectionInterestLine = postedCollectionResult?.entry.lines.find(
-      (line) => line.accountCode === "4010" && line.credit === 130
+      (line) => line.accountCode === "4010" && line.credit === 325
     );
 
     if (
@@ -3276,7 +3301,7 @@ async function run() {
       body: JSON.stringify({
         releaseDate: "2026-07-01",
         referenceNo: "LV-SMOKE-OFFICER",
-        cashReleased: 12750
+        cashReleased: 11830
       })
     });
 

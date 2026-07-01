@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   ChakraProvider,
+  Checkbox,
   Container,
   Flex,
   FormControl,
@@ -5194,14 +5195,22 @@ const defaultLoanProductForm = {
   maximumPrincipal: 50000,
   minimumTermMonths: 3,
   maximumTermMonths: 12,
-  annualInterestRateBps: 1200,
-  interestMethod: "Flat Interest",
+  annualInterestRateBps: 3000,
+  interestMethod: "Diminishing Balance",
   paymentFrequency: "Monthly",
-  processingFee: 250,
+  processingFee: 0,
+  serviceFeeRateBps: 450,
+  insuranceFeeRateBps: 0,
+  cbuRateBps: 0,
+  savingsRetentionRateBps: 0,
+  cbuOptional: false,
   penaltyRateBps: 200,
   loansReceivableAccount: "1050",
   interestIncomeAccount: "4010",
   processingFeeAccount: "4030",
+  insuranceIncomeAccount: "4050",
+  shareCapitalAccount: "3010",
+  savingsAccount: "2020",
   penaltyIncomeAccount: "4040",
   cashAccount: "1010",
   status: "Active"
@@ -5345,8 +5354,26 @@ function LoanProducts({ user }) {
               </NumberInput>
             </FormControl>
             <FormControl>
-              <FormLabel>Processing Fee</FormLabel>
-              <NumberInput min={0} precision={2} step={0.01} value={form.processingFee} onChange={(value) => updateForm("processingFee", Number(value || 0))}>
+              <FormLabel>Service Fee (%)</FormLabel>
+              <NumberInput min={0} max={100} precision={2} value={(form.serviceFeeRateBps || 0) / 100} onChange={(value) => updateForm("serviceFeeRateBps", Math.round(Number(value || 0) * 100))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Insurance (%)</FormLabel>
+              <NumberInput min={0} max={100} precision={2} value={(form.insuranceFeeRateBps || 0) / 100} onChange={(value) => updateForm("insuranceFeeRateBps", Math.round(Number(value || 0) * 100))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>CBU (%)</FormLabel>
+              <NumberInput min={0} max={100} precision={2} value={(form.cbuRateBps || 0) / 100} onChange={(value) => updateForm("cbuRateBps", Math.round(Number(value || 0) * 100))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel>Savings Retention (%)</FormLabel>
+              <NumberInput min={0} max={100} precision={2} value={(form.savingsRetentionRateBps || 0) / 100} onChange={(value) => updateForm("savingsRetentionRateBps", Math.round(Number(value || 0) * 100))}>
                 <NumberInputField />
               </NumberInput>
             </FormControl>
@@ -5378,6 +5405,14 @@ function LoanProducts({ user }) {
                 <option>Inactive</option>
               </Select>
             </FormControl>
+            <FormControl display="flex" alignItems="end">
+              <Checkbox
+                isChecked={Boolean(form.cbuOptional)}
+                onChange={(event) => updateForm("cbuOptional", event.target.checked)}
+              >
+                CBU can be removed when fully subscribed
+              </Checkbox>
+            </FormControl>
           </Grid>
           <FormControl mt={4}>
             <FormLabel>Description</FormLabel>
@@ -5387,7 +5422,10 @@ function LoanProducts({ user }) {
             {[
               ["loansReceivableAccount", "Loans Receivable"],
               ["interestIncomeAccount", "Interest Income"],
-              ["processingFeeAccount", "Processing Fee"],
+              ["processingFeeAccount", "Service Fee Income"],
+              ["insuranceIncomeAccount", "Insurance Income"],
+              ["shareCapitalAccount", "Share Capital"],
+              ["savingsAccount", "Savings Payable"],
               ["penaltyIncomeAccount", "Penalty Income"],
               ["cashAccount", "Cash"]
             ].map(([field, label]) => (
@@ -5420,7 +5458,8 @@ function LoanProducts({ user }) {
                 <Th>Term</Th>
                 <Th>Interest</Th>
                 <Th>Frequency</Th>
-                <Th isNumeric>Fee</Th>
+                <Th isNumeric>Service</Th>
+                <Th>Deductions</Th>
                 <Th>Penalty</Th>
                 <Th>Status</Th>
                 {canManageProducts ? <Th>Action</Th> : null}
@@ -5445,7 +5484,12 @@ function LoanProducts({ user }) {
                       <Text color="gray.500" fontSize="xs">{product.interestMethod}</Text>
                     </Td>
                     <Td>{product.paymentFrequency}</Td>
-                    <Td isNumeric>{formatMoney(product.processingFee)}</Td>
+                    <Td isNumeric>{formatRateBps(product.serviceFeeRateBps)}</Td>
+                    <Td minW="180px">
+                      <Text fontSize="xs">Insurance: {formatRateBps(product.insuranceFeeRateBps)}</Text>
+                      <Text fontSize="xs">CBU: {formatRateBps(product.cbuRateBps)}{product.cbuOptional ? " optional" : ""}</Text>
+                      <Text fontSize="xs">Savings: {formatRateBps(product.savingsRetentionRateBps)}</Text>
+                    </Td>
                     <Td>{formatRateBps(product.penaltyRateBps)}</Td>
                     <Td>
                       <Badge colorScheme={product.status === "Active" ? "green" : "gray"}>{product.status}</Badge>
@@ -5464,7 +5508,8 @@ function LoanProducts({ user }) {
           </Table>
         </TableContainer>
         <Text color="gray.500" fontSize="sm" mt={4}>
-          Account mapping: 1050 Loans Receivable, 4010 Interest Income, 4030 Processing Fee Income,
+          Account mapping: 1050 Loans Receivable, 4010 Interest Income, 4030 Service Fee Income,
+          4050 Insurance Income, 3010 Share Capital, 2020 Savings Deposits Payable,
           4040 Penalty Income, and 1010 Cash on Hand.
         </Text>
       </Box>
@@ -5755,7 +5800,8 @@ function LoanApplications({ user }) {
             <Text color="gray.600" fontSize="sm" mt={4}>
               Limits: {formatMoney(selectedProduct.minimumPrincipal)} to {formatMoney(selectedProduct.maximumPrincipal)};
               {" "}{selectedProduct.minimumTermMonths}-{selectedProduct.maximumTermMonths} months;
-              {" "}{formatRateBps(selectedProduct.annualInterestRateBps)} annual {selectedProduct.interestMethod.toLowerCase()}.
+              {" "}{formatRateBps(selectedProduct.annualInterestRateBps)} annual {selectedProduct.interestMethod.toLowerCase()};
+              {" "}service fee {formatRateBps(selectedProduct.serviceFeeRateBps)}.
             </Text>
           ) : null}
           <Flex justify="flex-end" gap={3} mt={5}>
@@ -5989,6 +6035,7 @@ function LoanComputations({ user }) {
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [firstPaymentDate, setFirstPaymentDate] = useState(defaultFirstPaymentDate());
+  const [applyCbu, setApplyCbu] = useState(true);
   const [preview, setPreview] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -6018,6 +6065,7 @@ function LoanComputations({ user }) {
   function startComputation(application) {
     setSelectedApplication(application);
     setFirstPaymentDate(defaultFirstPaymentDate());
+    setApplyCbu(Number(application.cbuRateBps || 0) > 0);
     setPreview(null);
     setMessage("");
     setError("");
@@ -6035,7 +6083,7 @@ function LoanComputations({ user }) {
         `/api/loan-applications/${selectedApplication.applicationNo}/computation-preview`,
         {
           method: "POST",
-          body: JSON.stringify({ firstPaymentDate })
+          body: JSON.stringify({ firstPaymentDate, applyCbu })
         }
       );
       setPreview(result.computation);
@@ -6057,7 +6105,7 @@ function LoanComputations({ user }) {
         `/api/loan-applications/${selectedApplication.applicationNo}/computation`,
         {
           method: "POST",
-          body: JSON.stringify({ firstPaymentDate })
+          body: JSON.stringify({ firstPaymentDate, applyCbu })
         }
       );
       setMessage(`${result.loan.loanNo} saved as For Release.`);
@@ -6116,7 +6164,10 @@ function LoanComputations({ user }) {
           ["Total Interest", formatMoney(computation.totalInterest)],
           ["Total Payable", formatMoney(computation.totalPayable)],
           ["Net Proceeds", formatMoney(computation.netProceeds)],
-          ["Processing Fee", formatMoney(computation.processingFee)],
+          ["Service Fee", formatMoney(computation.processingFee)],
+          ["Insurance", formatMoney(computation.insuranceFee)],
+          ["CBU", `${formatMoney(computation.cbuAmount)}${computation.cbuApplied ? "" : " (not applied)"}`],
+          ["Savings Retention", formatMoney(computation.savingsRetentionAmount)],
           ["Installments", computation.installmentCount],
           ["First Payment", computation.firstPaymentDate],
           ["Maturity", computation.maturityDate]
@@ -6259,6 +6310,19 @@ function LoanComputations({ user }) {
                     />
                   </FormControl>
                 </Grid>
+                {Number(selectedApplication.cbuRateBps || 0) > 0 ? (
+                  <Checkbox
+                    isChecked={applyCbu}
+                    isDisabled={!selectedApplication.cbuOptional}
+                    onChange={(event) => {
+                      setApplyCbu(event.target.checked);
+                      setPreview(null);
+                    }}
+                  >
+                    Apply CBU retention ({formatRateBps(selectedApplication.cbuRateBps)})
+                    {selectedApplication.cbuOptional ? " - remove only when member is fully subscribed" : ""}
+                  </Checkbox>
+                ) : null}
                 <Flex justify="flex-end">
                   <Button onClick={previewComputation} isLoading={busyAction === "preview"}>
                     Preview Schedule
@@ -6768,7 +6832,10 @@ function LoanReleases({ user }) {
                   <Th>Loan</Th>
                   <Th>Member</Th>
                   <Th isNumeric>Principal</Th>
-                  <Th isNumeric>Processing Fee</Th>
+                  <Th isNumeric>Service</Th>
+                  <Th isNumeric>Insurance</Th>
+                  <Th isNumeric>CBU</Th>
+                  <Th isNumeric>Savings</Th>
                   <Th isNumeric>Net Proceeds</Th>
                   <Th>Action</Th>
                 </Tr>
@@ -6785,6 +6852,9 @@ function LoanReleases({ user }) {
                       <Td>{loan.memberName}</Td>
                       <Td isNumeric>{formatMoney(loan.principal)}</Td>
                       <Td isNumeric>{formatMoney(loan.processingFee)}</Td>
+                      <Td isNumeric>{formatMoney(loan.insuranceFee)}</Td>
+                      <Td isNumeric>{formatMoney(loan.cbuAmount)}</Td>
+                      <Td isNumeric>{formatMoney(loan.savingsRetentionAmount)}</Td>
                       <Td isNumeric fontWeight="bold">{formatMoney(loan.netProceeds)}</Td>
                       <Td>
                         <Button
@@ -6802,7 +6872,7 @@ function LoanReleases({ user }) {
                 })}
                 {!readyLoans.length ? (
                   <Tr>
-                    <Td colSpan={6} color="gray.500">
+                    <Td colSpan={9} color="gray.500">
                       No computed loans are currently marked For Release.
                     </Td>
                   </Tr>
@@ -6860,7 +6930,10 @@ function LoanReleases({ user }) {
                 <Box>
                   <Text fontWeight="bold">{selectedLoan.memberName}</Text>
                   <Text color="gray.600">Principal: {formatMoney(selectedLoan.principal)}</Text>
-                  <Text color="gray.600">Processing fee: {formatMoney(selectedLoan.processingFee)}</Text>
+                  <Text color="gray.600">Service fee: {formatMoney(selectedLoan.processingFee)}</Text>
+                  <Text color="gray.600">Insurance: {formatMoney(selectedLoan.insuranceFee)}</Text>
+                  <Text color="gray.600">CBU: {formatMoney(selectedLoan.cbuAmount)}</Text>
+                  <Text color="gray.600">Savings retention: {formatMoney(selectedLoan.savingsRetentionAmount)}</Text>
                   <Text fontWeight="bold">Net proceeds: {formatMoney(selectedLoan.netProceeds)}</Text>
                 </Box>
                 <FormControl isRequired>
