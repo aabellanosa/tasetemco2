@@ -203,7 +203,7 @@ Loan Application v1 adds persisted Draft and Submitted applications under a role
 
 Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the member's requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable.
 
-Loan Computation and Amortization Preview v1 lets the originating Loan Officer compute an Approved application using its snapshotted product terms. TASETEMCO products use 2.5% monthly diminishing-balance interest and deduct a 4.5% service fee from principal. Salary, Educational, and Appliance loans also deduct 1.5% insurance, 2% CBU, and 1% savings retention; CBU can be removed during computation when the member is fully subscribed. The preview shows principal, interest, all deductions, net proceeds, total payable, maturity, and every installment, then saves the schedule once as `For Release`.
+Loan Computation and Amortization Preview v1 lets the originating Loan Officer compute an Approved application using its snapshotted product terms. TASETEMCO products use 2.5% monthly diminishing-balance interest and deduct a 4.5% service fee from principal. Salary, Educational, and Appliance loans also deduct 1.5% insurance, 2% CBU, and 1% savings retention; CBU can be removed during computation when the member is fully subscribed. The preview shows principal, interest, all deductions, net proceeds, total payable, maturity, and every installment, then saves the schedule once as `For Release`. Saved computations include a printable member loan breakdown showing loan terms, deductions, net proceeds, total payable, amortization schedule, and signature lines.
 
 Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Teller confirms the release date, unique voucher/reference number, and cash released, which must exactly equal computed net proceeds. The release is immutable, linked to the current Open teller batch, counted as cash-out, and changes the loan and application status to `Released`. Loan Officer, Approver, Admin, Manager, and Auditor have read-only release visibility. Bookkeeper journal posting remains Loan Release v1b.
 
@@ -227,15 +227,15 @@ Loan Collection v1a starts the repayment series with one exact scheduled install
 | Teller / Cashier | No | No | No | No |
 | Membership Officer | No | No | No | No |
 
-| Loan Computation Access | View Schedule | Preview / Save |
-| --- | --- | --- |
-| System Administrator | Yes | No |
-| General Manager | Yes | No |
-| Loan Officer | Yes | Own approved applications |
-| Credit Committee / Approver | Yes | No |
-| Auditor / Compliance Officer | Yes | No |
-| Teller / Cashier | No | No |
-| Membership Officer | No | No |
+| Loan Computation Access | View Schedule | Print Breakdown | Preview / Save |
+| --- | --- | --- | --- |
+| System Administrator | Yes | Yes | No |
+| General Manager | Yes | Yes | No |
+| Loan Officer | Yes | Yes | Own approved applications |
+| Credit Committee / Approver | Yes | Yes | No |
+| Auditor / Compliance Officer | Yes | Yes | No |
+| Teller / Cashier | No | No | No |
+| Membership Officer | No | No | No |
 
 | Teller Cash Funding Access | View | Prepare | Approve | Acknowledge |
 | --- | --- | --- | --- | --- |

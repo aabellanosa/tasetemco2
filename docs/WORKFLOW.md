@@ -240,7 +240,7 @@ Loan Application v1 adds a separate Applications tab beside Loan Products. The L
 
 Loan Credit Review v1 makes Submitted applications actionable for the Credit Committee / Approver. The reviewer records credit assessment notes, recommended principal, recommended term, decision date, and decision remarks, then chooses `Approved`, `Rejected`, or `Returned`. Approval recommendations cannot exceed the requested amount or term. Rejection and return require remarks. Returned applications remain visible with their review evidence and become editable by the originating Loan Officer; saving moves them back to Draft for resubmission. Approved and Rejected applications cannot receive another decision.
 
-Loan Computation and Amortization Preview v1 adds a separate Computations tab. The originating Loan Officer selects an Approved application and first payment date, then previews a repayment schedule based on the application's snapshotted principal, term, rate, interest method, payment frequency, and deduction rules. TASETEMCO products use 2.5% monthly diminishing-balance interest and a 4.5% service fee deducted from principal. Salary, Educational, and Appliance loans also deduct 1.5% insurance, 2% CBU, and 1% savings retention; CBU may be removed only when the member is fully subscribed. Saving creates one immutable loan and its installment rows, then changes the application status to `For Release`.
+Loan Computation and Amortization Preview v1 adds a separate Computations tab. The originating Loan Officer selects an Approved application and first payment date, then previews a repayment schedule based on the application's snapshotted principal, term, rate, interest method, payment frequency, and deduction rules. TASETEMCO products use 2.5% monthly diminishing-balance interest and a 4.5% service fee deducted from principal. Salary, Educational, and Appliance loans also deduct 1.5% insurance, 2% CBU, and 1% savings retention; CBU may be removed only when the member is fully subscribed. Saving creates one immutable loan and its installment rows, then changes the application status to `For Release`. Saved computations can print a member loan breakdown with loan terms, deductions, net proceeds, total payable, amortization schedule, and signature lines before teller release.
 
 Loan Release v1a adds a Releases tab. Teller/Cashier sees loans marked `For Release`, verifies member and computed amounts, enters release date and a unique voucher/reference number, and confirms cash released. Cash must exactly equal net proceeds. The system creates one immutable release record, assigns it to the current Open teller batch, includes net proceeds in batch cash-out, and changes both loan and application status to `Released`. Teller cannot change principal, fee, interest, or schedule.
 
@@ -264,15 +264,15 @@ Loan Collection v1a introduces exact scheduled installment collection. Teller/Ca
 | Teller / Cashier | No | No | No | No |
 | Membership Officer | No | No | No | No |
 
-| Loan Computation Access | View Schedule | Preview / Save |
-| --- | --- | --- |
-| System Administrator | Yes | No |
-| General Manager | Yes | No |
-| Loan Officer | Yes | Own approved applications |
-| Credit Committee / Approver | Yes | No |
-| Auditor / Compliance Officer | Yes | No |
-| Teller / Cashier | No | No |
-| Membership Officer | No | No |
+| Loan Computation Access | View Schedule | Print Breakdown | Preview / Save |
+| --- | --- | --- | --- |
+| System Administrator | Yes | Yes | No |
+| General Manager | Yes | Yes | No |
+| Loan Officer | Yes | Yes | Own approved applications |
+| Credit Committee / Approver | Yes | Yes | No |
+| Auditor / Compliance Officer | Yes | Yes | No |
+| Teller / Cashier | No | No | No |
+| Membership Officer | No | No | No |
 
 | Loan Release Access | View | Release Cash |
 | --- | --- | --- |
