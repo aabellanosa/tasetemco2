@@ -50,6 +50,7 @@ import { createRoot as createReactRoot } from "react-dom/client";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "";
 const membersPollingMs = 5000;
+const memberDirectoryPageSizeOptions = [25, 50, 100];
 
 const theme = extendTheme({
   styles: {
@@ -2024,6 +2025,9 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
 
 function Members({ user }) {
   const [members, setMembers] = useState([]);
+  const [memberDirectorySearch, setMemberDirectorySearch] = useState("");
+  const [memberDirectoryPage, setMemberDirectoryPage] = useState(1);
+  const [memberDirectoryPageSize, setMemberDirectoryPageSize] = useState(25);
   const [applications, setApplications] = useState([]);
   const [initialPayments, setInitialPayments] = useState([]);
   const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
@@ -2106,6 +2110,31 @@ function Members({ user }) {
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
+  const memberDirectoryQuery = memberDirectorySearch.trim().toLowerCase();
+  const filteredMembers = memberDirectoryQuery
+    ? members.filter((member) =>
+        [
+          member.id,
+          member.name,
+          member.group,
+          member.contactNumber,
+          member.status,
+          formatDate(member.membershipDate)
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(memberDirectoryQuery)
+      )
+    : members;
+  const memberDirectoryPageCount = Math.max(1, Math.ceil(filteredMembers.length / memberDirectoryPageSize));
+  const currentMemberDirectoryPage = Math.min(memberDirectoryPage, memberDirectoryPageCount);
+  const memberDirectoryStart = (currentMemberDirectoryPage - 1) * memberDirectoryPageSize;
+  const pagedMembers = filteredMembers.slice(
+    memberDirectoryStart,
+    memberDirectoryStart + memberDirectoryPageSize
+  );
+  const memberDirectoryShowingStart = filteredMembers.length === 0 ? 0 : memberDirectoryStart + 1;
+  const memberDirectoryShowingEnd = Math.min(memberDirectoryStart + memberDirectoryPageSize, filteredMembers.length);
   const canUseTellerWorkspace =
     canCreateInitialPayment ||
     canCreateShareCapitalContribution ||
@@ -2975,8 +3004,41 @@ function Members({ user }) {
           <TabPanel px={0}>
             <VStack align="stretch" spacing={5}>
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Flex justify="space-between" mb={4}>
-          <Heading size="md">Active Members</Heading>
+        <Flex justify="space-between" align="flex-start" gap={4} wrap="wrap" mb={4}>
+          <Box>
+            <Heading size="md">Active Members</Heading>
+            <Text color="gray.600" fontSize="sm" mt={1}>
+              Showing {memberDirectoryShowingStart}-{memberDirectoryShowingEnd} of {filteredMembers.length}
+              {filteredMembers.length === members.length ? " members" : ` matches from ${members.length} members`}
+            </Text>
+          </Box>
+          <Flex gap={3} wrap="wrap" justify={{ base: "flex-start", md: "flex-end" }}>
+            <Input
+              size="sm"
+              value={memberDirectorySearch}
+              onChange={(event) => {
+                setMemberDirectorySearch(event.target.value);
+                setMemberDirectoryPage(1);
+              }}
+              placeholder="Filter members"
+              maxW={{ base: "100%", md: "260px" }}
+            />
+            <Select
+              size="sm"
+              value={memberDirectoryPageSize}
+              onChange={(event) => {
+                setMemberDirectoryPageSize(Number(event.target.value));
+                setMemberDirectoryPage(1);
+              }}
+              w="110px"
+            >
+              {memberDirectoryPageSizeOptions.map((pageSize) => (
+                <option key={pageSize} value={pageSize}>
+                  {pageSize} rows
+                </option>
+              ))}
+            </Select>
+          </Flex>
         </Flex>
         <TableContainer>
           <Table size="sm">
@@ -2994,7 +3056,7 @@ function Members({ user }) {
               </Tr>
             </Thead>
             <Tbody>
-              {members.map((member) => (
+              {pagedMembers.map((member) => (
                 <Tr key={member.id}>
                   <Td>{member.id}</Td>
                   <Td>{member.name}</Td>
@@ -3013,9 +3075,55 @@ function Members({ user }) {
                   </Td>
                 </Tr>
               ))}
+              {pagedMembers.length === 0 ? (
+                <Tr>
+                  <Td colSpan={9} color="gray.500">
+                    No members match the current filter.
+                  </Td>
+                </Tr>
+              ) : null}
             </Tbody>
           </Table>
         </TableContainer>
+        <Flex justify="space-between" align="center" gap={4} wrap="wrap" mt={4}>
+          <Text color="gray.600" fontSize="sm">
+            Page {currentMemberDirectoryPage} of {memberDirectoryPageCount}
+          </Text>
+          <Flex gap={2} wrap="wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setMemberDirectoryPage(1)}
+              isDisabled={currentMemberDirectoryPage === 1}
+            >
+              First
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setMemberDirectoryPage((page) => Math.max(1, page - 1))}
+              isDisabled={currentMemberDirectoryPage === 1}
+            >
+              Previous
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setMemberDirectoryPage((page) => Math.min(memberDirectoryPageCount, page + 1))}
+              isDisabled={currentMemberDirectoryPage === memberDirectoryPageCount}
+            >
+              Next
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setMemberDirectoryPage(memberDirectoryPageCount)}
+              isDisabled={currentMemberDirectoryPage === memberDirectoryPageCount}
+            >
+              Last
+            </Button>
+          </Flex>
+        </Flex>
       </Box>
 
       {statement ? (
