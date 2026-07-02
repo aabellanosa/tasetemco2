@@ -1894,7 +1894,15 @@ async function run() {
     if (
       !adminLoanProducts.ok ||
       !adminLoanProductRows.some((product) => product.code === "SALARY") ||
-      !adminLoanProductRows.some((product) => product.code === "EMERGENCY")
+      !adminLoanProductRows.some((product) => product.code === "EMERGENCY") ||
+      !adminLoanProductRows.some(
+        (product) =>
+          product.code === "SMALL-BUSINESS" &&
+          product.minimumPrincipal === 5000 &&
+          product.maximumPrincipal === 100000 &&
+          product.minimumTermMonths === 6 &&
+          product.maximumTermMonths === 60
+      )
     ) {
       throw new Error("Admin should see seeded loan products.");
     }
@@ -2181,6 +2189,7 @@ async function run() {
     if (
       !getLoanDocumentForm.ok ||
       getLoanDocumentFormBody.form.coMakerName !== "Manual Co Maker" ||
+      getLoanDocumentFormBody.form.loanCategory !== "Providential" ||
       getLoanDocumentFormBody.application.applicationNo !== smokeApplicationNo
     ) {
       throw new Error("Loan document form should be returned with its loan application.");
@@ -2655,7 +2664,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-01",
+        releaseDate: "2026-07-02",
         referenceNo: "LV-SMOKE-NO-FUNDING",
         cashReleased: 11830
       })
@@ -2699,7 +2708,7 @@ async function run() {
         sourceAccountCode: "1020",
         sourceAccountName: "Cash in Bank",
         referenceNo: "TF-SMOKE-001",
-        fundingDate: "2026-07-01"
+        fundingDate: "2026-07-02"
       })
     });
     const prepareTellerFundingBody = await prepareTellerFunding.json();
@@ -2831,7 +2840,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-01",
+        releaseDate: "2026-07-02",
         referenceNo: "LV-SMOKE-WRONG-CASH",
         cashReleased: 12000
       })
@@ -2848,7 +2857,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-01",
+        releaseDate: "2026-07-02",
         referenceNo: "WV-SMOKE-001",
         cashReleased: 11830
       })
@@ -2865,7 +2874,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-01",
+        releaseDate: "2026-07-02",
         referenceNo: "LV-SMOKE-001",
         cashReleased: 11830
       })
@@ -2890,7 +2899,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-01",
+        releaseDate: "2026-07-02",
         referenceNo: "LV-SMOKE-002",
         cashReleased: 11830
       })
@@ -3342,7 +3351,7 @@ async function run() {
         Cookie: loanOfficerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-01",
+        releaseDate: "2026-07-02",
         referenceNo: "LV-SMOKE-OFFICER",
         cashReleased: 11830
       })

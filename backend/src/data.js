@@ -419,6 +419,35 @@ export const loanProducts = [
     penaltyIncomeAccount: "4040",
     cashAccount: "1010",
     status: "Active"
+  },
+  {
+    id: 6,
+    code: "SMALL-BUSINESS",
+    name: "Small Business Loan",
+    description: "Entrepreneurial loan with standard retention deductions.",
+    minimumPrincipal: 5000,
+    maximumPrincipal: 100000,
+    minimumTermMonths: 6,
+    maximumTermMonths: 60,
+    annualInterestRateBps: 3000,
+    interestMethod: "Diminishing Balance",
+    paymentFrequency: "Monthly",
+    processingFee: 0,
+    serviceFeeRateBps: 450,
+    insuranceFeeRateBps: 150,
+    cbuRateBps: 200,
+    savingsRetentionRateBps: 100,
+    cbuOptional: true,
+    penaltyRateBps: 200,
+    loansReceivableAccount: "1050",
+    interestIncomeAccount: "4010",
+    processingFeeAccount: "4030",
+    insuranceIncomeAccount: "4050",
+    shareCapitalAccount: "3010",
+    savingsAccount: "2020",
+    penaltyIncomeAccount: "4040",
+    cashAccount: "1010",
+    status: "Active"
   }
 ];
 

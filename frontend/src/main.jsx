@@ -5950,6 +5950,19 @@ const defaultLoanApplicationForm = {
   applicationDate: new Date().toISOString().slice(0, 10)
 };
 const commonLoanTermMonths = [1, 6, 9, 12, 18, 24, 36, 48, 60];
+const loanDocumentCategoryOptions = ["Providential", "Entrepreneurial", "Emergency", "Other"];
+
+const defaultLoanDocumentForm = {
+  loanCategory: "Providential",
+  borrowerAddress: "",
+  spouseName: "",
+  coMakerName: "",
+  otherLoanType: "",
+  bookkeeperNotes: "",
+  approvalNotes: "",
+  promissoryNoteNo: "",
+  placeSigned: "Bislig City"
+};
 
 function formatLoanTermLabel(months) {
   if (months === 1) {
@@ -5996,16 +6009,7 @@ function LoanApplications({ user }) {
     decisionDate: new Date().toISOString().slice(0, 10)
   });
   const [documentApplication, setDocumentApplication] = useState(null);
-  const [documentForm, setDocumentForm] = useState({
-    borrowerAddress: "",
-    spouseName: "",
-    coMakerName: "",
-    otherLoanType: "",
-    bookkeeperNotes: "",
-    approvalNotes: "",
-    promissoryNoteNo: "",
-    placeSigned: "Bislig City"
-  });
+  const [documentForm, setDocumentForm] = useState(defaultLoanDocumentForm);
   const reviewModal = useDisclosure();
   const documentModal = useDisclosure();
   const canCreate = user.permissions.includes("loans:applications:create");
@@ -6101,7 +6105,7 @@ function LoanApplications({ user }) {
     try {
       const result = await api(`/api/loan-applications/${application.applicationNo}/document-form`);
       setDocumentApplication(result.application);
-      setDocumentForm(result.form);
+      setDocumentForm({ ...defaultLoanDocumentForm, ...result.form });
       documentModal.onOpen();
     } catch (requestError) {
       setError(requestError.message);
@@ -6590,6 +6594,19 @@ function LoanApplications({ user }) {
                   <Text color="gray.600" fontSize="sm">{documentApplication.purpose}</Text>
                 </Box>
                 <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>
+                  <FormControl>
+                    <FormLabel>Loan Form Category</FormLabel>
+                    <Select
+                      value={documentForm.loanCategory}
+                      onChange={(event) => updateDocumentForm("loanCategory", event.target.value)}
+                    >
+                      {loanDocumentCategoryOptions.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
                   <FormControl>
                     <FormLabel>Borrower Address</FormLabel>
                     <Textarea

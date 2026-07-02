@@ -1232,8 +1232,11 @@ function isMissingLoanDocumentFormsTable(error) {
 function sanitizeLoanDocumentFormData(body) {
   const formData = body?.formData && typeof body.formData === "object" ? body.formData : body || {};
   const text = (field, max = 500) => String(formData[field] || "").trim().slice(0, max);
+  const category = text("loanCategory", 40);
+  const validCategories = new Set(["Providential", "Entrepreneurial", "Emergency", "Other"]);
 
   return {
+    loanCategory: validCategories.has(category) ? category : "",
     borrowerAddress: text("borrowerAddress", 1000),
     spouseName: text("spouseName", 180),
     coMakerName: text("coMakerName", 180),
@@ -1243,6 +1246,21 @@ function sanitizeLoanDocumentFormData(body) {
     promissoryNoteNo: text("promissoryNoteNo", 80),
     placeSigned: text("placeSigned", 180)
   };
+}
+
+function defaultLoanFormCategory(application) {
+  const productCode = String(application?.productCode || "").toUpperCase();
+
+  if (productCode === "EMERGENCY") {
+    return "Emergency";
+  }
+  if (productCode === "PETTY-CASH") {
+    return "Other";
+  }
+  if (productCode === "SMALL-BUSINESS") {
+    return "Entrepreneurial";
+  }
+  return "Providential";
 }
 
 async function defaultLoanDocumentForm(applicationNo) {
@@ -1259,6 +1277,7 @@ async function defaultLoanDocumentForm(applicationNo) {
   return {
     application,
     form: {
+      loanCategory: defaultLoanFormCategory(application),
       borrowerAddress: member?.address || "",
       spouseName: "",
       coMakerName: "",
@@ -1311,7 +1330,11 @@ async function saveLoanDocumentForm(applicationNo, body, user) {
     return base;
   }
 
-  const formData = sanitizeLoanDocumentFormData(body);
+  const sanitizedFormData = sanitizeLoanDocumentFormData(body);
+  const formData = {
+    ...sanitizedFormData,
+    loanCategory: sanitizedFormData.loanCategory || base.form.loanCategory
+  };
   const db = await getPool();
 
   if (!db) {
