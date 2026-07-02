@@ -5600,7 +5600,7 @@ function buildLoanBreakdownPrintHtml(loan, preparedBy = "") {
 }
 
 function formCategoryMark(currentCategory, category) {
-  return currentCategory === category ? "&#9745;" : "&#9744;";
+  return currentCategory === category ? "( X )" : "(  )";
 }
 
 function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "") {
@@ -5622,11 +5622,15 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
   const netProceeds = addMoney(principal, -totalDeductions);
   const category = formData.loanCategory || "Providential";
   const logoSrc = `${window.location.origin}/brand/tasetemco-seal.png`;
+  const cdaLogoSrc = `${window.location.origin}/brand/cda-pftec.jpeg`;
   const generatedAt = new Intl.DateTimeFormat("en-PH", {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date());
   const line = (value = "") => escapeHtml(value || "");
+  const decision = String(application.decision || application.status || "");
+  const approvedMark = decision === "Approved" ? "( X )" : "(  )";
+  const disapprovedMark = decision === "Rejected" ? "( X )" : "(  )";
 
   return `<!doctype html>
 <html>
@@ -5638,13 +5642,14 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       body {
         margin: 0;
         color: #111;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 11px;
-        line-height: 1.25;
+        font-family: "Times New Roman", Times, serif;
+        font-size: 10px;
+        line-height: 1.18;
       }
+      @page { size: 8.5in 13in; margin: 0.35in; }
       .page {
         width: 8.5in;
-        min-height: 11in;
+        min-height: 13in;
         margin: 0 auto;
         padding: 0.35in 0.45in;
       }
@@ -5665,30 +5670,34 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         align-items: center;
         display: grid;
         grid-template-columns: 72px 1fr 72px;
-        gap: 12px;
-        margin-bottom: 10px;
+        gap: 10px;
+        margin-bottom: 6px;
         text-align: center;
       }
-      .seal { height: 66px; width: 66px; object-fit: contain; }
-      .coop { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+      .seal { height: 64px; width: 64px; object-fit: contain; }
+      .coop { font-size: 12px; font-weight: 700; }
       h1, h2, h3, p { margin: 0; }
-      h1 { font-size: 16px; margin-top: 4px; text-transform: uppercase; }
-      h2 {
-        background: #e8efe8;
-        border: 1px solid #333;
-        font-size: 11px;
-        margin-top: 8px;
-        padding: 4px 6px;
+      h1 {
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        margin-top: 5px;
+        text-decoration: underline;
         text-transform: uppercase;
+      }
+      h2 {
+        font-size: 10px;
+        font-style: italic;
+        margin: 6px 0 3px;
+        text-align: center;
       }
       table { border-collapse: collapse; width: 100%; }
       td, th {
         border: 1px solid #333;
-        padding: 4px 5px;
+        padding: 3px 4px;
         vertical-align: top;
       }
       .no-border td { border: 0; padding: 3px 4px; }
-      .label { color: #333; font-size: 9px; text-transform: uppercase; }
+      .label { color: #111; font-weight: 700; }
       .value {
         border-bottom: 1px solid #333;
         display: block;
@@ -5701,27 +5710,36 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       .muted { color: #555; }
       .checkboxes {
         display: grid;
-        gap: 6px;
-        grid-template-columns: repeat(4, 1fr);
-        margin: 6px 0 8px;
+        grid-template-columns: 1.1fr 1.1fr 0.9fr 1.4fr;
+        margin: 4px 0;
       }
-      .box {
-        border: 1px solid #333;
-        min-height: 42px;
-        padding: 5px;
+      .section-rule {
+        border-top: 1px dashed #333;
+        margin: 7px 0 5px;
       }
-      .signatures {
+      .signature-row {
         display: grid;
-        gap: 16px;
         grid-template-columns: repeat(3, 1fr);
-        margin-top: 24px;
+        gap: 18px;
+        margin: 16px 0 6px;
       }
       .signature {
         border-top: 1px solid #111;
         padding-top: 4px;
         text-align: center;
       }
+      .named-signatures {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-top: 24px;
+        text-align: center;
+      }
+      .name { font-weight: 700; text-transform: uppercase; }
       .small { font-size: 9px; }
+      .compact td { height: 21px; }
+      .indent { text-indent: 24px; text-align: justify; }
+      .page-break { break-before: page; page-break-before: always; }
       @media print {
         .no-print { display: none; }
         .page { margin: 0; width: auto; min-height: auto; }
@@ -5737,103 +5755,212 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         <img class="seal" src="${escapeHtml(logoSrc)}" alt="TASETEMCO seal">
         <div>
           <p class="coop">Tabon Secondary Teachers, Employees and Community Multi-Purpose Cooperative</p>
-          <p>Bislig City, Surigao del Sur</p>
+          <p class="coop">(TASETEMCO MPC)</p>
+          <p>Registered under the Laws of the Philippines</p>
+          <p>RN: CARA-0146, 02.16.97 RN: RA9520-13005802, 01.07.10</p>
           <h1>Loan Application Form</h1>
         </div>
-        <div class="small">Application No.<br><strong>${escapeHtml(application.applicationNo)}</strong></div>
+        <img class="seal" src="${escapeHtml(cdaLogoSrc)}" alt="CDA logo">
       </section>
 
       <table class="no-border">
         <tr>
-          <td style="width: 65%"><span class="label">Name of Borrower</span><span class="value">${line(application.memberName)}</span></td>
-          <td><span class="label">Date</span><span class="value">${escapeHtml(formatDate(application.applicationDate))}</span></td>
+          <td style="width: 64%"><span class="label">Name of Borrower:</span> <span class="value">${line(application.memberName)}</span></td>
+          <td><span class="label">Date:</span> <span class="value">${escapeHtml(formatDate(application.applicationDate))}</span></td>
         </tr>
         <tr>
-          <td><span class="label">Address</span><span class="value">${line(formData.borrowerAddress)}</span></td>
-          <td><span class="label">Member No.</span><span class="value">${line(application.memberNo)}</span></td>
+          <td colspan="2"><span class="label">Address:</span> <span class="value">${line(formData.borrowerAddress)}</span></td>
         </tr>
         <tr>
-          <td><span class="label">Name of Spouse</span><span class="value">${line(formData.spouseName)}</span></td>
-          <td><span class="label">Co-maker</span><span class="value">${line(formData.coMakerName)}</span></td>
+          <td colspan="2"><span class="label">Name of Spouse:</span> <span class="value">${line(formData.spouseName)}</span></td>
+        </tr>
+        <tr>
+          <td colspan="2"><span class="label">Co-maker:</span> <span class="value">${line(formData.coMakerName)}</span></td>
         </tr>
       </table>
 
-      <h2>Type of Loan</h2>
+      <p><span class="label">Type of Loan Applied:</span></p>
       <div class="checkboxes">
         <div>${formCategoryMark(category, "Providential")} Providential</div>
         <div>${formCategoryMark(category, "Entrepreneurial")} Entrepreneurial</div>
         <div>${formCategoryMark(category, "Emergency")} Emergency</div>
-        <div>${formCategoryMark(category, "Other")} Other ${formData.otherLoanType ? `: ${line(formData.otherLoanType)}` : ""}</div>
+        <div>${formCategoryMark(category, "Other")} Others: ${formData.otherLoanType ? line(formData.otherLoanType) : "____________"}</div>
       </div>
-      <table>
+      <table class="no-border">
         <tr>
-          <td><span class="label">Loan Product</span><span class="value">${line(application.productName)}</span></td>
-          <td><span class="label">Amount Applied For</span><span class="value right">${escapeHtml(formatMoney(principal))}</span></td>
-          <td><span class="label">Term</span><span class="value right">${escapeHtml(termMonths)} months</span></td>
+          <td style="width: 54%"><span class="label">Purpose of Loan:</span> <span class="value">${line(application.purpose)}</span></td>
+          <td><span class="label">Amount Applied:</span> <span class="value">${escapeHtml(formatMoney(principal))}</span></td>
         </tr>
         <tr>
-          <td colspan="3"><span class="label">Purpose</span><span class="value">${line(application.purpose)}</span></td>
+          <td><span class="label">Loan Product:</span> <span class="value">${line(application.productName)}</span></td>
+          <td><span class="label">Term of Payment:</span> <span class="value">${escapeHtml(termMonths)} Months</span></td>
+        </tr>
+      </table>
+      <section class="signature-row">
+        <div class="signature">Signature over Printed Name - Co Maker</div>
+        <div class="signature">Signature of Spouse</div>
+        <div class="signature">Signature of Borrower</div>
+      </section>
+
+      <h2>To be filled by the Bookkeeper</h2>
+      <table class="compact">
+        <tr>
+          <td style="width: 22%">Capital Build-up (paid up)</td>
+          <td>${escapeHtml(formatMoney(cbuAmount))}</td>
+          <td>As of:</td>
+          <td style="width: 22%">Savings</td>
+          <td>${escapeHtml(formatMoney(savingsAmount))}</td>
+          <td>As of</td>
+        </tr>
+      </table>
+      <table class="compact">
+        <tr><th colspan="6">Outstanding Loan</th><th>Balance</th><th>% Repayment</th><th>Date of last availment</th><th>Due Date</th></tr>
+        <tr><td>LBP/CCB</td><td></td><td>Salary Loan</td><td></td><td>Emergency Loan</td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>Educ. Loan</td><td></td><td>Bonus Loan</td><td></td><td>Others</td><td></td><td></td><td></td><td></td><td></td></tr>
+      </table>
+      <table class="no-border">
+        <tr>
+          <td style="width: 55%"><span class="label">Certified Correct:</span> <span class="value">ELLEN JOY P. LATIBAN</span></td>
+          <td><span class="value center">Bookkeeper</span></td>
         </tr>
       </table>
 
-      <h2>Bookkeeper / Account Verification</h2>
-      <table>
-        <tr>
-          <td>CBU / Share Capital</td>
-          <td class="right">${escapeHtml(formatMoney(cbuAmount))}</td>
-          <td>Savings</td>
-          <td class="right">${escapeHtml(formatMoney(savingsAmount))}</td>
-        </tr>
-        <tr>
-          <td>Outstanding Loan Balance</td>
-          <td></td>
-          <td>Last Availment / Due Date</td>
-          <td></td>
-        </tr>
-      </table>
-      <div class="box"><span class="label">Bookkeeper Notes</span><br>${line(formData.bookkeeperNotes)}</div>
-
+      <div class="section-rule"></div>
       <h2>Action Taken</h2>
       <table>
         <tr>
-          <td>Status</td>
-          <td>${line(application.status)}</td>
-          <td>Decision Date</td>
-          <td>${escapeHtml(formatDate(application.decisionDate))}</td>
+          <td colspan="2">${approvedMark} Approved &nbsp;&nbsp;&nbsp;&nbsp; ${disapprovedMark} Disapproved</td>
+          <td>Application No.</td>
+          <td>${line(application.applicationNo)}</td>
         </tr>
         <tr>
-          <td>Recommended Principal</td>
+          <td>Amount Approved</td>
           <td class="right">${escapeHtml(formatMoney(principal))}</td>
-          <td>Recommended Term</td>
+          <td>Interest Rate</td>
+          <td>${escapeHtml(formatRateBps(application.annualInterestRateBps))}</td>
+        </tr>
+        <tr>
+          <td>Repayment Schedule</td>
+          <td>Amortization starts on ____________</td>
+          <td>Payable Every Months for</td>
           <td class="right">${escapeHtml(termMonths)} months</td>
         </tr>
       </table>
-      <div class="box"><span class="label">Approval / Routing Notes</span><br>${line(formData.approvalNotes || application.decisionRemarks)}</div>
+      <table class="no-border">
+        <tr>
+          <td class="center" style="width: 50%"><strong>RECOMMENDING APPROVAL:</strong></td>
+          <td class="center"><strong>APPROVED BY:</strong></td>
+        </tr>
+      </table>
+      <section class="named-signatures" style="grid-template-columns: 1fr 1fr;">
+        <div><div class="name">JOEL L. YPARRAGUIRRE</div><div>Coop Manager</div><div class="small">CREDIT COMMITTEE:</div></div>
+        <div><div class="name">VIRGINIA V. LACUNA</div><div>BOD Chairman</div><div class="small">BOARD of DIRECTORS:</div></div>
+      </section>
 
+      <div class="section-rule"></div>
       <h2>Disbursement / Deductions</h2>
       <table>
-        <tr><td>Amount Granted</td><td class="right strong">${escapeHtml(formatMoney(principal))}</td><td>Promissory Note No.</td><td>${line(formData.promissoryNoteNo)}</td></tr>
-        <tr><td>CBU (${escapeHtml(formatRateBps(application.cbuRateBps))})</td><td class="right">${escapeHtml(formatMoney(cbuAmount))}</td><td>Savings (${escapeHtml(formatRateBps(application.savingsRetentionRateBps))})</td><td class="right">${escapeHtml(formatMoney(savingsAmount))}</td></tr>
-        <tr><td>Service Charge (${escapeHtml(formatRateBps(application.serviceFeeRateBps))})</td><td class="right">${escapeHtml(formatMoney(serviceFee))}</td><td>Insurance (${escapeHtml(formatRateBps(application.insuranceFeeRateBps))})</td><td class="right">${escapeHtml(formatMoney(insuranceFee))}</td></tr>
-        <tr><td>Total Deductions</td><td class="right strong">${escapeHtml(formatMoney(totalDeductions))}</td><td>Net Proceeds</td><td class="right strong">${escapeHtml(formatMoney(netProceeds))}</td></tr>
+        <tr><td>Amount Granted</td><td class="right strong">${escapeHtml(formatMoney(principal))}</td><td>CBU 2%</td><td class="right">${escapeHtml(formatMoney(cbuAmount))}</td></tr>
+        <tr><td>Savings 1%</td><td class="right">${escapeHtml(formatMoney(savingsAmount))}</td><td>Service Charge 4.5%</td><td class="right">${escapeHtml(formatMoney(serviceFee))}</td></tr>
+        <tr><td>Insurance 1.5%</td><td class="right">${escapeHtml(formatMoney(insuranceFee))}</td><td>Total GAS</td><td class="right">${escapeHtml(formatMoney(totalDeductions))}</td></tr>
+        <tr><td>Total Net</td><td class="right strong">${escapeHtml(formatMoney(netProceeds))}</td><td>Previous Loan Balance</td><td></td></tr>
+        <tr><td>Undeducted</td><td></td><td>Net Amount Received</td><td class="right strong">${escapeHtml(formatMoney(netProceeds))}</td></tr>
       </table>
+      <p>Disbursed the amount of P _________________________________ in payment of the above loan</p>
+      <section class="named-signatures" style="grid-template-columns: 1fr;">
+        <div><div class="name">FE B. PENALES</div><div>Coop Treasurer</div></div>
+      </section>
 
-      <h2>Acknowledgement and Authorization</h2>
       <p>
-        I acknowledge the above loan terms, deductions, and repayment obligation. I authorize the cooperative
-        to deduct applicable charges, CBU, savings retention, and loan amortizations according to cooperative policy.
+        I acknowledge receipt of the proceeds of my loan in the amount of P ${escapeHtml(formatMoney(netProceeds))}
+        and I hereby authorize the TASETEMCO thru TMENHS with its authorized representative to deduct
+        the amortization from my salary.
       </p>
-      <p class="muted small" style="margin-top: 6px;">
-        Place signed: ${line(formData.placeSigned)} &nbsp; | &nbsp; Generated: ${escapeHtml(generatedAt)} &nbsp; | &nbsp; Prepared by: ${line(preparedBy)}
-      </p>
+      <section class="signature-row" style="grid-template-columns: 1fr 1fr 1fr;">
+        <div></div>
+        <div class="signature">Payee</div>
+        <div></div>
+      </section>
 
-      <section class="signatures">
-        <div class="signature">Borrower / Member</div>
-        <div class="signature">Spouse</div>
-        <div class="signature">Co-maker</div>
-        <div class="signature">Bookkeeper</div>
-        <div class="signature">Credit Committee / Approver</div>
-        <div class="signature">General Manager / Authorized Officer</div>
+      <section class="page-break">
+        <h2>ANNEX I</h2>
+        <h1 style="text-align:center; letter-spacing:0.08em;">PROMISSORY NOTE</h1>
+        <table class="no-border">
+          <tr><td><span class="label">P.N. No.:</span> <span class="value">${line(formData.promissoryNoteNo)}</span></td><td><span class="label">Date Released:</span> <span class="value">_____________________</span></td></tr>
+          <tr><td><span class="label">Maturity Date:</span> <span class="value">_____________________</span></td><td><span class="label">Amount Granted:</span> <span class="value">${escapeHtml(formatMoney(principal))}</span></td></tr>
+        </table>
+        <p class="indent">
+          For value received, I/we, jointly and severally, promised to pay to TASETEMCO, Tabon, Bislig City,
+          the sum of ${escapeHtml(formatMoney(principal))} Philippine Currency, with an interest rate of
+          ${escapeHtml(formatRateBps(application.annualInterestRateBps))} per annum from the date hereof until
+          paid according to the attached amortization schedule.
+        </p>
+        <p class="indent">
+          In case of default of the payment of any of the stated installment in the amortization schedule as it falls due,
+          ALL OTHER INSTALLMENT SHALL IMMEDIATELY BECOME DUE AND PAYABLE; and the borrower agrees to pay a past due
+          interest of 2% per month on the matured installments from due date until full payment is made.
+        </p>
+        <p class="indent">
+          The cooperative is authorized to set-off or apply any deposits in the cooperative in borrower's name,
+          account to the payment of the loan without need for prior notice or approval from the member-borrower
+          and/or co-borrower.
+        </p>
+        <h2>ASSIGNMENT OF DEPOSITS and/or SHARE CAPITAL</h2>
+        <p class="indent">
+          I/We, the undersigned, for and in consideration of the loan obtained by me/us from the Cooperative,
+          in the amount of ${escapeHtml(formatMoney(principal))} as evidenced by the Promissory Note dated
+          _________, 20__ executed by me/us, do hereby assign in favor of the said Cooperative all my deposits,
+          whether term or savings deposits, including share capital, which I/we now have hereafter may have except
+          the amount of P_______ share capital to qualify me/us to remain member/s of the Cooperative.
+        </p>
+        <p class="indent">
+          Accordingly, I/We hereby agree not to withdraw said deposit or any part thereof as long as the said Loan
+          together with its interests and penalty remain unpaid.
+        </p>
+        <p class="indent">
+          Therefore, I/We, jointly and severally, empower and authorize the said Cooperative at their option and
+          without notice to off-set or apply to the payment of my/our own aforementioned loan together with its
+          interests and penalty, in the event of my/our failure to pay the same after its amortization and without
+          necessary of prior demand.
+        </p>
+        <p class="indent">
+          In Witness Whereof, I/We have hereunto signed our name/s this ________ day of __________, 20__
+          at ${line(formData.placeSigned || "Bislig City")}, Philippines.
+        </p>
+        <table class="no-border">
+          <tr><td>In joint-several capacity:</td><td></td></tr>
+          <tr><td>Name & Signature of Maker:</td><td><span class="value">${line(application.memberName)}</span></td></tr>
+          <tr><td>Name & Signature of Co-Maker:</td><td><span class="value">${line(formData.coMakerName)}</span></td></tr>
+          <tr><td>With Marital Consent:</td><td><span class="value">${line(formData.spouseName)}</span></td></tr>
+          <tr><td>Signed in the presence of:</td><td><span class="value"></span></td></tr>
+        </table>
+      </section>
+
+      <section class="page-break">
+        <h2>Amortization Schedule</h2>
+        <table class="no-border">
+          <tr><td>Name:</td><td><span class="value">${line(application.memberName)}</span></td><td>Ref. No.:</td><td><span class="value">${line(application.applicationNo)}</span></td></tr>
+          <tr><td>Type of Loan:</td><td><span class="value">${line(application.productName)}</span></td><td>Date Granted:</td><td><span class="value"></span></td></tr>
+          <tr><td>Amount Granted:</td><td><span class="value">${escapeHtml(formatMoney(principal))}</span></td><td>Maturity Date:</td><td><span class="value"></span></td></tr>
+          <tr><td>Interest:</td><td><span class="value">${escapeHtml(formatRateBps(application.annualInterestRateBps))}</span></td><td>Terms:</td><td><span class="value">${escapeHtml(termMonths)} months</span></td></tr>
+        </table>
+        <table class="compact">
+          <tr><th>Date of Payment</th><th>Monthly Principal</th><th>Principal Balance</th><th>Monthly Interest</th><th>Interest Balance</th><th>Monthly Amortization</th><th>Outstanding Balance</th></tr>
+          <tr><td colspan="7" style="height: 160px;">Attach saved computation amortization schedule.</td></tr>
+        </table>
+        <p class="small">Prepared by: ${line(preparedBy)} &nbsp;&nbsp;&nbsp; Verified by: &nbsp;&nbsp;&nbsp; NOTED:</p>
+        <section class="named-signatures">
+          <div><div class="name">ELLEN JOY P. LATIBAN</div><div>Bookkeeper</div></div>
+          <div><div class="name">JOEL L. YPARRAGUIRRE</div><div>Coop Manager</div></div>
+          <div><div class="name">VIRGINIA V. LACUNA</div><div>Board Chairman</div></div>
+        </section>
+        <p class="center" style="margin-top: 20px;">I hereby agree on the foregoing amortization schedule of my loan:</p>
+        <section class="signature-row" style="grid-template-columns: 1fr 1fr 1fr;">
+          <div></div>
+          <div class="signature">Member-Borrower<br>Date: __________________________</div>
+          <div></div>
+        </section>
+        <p class="small muted">Generated: ${escapeHtml(generatedAt)}</p>
       </section>
     </main>
   </body>
