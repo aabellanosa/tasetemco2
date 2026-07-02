@@ -157,6 +157,10 @@ function addMoney(...values) {
   return values.reduce((total, value) => total + moneyCents(value), 0) / MONEY_SCALE;
 }
 
+function percentOfMoney(amount, rateBps) {
+  return Math.round((moneyCents(amount) * Number(rateBps || 0)) / 10000) / MONEY_SCALE;
+}
+
 function formatTime(value) {
   if (!value) {
     return "Not refreshed yet";
@@ -5595,6 +5599,247 @@ function buildLoanBreakdownPrintHtml(loan, preparedBy = "") {
 </html>`;
 }
 
+function formCategoryMark(currentCategory, category) {
+  return currentCategory === category ? "&#9745;" : "&#9744;";
+}
+
+function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "") {
+  const principal = Number(
+    application.decision === "Approved" && application.recommendedPrincipal
+      ? application.recommendedPrincipal
+      : application.requestedPrincipal
+  );
+  const termMonths = Number(
+    application.decision === "Approved" && application.recommendedTermMonths
+      ? application.recommendedTermMonths
+      : application.requestedTermMonths
+  );
+  const serviceFee = percentOfMoney(principal, application.serviceFeeRateBps);
+  const insuranceFee = percentOfMoney(principal, application.insuranceFeeRateBps);
+  const cbuAmount = percentOfMoney(principal, application.cbuRateBps);
+  const savingsAmount = percentOfMoney(principal, application.savingsRetentionRateBps);
+  const totalDeductions = addMoney(serviceFee, insuranceFee, cbuAmount, savingsAmount);
+  const netProceeds = addMoney(principal, -totalDeductions);
+  const category = formData.loanCategory || "Providential";
+  const logoSrc = `${window.location.origin}/brand/tasetemco-seal.png`;
+  const generatedAt = new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date());
+  const line = (value = "") => escapeHtml(value || "");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>${escapeHtml(application.applicationNo)} Loan Application Form</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: #111;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 11px;
+        line-height: 1.25;
+      }
+      .page {
+        width: 8.5in;
+        min-height: 11in;
+        margin: 0 auto;
+        padding: 0.35in 0.45in;
+      }
+      .no-print {
+        margin: 12px auto;
+        max-width: 8.5in;
+        text-align: right;
+      }
+      .print-button {
+        background: #014709;
+        border: 0;
+        color: white;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 8px 12px;
+      }
+      .header {
+        align-items: center;
+        display: grid;
+        grid-template-columns: 72px 1fr 72px;
+        gap: 12px;
+        margin-bottom: 10px;
+        text-align: center;
+      }
+      .seal { height: 66px; width: 66px; object-fit: contain; }
+      .coop { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: 16px; margin-top: 4px; text-transform: uppercase; }
+      h2 {
+        background: #e8efe8;
+        border: 1px solid #333;
+        font-size: 11px;
+        margin-top: 8px;
+        padding: 4px 6px;
+        text-transform: uppercase;
+      }
+      table { border-collapse: collapse; width: 100%; }
+      td, th {
+        border: 1px solid #333;
+        padding: 4px 5px;
+        vertical-align: top;
+      }
+      .no-border td { border: 0; padding: 3px 4px; }
+      .label { color: #333; font-size: 9px; text-transform: uppercase; }
+      .value {
+        border-bottom: 1px solid #333;
+        display: block;
+        min-height: 16px;
+        padding-top: 2px;
+      }
+      .center { text-align: center; }
+      .right { text-align: right; }
+      .strong { font-weight: 700; }
+      .muted { color: #555; }
+      .checkboxes {
+        display: grid;
+        gap: 6px;
+        grid-template-columns: repeat(4, 1fr);
+        margin: 6px 0 8px;
+      }
+      .box {
+        border: 1px solid #333;
+        min-height: 42px;
+        padding: 5px;
+      }
+      .signatures {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(3, 1fr);
+        margin-top: 24px;
+      }
+      .signature {
+        border-top: 1px solid #111;
+        padding-top: 4px;
+        text-align: center;
+      }
+      .small { font-size: 9px; }
+      @media print {
+        .no-print { display: none; }
+        .page { margin: 0; width: auto; min-height: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="no-print">
+      <button class="print-button" onclick="window.print()">Print</button>
+    </div>
+    <main class="page">
+      <section class="header">
+        <img class="seal" src="${escapeHtml(logoSrc)}" alt="TASETEMCO seal">
+        <div>
+          <p class="coop">Tabon Secondary Teachers, Employees and Community Multi-Purpose Cooperative</p>
+          <p>Bislig City, Surigao del Sur</p>
+          <h1>Loan Application Form</h1>
+        </div>
+        <div class="small">Application No.<br><strong>${escapeHtml(application.applicationNo)}</strong></div>
+      </section>
+
+      <table class="no-border">
+        <tr>
+          <td style="width: 65%"><span class="label">Name of Borrower</span><span class="value">${line(application.memberName)}</span></td>
+          <td><span class="label">Date</span><span class="value">${escapeHtml(formatDate(application.applicationDate))}</span></td>
+        </tr>
+        <tr>
+          <td><span class="label">Address</span><span class="value">${line(formData.borrowerAddress)}</span></td>
+          <td><span class="label">Member No.</span><span class="value">${line(application.memberNo)}</span></td>
+        </tr>
+        <tr>
+          <td><span class="label">Name of Spouse</span><span class="value">${line(formData.spouseName)}</span></td>
+          <td><span class="label">Co-maker</span><span class="value">${line(formData.coMakerName)}</span></td>
+        </tr>
+      </table>
+
+      <h2>Type of Loan</h2>
+      <div class="checkboxes">
+        <div>${formCategoryMark(category, "Providential")} Providential</div>
+        <div>${formCategoryMark(category, "Entrepreneurial")} Entrepreneurial</div>
+        <div>${formCategoryMark(category, "Emergency")} Emergency</div>
+        <div>${formCategoryMark(category, "Other")} Other ${formData.otherLoanType ? `: ${line(formData.otherLoanType)}` : ""}</div>
+      </div>
+      <table>
+        <tr>
+          <td><span class="label">Loan Product</span><span class="value">${line(application.productName)}</span></td>
+          <td><span class="label">Amount Applied For</span><span class="value right">${escapeHtml(formatMoney(principal))}</span></td>
+          <td><span class="label">Term</span><span class="value right">${escapeHtml(termMonths)} months</span></td>
+        </tr>
+        <tr>
+          <td colspan="3"><span class="label">Purpose</span><span class="value">${line(application.purpose)}</span></td>
+        </tr>
+      </table>
+
+      <h2>Bookkeeper / Account Verification</h2>
+      <table>
+        <tr>
+          <td>CBU / Share Capital</td>
+          <td class="right">${escapeHtml(formatMoney(cbuAmount))}</td>
+          <td>Savings</td>
+          <td class="right">${escapeHtml(formatMoney(savingsAmount))}</td>
+        </tr>
+        <tr>
+          <td>Outstanding Loan Balance</td>
+          <td></td>
+          <td>Last Availment / Due Date</td>
+          <td></td>
+        </tr>
+      </table>
+      <div class="box"><span class="label">Bookkeeper Notes</span><br>${line(formData.bookkeeperNotes)}</div>
+
+      <h2>Action Taken</h2>
+      <table>
+        <tr>
+          <td>Status</td>
+          <td>${line(application.status)}</td>
+          <td>Decision Date</td>
+          <td>${escapeHtml(formatDate(application.decisionDate))}</td>
+        </tr>
+        <tr>
+          <td>Recommended Principal</td>
+          <td class="right">${escapeHtml(formatMoney(principal))}</td>
+          <td>Recommended Term</td>
+          <td class="right">${escapeHtml(termMonths)} months</td>
+        </tr>
+      </table>
+      <div class="box"><span class="label">Approval / Routing Notes</span><br>${line(formData.approvalNotes || application.decisionRemarks)}</div>
+
+      <h2>Disbursement / Deductions</h2>
+      <table>
+        <tr><td>Amount Granted</td><td class="right strong">${escapeHtml(formatMoney(principal))}</td><td>Promissory Note No.</td><td>${line(formData.promissoryNoteNo)}</td></tr>
+        <tr><td>CBU (${escapeHtml(formatRateBps(application.cbuRateBps))})</td><td class="right">${escapeHtml(formatMoney(cbuAmount))}</td><td>Savings (${escapeHtml(formatRateBps(application.savingsRetentionRateBps))})</td><td class="right">${escapeHtml(formatMoney(savingsAmount))}</td></tr>
+        <tr><td>Service Charge (${escapeHtml(formatRateBps(application.serviceFeeRateBps))})</td><td class="right">${escapeHtml(formatMoney(serviceFee))}</td><td>Insurance (${escapeHtml(formatRateBps(application.insuranceFeeRateBps))})</td><td class="right">${escapeHtml(formatMoney(insuranceFee))}</td></tr>
+        <tr><td>Total Deductions</td><td class="right strong">${escapeHtml(formatMoney(totalDeductions))}</td><td>Net Proceeds</td><td class="right strong">${escapeHtml(formatMoney(netProceeds))}</td></tr>
+      </table>
+
+      <h2>Acknowledgement and Authorization</h2>
+      <p>
+        I acknowledge the above loan terms, deductions, and repayment obligation. I authorize the cooperative
+        to deduct applicable charges, CBU, savings retention, and loan amortizations according to cooperative policy.
+      </p>
+      <p class="muted small" style="margin-top: 6px;">
+        Place signed: ${line(formData.placeSigned)} &nbsp; | &nbsp; Generated: ${escapeHtml(generatedAt)} &nbsp; | &nbsp; Prepared by: ${line(preparedBy)}
+      </p>
+
+      <section class="signatures">
+        <div class="signature">Borrower / Member</div>
+        <div class="signature">Spouse</div>
+        <div class="signature">Co-maker</div>
+        <div class="signature">Bookkeeper</div>
+        <div class="signature">Credit Committee / Approver</div>
+        <div class="signature">General Manager / Authorized Officer</div>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
 function LoanProducts({ user }) {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(defaultLoanProductForm);
@@ -6141,6 +6386,23 @@ function LoanApplications({ user }) {
     }
   }
 
+  function printLoanApplicationDocument() {
+    if (!documentApplication) {
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=900,height=1100");
+    if (!printWindow) {
+      setError("Allow pop-ups for this site to print the loan application form.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(buildLoanApplicationFormPrintHtml(documentApplication, documentForm, user.username));
+    printWindow.document.close();
+    printWindow.focus();
+  }
+
   function resetForm() {
     const firstActive = activeProducts[0];
     setEditingNo("");
@@ -6673,6 +6935,9 @@ function LoanApplications({ user }) {
           <ModalFooter>
             <Button variant="outline" mr={3} onClick={documentModal.onClose}>
               Cancel
+            </Button>
+            <Button variant="outline" mr={3} onClick={printLoanApplicationDocument}>
+              Print Paper Form
             </Button>
             <Button colorScheme="green" onClick={saveDocumentForm} isLoading={busyAction === "document-save"}>
               Save Form
