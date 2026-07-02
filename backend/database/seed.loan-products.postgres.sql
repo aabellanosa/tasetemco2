@@ -21,19 +21,19 @@ INSERT INTO loan_products (
   ),
   (
     'SALARY', 'Salary Loan', 'Salary loan with service fee, insurance, CBU, and savings retention.',
-    10000, 350000, 1, 36, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
+    10000, 350000, 6, 60, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
     150, 200, 100, TRUE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
     '4040', '1010', 'Active'
   ),
   (
     'EDUCATIONAL', 'Educational Loan', 'Education-purpose loan with standard retention deductions.',
-    5000, 10000, 1, 12, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
+    5000, 10000, 6, 60, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
     150, 200, 100, TRUE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
     '4040', '1010', 'Active'
   ),
   (
     'APPLIANCE', 'Appliance Loan', 'Appliance loan with standard retention deductions.',
-    5000, 100000, 1, 24, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
+    5000, 100000, 6, 60, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
     150, 200, 100, TRUE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
     '4040', '1010', 'Active'
   ),
