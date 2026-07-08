@@ -284,7 +284,8 @@ async function run() {
         name: "Smoke Test Staff",
         username: smokeUsername,
         role: "Membership Officer",
-        defaultView: "members"
+        additionalRoles: ["Teller / Cashier"],
+        defaultView: "dashboard"
       })
     });
     const createSystemUserBody = await createSystemUser.json();
@@ -292,9 +293,27 @@ async function run() {
     if (
       !createSystemUser.ok ||
       createSystemUserBody.user.username !== smokeUsername ||
-      createSystemUserBody.user.status !== "Active"
+      createSystemUserBody.user.status !== "Active" ||
+      !createSystemUserBody.user.additionalRoles.includes("Teller / Cashier")
     ) {
-      throw new Error("Admin should be able to create a system user.");
+      throw new Error("Admin should be able to create a system user with additional roles.");
+    }
+
+    const combinedRoleLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: smokeUsername, password: "p@55@LL" })
+    });
+    const combinedRoleBody = await combinedRoleLogin.json();
+
+    if (
+      !combinedRoleLogin.ok ||
+      !combinedRoleBody.user.permissions.includes("members:applications:create") ||
+      !combinedRoleBody.user.permissions.includes("members:savings-deposits:create") ||
+      !combinedRoleBody.user.allowedViews.includes("members") ||
+      !combinedRoleBody.user.allowedViews.includes("loans")
+    ) {
+      throw new Error("Additional roles should extend login permissions and screens.");
     }
 
     const duplicateSystemUser = await fetch(`${baseUrl}/api/admin/users`, {
@@ -323,8 +342,9 @@ async function run() {
       },
       body: JSON.stringify({
         role: "Membership Officer",
+        additionalRoles: ["Teller / Cashier"],
         status: "Inactive",
-        defaultView: "members"
+        defaultView: "dashboard"
       })
     });
     const deactivateSystemUserBody = await deactivateSystemUser.json();
@@ -2664,7 +2684,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-02",
+        releaseDate: "2026-07-20",
         referenceNo: "LV-SMOKE-NO-FUNDING",
         cashReleased: 11830
       })
@@ -2675,7 +2695,9 @@ async function run() {
       unfundedLoanRelease.status !== 409 ||
       !unfundedLoanReleaseBody.error?.includes("Insufficient teller cash")
     ) {
-      throw new Error("Teller should not release a loan before sufficient cash is available.");
+      throw new Error(
+        `Teller should not release a loan before sufficient cash is available. Got ${unfundedLoanRelease.status}: ${JSON.stringify(unfundedLoanReleaseBody)}`
+      );
     }
 
     const fundingPositionBeforeFunding = await fetch(
@@ -2708,7 +2730,7 @@ async function run() {
         sourceAccountCode: "1020",
         sourceAccountName: "Cash in Bank",
         referenceNo: "TF-SMOKE-001",
-        fundingDate: "2026-07-02"
+        fundingDate: "2026-07-20"
       })
     });
     const prepareTellerFundingBody = await prepareTellerFunding.json();
@@ -2840,7 +2862,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-02",
+        releaseDate: "2026-07-20",
         referenceNo: "LV-SMOKE-WRONG-CASH",
         cashReleased: 12000
       })
@@ -2857,7 +2879,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-02",
+        releaseDate: "2026-07-20",
         referenceNo: "WV-SMOKE-001",
         cashReleased: 11830
       })
@@ -2874,7 +2896,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-02",
+        releaseDate: "2026-07-20",
         referenceNo: "LV-SMOKE-001",
         cashReleased: 11830
       })
@@ -2899,7 +2921,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-02",
+        releaseDate: "2026-07-20",
         referenceNo: "LV-SMOKE-002",
         cashReleased: 11830
       })
@@ -3192,7 +3214,7 @@ async function run() {
           Cookie: tellerCookie
         },
         body: JSON.stringify({
-          collectionDate: "2026-07-02",
+          collectionDate: "2026-07-21",
           referenceNo: "OR-LOAN-WRONG",
           amountReceived: 1700
         })
@@ -3212,7 +3234,7 @@ async function run() {
           Cookie: tellerCookie
         },
         body: JSON.stringify({
-          collectionDate: "2026-07-02",
+          collectionDate: "2026-07-21",
           referenceNo: "OR-LOAN-SMOKE-001",
           amountReceived: 1950
         })
@@ -3250,7 +3272,7 @@ async function run() {
           Cookie: tellerCookie
         },
         body: JSON.stringify({
-          collectionDate: "2026-07-02",
+          collectionDate: "2026-07-21",
           referenceNo: "OR-LOAN-SMOKE-001",
           amountReceived: 1909.38
         })
@@ -3351,7 +3373,7 @@ async function run() {
         Cookie: loanOfficerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-02",
+        releaseDate: "2026-07-20",
         referenceNo: "LV-SMOKE-OFFICER",
         cashReleased: 11830
       })

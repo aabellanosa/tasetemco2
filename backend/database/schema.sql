@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   full_name VARCHAR(160) NOT NULL,
   username VARCHAR(80) NOT NULL UNIQUE,
   role_name VARCHAR(120) NOT NULL,
+  additional_roles TEXT NOT NULL DEFAULT '[]',
   status VARCHAR(30) NOT NULL DEFAULT 'Active',
   default_view VARCHAR(40) NOT NULL DEFAULT 'dashboard',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

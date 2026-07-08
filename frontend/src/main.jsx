@@ -4838,6 +4838,7 @@ function AdminUserManagement({ user }) {
     name: "",
     username: "",
     role: "Membership Officer",
+    additionalRoles: [],
     defaultView: "members"
   });
   const [drafts, setDrafts] = useState({});
@@ -4848,9 +4849,17 @@ function AdminUserManagement({ user }) {
   const canViewUsers = canManageUsers || user.permissions.includes("users:view");
 
   const roleOptions = useMemo(() => roles.map((role) => role.name), [roles]);
+  const roleMap = useMemo(() => new Map(roles.map((role) => [role.name, role])), [roles]);
+  const getCombinedViews = useCallback(
+    (role, additionalRoles = []) =>
+      Array.from(
+        new Set([role, ...additionalRoles].flatMap((roleName) => roleMap.get(roleName)?.defaultViews || []))
+      ),
+    [roleMap]
+  );
   const defaultViews = useMemo(
-    () => roles.find((role) => role.name === form.role)?.defaultViews || [],
-    [form.role, roles]
+    () => getCombinedViews(form.role, form.additionalRoles),
+    [form.additionalRoles, form.role, getCombinedViews]
   );
 
   const loadUsers = useCallback(async () => {
@@ -4867,6 +4876,7 @@ function AdminUserManagement({ user }) {
             item.username,
             {
               role: item.role,
+              additionalRoles: item.additionalRoles || [],
               status: item.status,
               defaultView: item.defaultView
             }
@@ -4891,7 +4901,10 @@ function AdminUserManagement({ user }) {
   function updateDraft(username, patch) {
     setDrafts((current) => {
       const nextDraft = { ...current[username], ...patch };
-      const nextRoleViews = roles.find((role) => role.name === nextDraft.role)?.defaultViews || [];
+      nextDraft.additionalRoles = (nextDraft.additionalRoles || []).filter(
+        (roleName) => roleName !== nextDraft.role
+      );
+      const nextRoleViews = getCombinedViews(nextDraft.role, nextDraft.additionalRoles);
 
       if (!nextRoleViews.includes(nextDraft.defaultView)) {
         nextDraft.defaultView = nextRoleViews[0] || "dashboard";
@@ -4899,6 +4912,29 @@ function AdminUserManagement({ user }) {
 
       return { ...current, [username]: nextDraft };
     });
+  }
+
+  function toggleFormAdditionalRole(roleName, checked) {
+    setForm((current) => {
+      const additionalRoles = checked
+        ? Array.from(new Set([...(current.additionalRoles || []), roleName]))
+        : (current.additionalRoles || []).filter((item) => item !== roleName);
+      const cleanAdditionalRoles = additionalRoles.filter((item) => item !== current.role);
+      const nextViews = getCombinedViews(current.role, cleanAdditionalRoles);
+      return {
+        ...current,
+        additionalRoles: cleanAdditionalRoles,
+        defaultView: nextViews.includes(current.defaultView) ? current.defaultView : nextViews[0] || "dashboard"
+      };
+    });
+  }
+
+  function toggleDraftAdditionalRole(username, roleName, checked) {
+    const draft = drafts[username] || {};
+    const additionalRoles = checked
+      ? Array.from(new Set([...(draft.additionalRoles || []), roleName]))
+      : (draft.additionalRoles || []).filter((item) => item !== roleName);
+    updateDraft(username, { additionalRoles });
   }
 
   async function createUser(event) {
@@ -4916,6 +4952,7 @@ function AdminUserManagement({ user }) {
         name: "",
         username: "",
         role: "Membership Officer",
+        additionalRoles: [],
         defaultView: "members"
       });
       setMessage(`Created ${form.username}. Temporary password is ${defaultPassword}.`);
@@ -5000,7 +5037,21 @@ function AdminUserManagement({ user }) {
             <FormLabel>Role</FormLabel>
             <Select
               value={form.role}
-              onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => {
+                  const role = event.target.value;
+                  const additionalRoles = (current.additionalRoles || []).filter((item) => item !== role);
+                  const nextViews = getCombinedViews(role, additionalRoles);
+                  return {
+                    ...current,
+                    role,
+                    additionalRoles,
+                    defaultView: nextViews.includes(current.defaultView)
+                      ? current.defaultView
+                      : nextViews[0] || "dashboard"
+                  };
+                })
+              }
             >
               {roleOptions.map((role) => (
                 <option key={role} value={role}>{role}</option>
@@ -5019,6 +5070,25 @@ function AdminUserManagement({ user }) {
             </Select>
           </FormControl>
         </Grid>
+        <Box borderWidth="1px" borderRadius="md" p={4} mt={4}>
+          <Text fontWeight="semibold" mb={2}>Additional Roles</Text>
+          <Text color="gray.600" fontSize="sm" mb={3}>
+            Use this when one staff member performs more than one cooperative responsibility.
+          </Text>
+          <HStack spacing={4} flexWrap="wrap" align="flex-start">
+            {roleOptions
+              .filter((role) => role !== form.role)
+              .map((role) => (
+                <Checkbox
+                  key={role}
+                  isChecked={(form.additionalRoles || []).includes(role)}
+                  onChange={(event) => toggleFormAdditionalRole(role, event.target.checked)}
+                >
+                  {role}
+                </Checkbox>
+              ))}
+          </HStack>
+        </Box>
         <Flex justify="space-between" align="center" gap={4} wrap="wrap" mt={4}>
           <Text color="gray.600" fontSize="sm">
             New users sign in with the temporary password: {defaultPassword}
@@ -5035,7 +5105,8 @@ function AdminUserManagement({ user }) {
           <Thead>
             <Tr>
               <Th>User</Th>
-              <Th>Role</Th>
+              <Th>Primary Role</Th>
+              <Th>Additional Roles</Th>
               <Th>Default Screen</Th>
               <Th>Status</Th>
               <Th></Th>
@@ -5044,13 +5115,34 @@ function AdminUserManagement({ user }) {
           <Tbody>
             {users.map((item) => {
               const draft = drafts[item.username] || item;
-              const draftViews = roles.find((role) => role.name === draft.role)?.defaultViews || [];
+              const draftAdditionalRoles = draft.additionalRoles || [];
+              const draftViews = getCombinedViews(draft.role, draftAdditionalRoles);
 
               return (
                 <Tr key={item.username}>
                   <Td>
-                    <Text fontWeight="semibold">{item.name}</Text>
-                    <Text color="gray.500" fontSize="sm">@{item.username}</Text>
+                    <Box
+                      bg="gray.50"
+                      borderWidth="1px"
+                      borderColor="gray.200"
+                      borderRadius="md"
+                      boxShadow="sm"
+                      p={3}
+                      minW="220px"
+                    >
+                      <HStack justify="space-between" align="flex-start" spacing={3}>
+                        <Box minW={0}>
+                          <Text fontWeight="semibold" noOfLines={2}>{item.name}</Text>
+                          <Text color="gray.500" fontSize="sm">@{item.username}</Text>
+                        </Box>
+                        <Badge colorScheme={item.status === "Active" ? "green" : "gray"} flexShrink={0}>
+                          {item.status}
+                        </Badge>
+                      </HStack>
+                      <Text color="gray.600" fontSize="xs" mt={2} noOfLines={2}>
+                        {item.role}
+                      </Text>
+                    </Box>
                   </Td>
                   <Td minW="220px">
                     {canManageUsers ? (
@@ -5061,6 +5153,34 @@ function AdminUserManagement({ user }) {
                       </Select>
                     ) : (
                       <Text>{item.role}</Text>
+                    )}
+                  </Td>
+                  <Td minW="280px">
+                    {canManageUsers ? (
+                      <VStack align="stretch" spacing={1}>
+                        {roleOptions
+                          .filter((role) => role !== draft.role)
+                          .map((role) => (
+                            <Checkbox
+                              key={role}
+                              size="sm"
+                              isChecked={draftAdditionalRoles.includes(role)}
+                              onChange={(event) =>
+                                toggleDraftAdditionalRole(item.username, role, event.target.checked)
+                              }
+                            >
+                              {role}
+                            </Checkbox>
+                          ))}
+                      </VStack>
+                    ) : item.additionalRoles?.length ? (
+                      <VStack align="stretch" spacing={1}>
+                        {item.additionalRoles.map((role) => (
+                          <Badge key={role} width="fit-content" colorScheme="blue">{role}</Badge>
+                        ))}
+                      </VStack>
+                    ) : (
+                      <Text color="gray.500">None</Text>
                     )}
                   </Td>
                   <Td minW="150px">

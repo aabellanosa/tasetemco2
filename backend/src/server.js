@@ -25,6 +25,7 @@ import {
   openingBalanceImportRows,
   publicUser,
   roles,
+  rolePermissions,
   roleViews,
   savingsDeposits,
   savingsWithdrawals,
@@ -133,6 +134,7 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  users: ["additional_roles"],
   members: [
     "contact_number",
     "address",
@@ -389,6 +391,37 @@ const requiredSchemaColumns = {
 
 app.use(express.json());
 
+function parseAdditionalRoles(value) {
+  if (Array.isArray(value)) {
+    return value.filter((role) => roles.includes(role));
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return parseAdditionalRoles(parsed);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function normalizeAdditionalRoles(primaryRole, value) {
+  return Array.from(new Set(parseAdditionalRoles(value))).filter((role) => role !== primaryRole);
+}
+
+function getAssignedRoles(primaryRole, additionalRoles = []) {
+  return [primaryRole, ...normalizeAdditionalRoles(primaryRole, additionalRoles)].filter(
+    (role, index, list) => role && list.indexOf(role) === index
+  );
+}
+
+function getRoleViews(assignedRoles) {
+  return Array.from(new Set(assignedRoles.flatMap((role) => roleViews[role] || [])));
+}
+
 function wantsPostgres() {
   return Boolean(
     process.env.DATABASE_URL ||
@@ -526,14 +559,22 @@ async function findUser(username) {
   }
 
   const [rows] = await db.execute(
-    `SELECT id, full_name AS name, username, role_name AS role, default_view AS defaultView
+    `SELECT id, full_name AS name, username, role_name AS role,
+            additional_roles AS additionalRoles, default_view AS defaultView
      FROM users
      WHERE username = ? AND status = 'Active'
      LIMIT 1`,
     [username]
   );
 
-  return rows[0] || null;
+  if (!rows[0]) {
+    return null;
+  }
+
+  return {
+    ...rows[0],
+    additionalRoles: normalizeAdditionalRoles(rows[0].role, rows[0].additionalRoles)
+  };
 }
 
 async function listSystemUsers() {
@@ -545,6 +586,7 @@ async function listSystemUsers() {
       name: user.name,
       username: user.username,
       role: user.role,
+      additionalRoles: normalizeAdditionalRoles(user.role, user.additionalRoles),
       status: user.status || "Active",
       defaultView: user.defaultView
     }));
@@ -552,12 +594,16 @@ async function listSystemUsers() {
 
   const [rows] = await db.execute(
     `SELECT id, full_name AS name, username, role_name AS role, status,
-            default_view AS defaultView, created_at AS createdAt
+            additional_roles AS additionalRoles, default_view AS defaultView,
+            created_at AS createdAt
      FROM users
      ORDER BY username`
   );
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    additionalRoles: normalizeAdditionalRoles(row.role, row.additionalRoles)
+  }));
 }
 
 function mapLoanProduct(row) {
@@ -2771,7 +2817,8 @@ function validateSystemUserInput(body) {
   const name = String(body.name || "").trim();
   const username = String(body.username || "").trim().toLowerCase();
   const role = String(body.role || "").trim();
-  const allowedViews = roleViews[role] || [];
+  const additionalRoles = normalizeAdditionalRoles(role, body.additionalRoles);
+  const allowedViews = getRoleViews(getAssignedRoles(role, additionalRoles));
   const requestedDefaultView = String(body.defaultView || "").trim();
   const defaultView = allowedViews.includes(requestedDefaultView) ? requestedDefaultView : allowedViews[0];
 
@@ -2796,6 +2843,7 @@ function validateSystemUserInput(body) {
       name,
       username,
       role,
+      additionalRoles,
       defaultView
     }
   };
@@ -2815,6 +2863,7 @@ async function createSystemUser(input) {
       name: input.name,
       username: input.username,
       role: input.role,
+      additionalRoles: input.additionalRoles,
       defaultView: input.defaultView,
       status: "Active"
     };
@@ -2824,9 +2873,15 @@ async function createSystemUser(input) {
 
   try {
     await db.execute(
-      `INSERT INTO users (full_name, username, role_name, status, default_view)
-       VALUES (?, ?, ?, 'Active', ?)`,
-      [input.name, input.username, input.role, input.defaultView]
+      `INSERT INTO users (full_name, username, role_name, additional_roles, status, default_view)
+       VALUES (?, ?, ?, ?::jsonb, 'Active', ?)`,
+      [
+        input.name,
+        input.username,
+        input.role,
+        JSON.stringify(input.additionalRoles || []),
+        input.defaultView
+      ]
     );
   } catch (error) {
     if (error.code === "23505") {
@@ -2838,13 +2893,18 @@ async function createSystemUser(input) {
 
   const [rows] = await db.execute(
     `SELECT id, full_name AS name, username, role_name AS role, status,
-            default_view AS defaultView, created_at AS createdAt
+            additional_roles AS additionalRoles, default_view AS defaultView, created_at AS createdAt
      FROM users
      WHERE username = ?`,
     [input.username]
   );
 
-  return { user: rows[0] };
+  return {
+    user: {
+      ...rows[0],
+      additionalRoles: normalizeAdditionalRoles(rows[0].role, rows[0].additionalRoles)
+    }
+  };
 }
 
 async function updateSystemUser(username, input) {
@@ -2862,7 +2922,8 @@ async function updateSystemUser(username, input) {
     return { error: "Valid role is required.", statusCode: 400 };
   }
 
-  const allowedViews = roleViews[input.role] || [];
+  const additionalRoles = normalizeAdditionalRoles(input.role, input.additionalRoles);
+  const allowedViews = getRoleViews(getAssignedRoles(input.role, additionalRoles));
   const defaultView = allowedViews.includes(input.defaultView) ? input.defaultView : allowedViews[0];
 
   if (!defaultView) {
@@ -2877,6 +2938,7 @@ async function updateSystemUser(username, input) {
     }
 
     user.role = input.role;
+    user.additionalRoles = additionalRoles;
     user.defaultView = defaultView;
     user.status = input.status;
 
@@ -2886,6 +2948,7 @@ async function updateSystemUser(username, input) {
         name: user.name,
         username: user.username,
         role: user.role,
+        additionalRoles: user.additionalRoles,
         status: user.status,
         defaultView: user.defaultView
       }
@@ -2905,20 +2968,25 @@ async function updateSystemUser(username, input) {
 
   await db.execute(
     `UPDATE users
-     SET role_name = ?, status = ?, default_view = ?
+     SET role_name = ?, additional_roles = ?::jsonb, status = ?, default_view = ?
      WHERE username = ?`,
-    [input.role, input.status, defaultView, username]
+    [input.role, JSON.stringify(additionalRoles), input.status, defaultView, username]
   );
 
   const [rows] = await db.execute(
     `SELECT id, full_name AS name, username, role_name AS role, status,
-            default_view AS defaultView, created_at AS createdAt
+            additional_roles AS additionalRoles, default_view AS defaultView, created_at AS createdAt
      FROM users
      WHERE username = ?`,
     [username]
   );
 
-  return { user: rows[0] };
+  return {
+    user: {
+      ...rows[0],
+      additionalRoles: normalizeAdditionalRoles(rows[0].role, rows[0].additionalRoles)
+    }
+  };
 }
 
 async function listMembers() {
@@ -8814,7 +8882,8 @@ app.get("/api/admin/users", async (request, response) => {
     users: await listSystemUsers(),
     roles: roles.map((role) => ({
       name: role,
-      defaultViews: roleViews[role] || []
+      defaultViews: roleViews[role] || [],
+      permissions: rolePermissions[role] || []
     })),
     defaultPassword: isAdminUser(user) ? defaultPassword : ""
   });
@@ -8865,6 +8934,7 @@ app.patch("/api/admin/users/:username", async (request, response) => {
 
   const result = await updateSystemUser(request.params.username, {
     role: String(request.body.role || "").trim(),
+    additionalRoles: request.body.additionalRoles,
     status: String(request.body.status || "").trim(),
     defaultView: String(request.body.defaultView || "").trim()
   });

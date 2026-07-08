@@ -580,14 +580,24 @@ export const dashboard = {
 };
 
 export function publicUser(user) {
-  const allowedViews = roleViews[user.role] || ["dashboard"];
-  const permissions = rolePermissions[user.role] || [];
+  const additionalRoles = Array.isArray(user.additionalRoles) ? user.additionalRoles : [];
+  const assignedRoles = [user.role, ...additionalRoles].filter((role, index, list) =>
+    role && list.indexOf(role) === index
+  );
+  const allowedViews = Array.from(
+    new Set(assignedRoles.flatMap((role) => roleViews[role] || []))
+  );
+  const permissions = Array.from(
+    new Set(assignedRoles.flatMap((role) => rolePermissions[role] || []))
+  );
 
   return {
     id: user.id,
     name: user.name,
     username: user.username,
     role: user.role,
+    additionalRoles,
+    assignedRoles,
     defaultView: allowedViews.includes(user.defaultView) ? user.defaultView : allowedViews[0],
     allowedViews,
     permissions
