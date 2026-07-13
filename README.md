@@ -201,7 +201,7 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
-Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, and application date, then saves a Draft. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application.
+Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, application date, and internal collateral type, then saves a Draft. Collateral type is limited to `PDC` or `ATM Cards`, supports management review only, and is intentionally excluded from the printed loan application form. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application.
 
 Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the member's requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable.
 
