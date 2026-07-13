@@ -5827,6 +5827,10 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
   const savingsAmount = percentOfMoney(principal, application.savingsRetentionRateBps);
   const totalDeductions = addMoney(serviceFee, insuranceFee, cbuAmount, savingsAmount);
   const netProceeds = addMoney(principal, -totalDeductions);
+  const cbuRateLabel = formatRateBps(application.cbuRateBps);
+  const savingsRateLabel = formatRateBps(application.savingsRetentionRateBps);
+  const serviceFeeRateLabel = formatRateBps(application.serviceFeeRateBps);
+  const insuranceRateLabel = formatRateBps(application.insuranceFeeRateBps);
   const category = formData.loanCategory || "Providential";
   const logoSrc = `${window.location.origin}/brand/tasetemco-seal.png`;
   const cdaLogoSrc = `${window.location.origin}/brand/cda-pftec.jpeg`;
@@ -6272,10 +6276,10 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       <div class="dash-rule"></div>
       <div class="deductions">
         <span>Amount Granted</span><span>:</span><span>${pesoField(principal)}</span>
-        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CBU&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2%</span><span>:</span><span>${pesoField(cbuAmount)}</span>
-        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Savings&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1%</span><span>:</span><span>${pesoField(savingsAmount)}</span>
-        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Service Charge&nbsp;&nbsp;4.5%</span><span>:</span><span>${pesoField(serviceFee)}</span>
-        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Insurance&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.5%</span><span>:</span><span>${pesoField(insuranceFee)}</span>
+        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CBU&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${cbuRateLabel}</span><span>:</span><span>${pesoField(cbuAmount)}</span>
+        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Savings&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${savingsRateLabel}</span><span>:</span><span>${pesoField(savingsAmount)}</span>
+        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Service Charge&nbsp;&nbsp;${serviceFeeRateLabel}</span><span>:</span><span>${pesoField(serviceFee)}</span>
+        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Insurance&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${insuranceRateLabel}</span><span>:</span><span>${pesoField(insuranceFee)}</span>
         <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Total GAS</span><span>:</span><span>${pesoField(totalDeductions)}</span>
         <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Total Net</span><span>:</span><span>${pesoField(netProceeds)}</span>
         <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Previous Loan Balance</span><span>:</span><span>${pesoBlank()}</span>

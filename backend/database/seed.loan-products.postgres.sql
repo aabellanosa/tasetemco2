@@ -14,8 +14,8 @@ INSERT INTO loan_products (
     '4040', '1010', 'Active'
   ),
   (
-    'PETTY-CASH', 'Petty Cash Loan', 'One-month petty cash loan with service fee deducted from proceeds.',
-    500, 10000, 1, 1, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
+    'PETTY-CASH', 'Petty Cash Loan', 'One-month petty cash loan from PHP 1,000 to PHP 2,000 with no service fee.',
+    1000, 2000, 1, 1, 3000, 'Diminishing Balance', 'Monthly', 0, 0,
     0, 0, 0, FALSE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
     '4040', '1010', 'Active'
   ),

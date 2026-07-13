@@ -1941,6 +1941,13 @@ async function run() {
       !adminLoanProductRows.some((product) => product.code === "EMERGENCY") ||
       !adminLoanProductRows.some(
         (product) =>
+          product.code === "PETTY-CASH" &&
+          product.minimumPrincipal === 1000 &&
+          product.maximumPrincipal === 2000 &&
+          product.serviceFeeRateBps === 0
+      ) ||
+      !adminLoanProductRows.some(
+        (product) =>
           product.code === "SMALL-BUSINESS" &&
           product.minimumPrincipal === 5000 &&
           product.maximumPrincipal === 100000 &&
