@@ -256,6 +256,8 @@ Teller Cash Funding v1c adds accounting completion to the reviewed-batch posting
 
 Loan Collection v1a introduces exact scheduled installment collection. Teller/Cashier selects a posted loan and the system presents only its earliest unpaid installment. Early payment is allowed, but Teller cannot skip installments, alter the scheduled principal-interest split, or enter a partial or excess amount. A unique official receipt/reference is required. Recording creates an immutable cash-in row in the Open teller batch and marks that installment `Paid`. After Teller cash count and Bookkeeper review, `Post reviewed batch` debits Cash on Hand for the total received, credits Loans Receivable for scheduled principal, and credits Interest Income for scheduled interest. Loan Officer, Admin, Manager, Approver, and Auditor have read-only collection visibility.
 
+Loan Portfolio Watch v1 makes collection follow-up visible on authorized dashboards. The seeded demo includes one posted loan with an overdue installment and one installment due within 7 days. Borrower-level alert details are shown only to management, loan, accounting, audit, and executive roles because overdue loan information is sensitive member credit data. Teller/Cashier and Membership Officer dashboards do not receive portfolio-wide borrower details.
+
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
 | System Administrator | Yes | No | No | No |
