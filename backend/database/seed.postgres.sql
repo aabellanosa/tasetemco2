@@ -138,6 +138,15 @@ INSERT INTO loan_applications (
     200, '1050', '4010', '4030', '4050', '3010', '2020', '4040',
     '1010', 'Submitted', 'loanofficer', 'loanofficer', '2026-06-15 10:00:00+08',
     '', 0, 0, NULL, '', NULL, NULL, NULL
+  ),
+  (
+    'LA-DEMO-PASTDUE', 'M-000621', 'Alma R. Dizon', 'SALARY', 'Salary Loan',
+    15000, 3, 'Demo posted loan for collection follow-up', 'ATM Cards', CURRENT_DATE - INTERVAL '70 days',
+    3000, 'Diminishing Balance', 'Monthly', 675, 450, 0, 0, 0, FALSE,
+    200, '1050', '4010', '4030', '4050', '3010', '2020', '4040',
+    '1010', 'Posted', 'loanofficer', 'loanofficer', CURRENT_TIMESTAMP - INTERVAL '70 days',
+    'Demo account for overdue collection monitoring.', 15000, 3, 'Approved', 'Approved for seeded demo.',
+    CURRENT_DATE - INTERVAL '69 days', 'approver', CURRENT_TIMESTAMP - INTERVAL '69 days'
   )
 ON CONFLICT (application_no) DO UPDATE SET
   member_no = EXCLUDED.member_no,
@@ -225,3 +234,90 @@ ON CONFLICT (payment_no) DO UPDATE SET
   reference_no = EXCLUDED.reference_no,
   received_by = EXCLUDED.received_by,
   status = EXCLUDED.status;
+
+INSERT INTO loans (
+  loan_no, application_no, member_no, member_name, product_code, product_name,
+  principal, term_months, annual_interest_rate_bps, interest_method, payment_frequency,
+  processing_fee, service_fee_rate_bps, insurance_fee, insurance_fee_rate_bps,
+  cbu_amount, cbu_rate_bps, cbu_applied, savings_retention_amount,
+  savings_retention_rate_bps, total_interest, total_payable, net_proceeds,
+  installment_count, first_payment_date, maturity_date, status, computed_by, computed_at
+) VALUES (
+  'LN-DEMO-PASTDUE', 'LA-DEMO-PASTDUE', 'M-000621', 'Alma R. Dizon', 'SALARY', 'Salary Loan',
+  15000, 3, 3000, 'Diminishing Balance', 'Monthly',
+  675, 450, 0, 0, 0, 0, FALSE, 0, 0, 750.00, 15750.00, 14325,
+  3, CURRENT_DATE - INTERVAL '35 days', CURRENT_DATE + INTERVAL '35 days', 'Posted',
+  'loanofficer', CURRENT_TIMESTAMP - INTERVAL '68 days'
+)
+ON CONFLICT (loan_no) DO UPDATE SET
+  application_no = EXCLUDED.application_no,
+  member_no = EXCLUDED.member_no,
+  member_name = EXCLUDED.member_name,
+  product_code = EXCLUDED.product_code,
+  product_name = EXCLUDED.product_name,
+  principal = EXCLUDED.principal,
+  term_months = EXCLUDED.term_months,
+  annual_interest_rate_bps = EXCLUDED.annual_interest_rate_bps,
+  interest_method = EXCLUDED.interest_method,
+  payment_frequency = EXCLUDED.payment_frequency,
+  processing_fee = EXCLUDED.processing_fee,
+  service_fee_rate_bps = EXCLUDED.service_fee_rate_bps,
+  insurance_fee = EXCLUDED.insurance_fee,
+  insurance_fee_rate_bps = EXCLUDED.insurance_fee_rate_bps,
+  cbu_amount = EXCLUDED.cbu_amount,
+  cbu_rate_bps = EXCLUDED.cbu_rate_bps,
+  cbu_applied = EXCLUDED.cbu_applied,
+  savings_retention_amount = EXCLUDED.savings_retention_amount,
+  savings_retention_rate_bps = EXCLUDED.savings_retention_rate_bps,
+  total_interest = EXCLUDED.total_interest,
+  total_payable = EXCLUDED.total_payable,
+  net_proceeds = EXCLUDED.net_proceeds,
+  installment_count = EXCLUDED.installment_count,
+  first_payment_date = EXCLUDED.first_payment_date,
+  maturity_date = EXCLUDED.maturity_date,
+  status = EXCLUDED.status,
+  computed_by = EXCLUDED.computed_by,
+  computed_at = EXCLUDED.computed_at;
+
+INSERT INTO loan_installments (
+  loan_no, installment_no, due_date, principal_due, interest_due, total_due, status
+) VALUES
+  ('LN-DEMO-PASTDUE', 1, CURRENT_DATE - INTERVAL '35 days', 5000, 375.00, 5375.00, 'Scheduled'),
+  ('LN-DEMO-PASTDUE', 2, CURRENT_DATE + INTERVAL '5 days', 5000, 250.00, 5250.00, 'Scheduled'),
+  ('LN-DEMO-PASTDUE', 3, CURRENT_DATE + INTERVAL '35 days', 5000, 125.00, 5125.00, 'Scheduled')
+ON CONFLICT (loan_no, installment_no) DO UPDATE SET
+  due_date = EXCLUDED.due_date,
+  principal_due = EXCLUDED.principal_due,
+  interest_due = EXCLUDED.interest_due,
+  total_due = EXCLUDED.total_due,
+  status = EXCLUDED.status;
+
+INSERT INTO loan_releases (
+  release_no, loan_no, batch_no, member_no, member_name, principal,
+  processing_fee, insurance_fee, cbu_amount, savings_retention_amount,
+  net_proceeds, cash_released, release_date, reference_no, released_by,
+  status, posted_by, posted_entry_no, posted_at
+) VALUES (
+  'LR-DEMO-PASTDUE', 'LN-DEMO-PASTDUE', 'TB-DEMO-PASTDUE', 'M-000621', 'Alma R. Dizon', 15000,
+  675, 0, 0, 0, 14325, 14325, CURRENT_DATE - INTERVAL '65 days', 'VCH-DEMO-PASTDUE', 'teller01',
+  'Posted', 'bookkeeper', 'JE-DEMO-PASTDUE', CURRENT_TIMESTAMP - INTERVAL '65 days'
+)
+ON CONFLICT (release_no) DO UPDATE SET
+  loan_no = EXCLUDED.loan_no,
+  batch_no = EXCLUDED.batch_no,
+  member_no = EXCLUDED.member_no,
+  member_name = EXCLUDED.member_name,
+  principal = EXCLUDED.principal,
+  processing_fee = EXCLUDED.processing_fee,
+  insurance_fee = EXCLUDED.insurance_fee,
+  cbu_amount = EXCLUDED.cbu_amount,
+  savings_retention_amount = EXCLUDED.savings_retention_amount,
+  net_proceeds = EXCLUDED.net_proceeds,
+  cash_released = EXCLUDED.cash_released,
+  release_date = EXCLUDED.release_date,
+  reference_no = EXCLUDED.reference_no,
+  released_by = EXCLUDED.released_by,
+  status = EXCLUDED.status,
+  posted_by = EXCLUDED.posted_by,
+  posted_entry_no = EXCLUDED.posted_entry_no,
+  posted_at = EXCLUDED.posted_at;

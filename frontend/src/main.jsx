@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Accordion,
+  AccordionButton,
+  AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
   Badge,
   Box,
   Button,
@@ -1352,6 +1357,9 @@ function Dashboard({ user }) {
     return <Text>Loading dashboard...</Text>;
   }
 
+  const loanAlerts = data.loanAlerts;
+  const hasLoanAlertDetails = loanAlerts?.canViewDetails && (loanAlerts.overdueCount > 0 || loanAlerts.dueSoonCount > 0);
+
   return (
     <VStack align="stretch" spacing={5} minW={0} maxW="100%">
       <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
@@ -1380,13 +1388,62 @@ function Dashboard({ user }) {
         <Heading size="md" mb={4}>
           Risk Watch
         </Heading>
-        <VStack align="stretch">
+        <VStack align="stretch" spacing={3}>
           {data.watchItems.map((item) => (
             <Flex key={item.title} justify="space-between" borderBottomWidth="1px" py={2}>
               <Text fontWeight="bold">{item.title}</Text>
               <Text color="gray.500">{item.value}</Text>
             </Flex>
           ))}
+          {loanAlerts?.canViewDetails ? (
+            <Accordion allowToggle borderWidth="1px" borderRadius="md" overflow="hidden">
+              <AccordionItem border="0">
+                <AccordionButton>
+                  <Box flex="1" textAlign="left">
+                    <Text fontWeight="bold">Loan portfolio watch</Text>
+                    <Text fontSize="sm" color="gray.600">
+                      Overdue installments: {loanAlerts.overdueCount} / Due within 7 days: {loanAlerts.dueSoonCount}
+                    </Text>
+                  </Box>
+                  <AccordionIcon />
+                </AccordionButton>
+                <AccordionPanel pb={4}>
+                  {hasLoanAlertDetails ? (
+                    <TableContainer>
+                      <Table size="sm">
+                        <Thead>
+                          <Tr>
+                            <Th>Status</Th>
+                            <Th>Member</Th>
+                            <Th>Loan</Th>
+                            <Th>Due Date</Th>
+                            <Th isNumeric>Amount Due</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {loanAlerts.items.map((item) => (
+                            <Tr key={`${item.loanNo}-${item.installmentNo}`}>
+                              <Td>
+                                <Badge colorScheme={item.severity === "overdue" ? "red" : "orange"}>
+                                  {item.statusLabel}
+                                </Badge>
+                              </Td>
+                              <Td>{item.memberName}</Td>
+                              <Td>{item.loanNo}</Td>
+                              <Td>{formatDate(item.dueDate)}</Td>
+                              <Td isNumeric>{formatMoney(item.totalDue)}</Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </Table>
+                    </TableContainer>
+                  ) : (
+                    <Text color="gray.600">No overdue or near-due loan installments.</Text>
+                  )}
+                </AccordionPanel>
+              </AccordionItem>
+            </Accordion>
+          ) : null}
         </VStack>
       </Box>
     </VStack>

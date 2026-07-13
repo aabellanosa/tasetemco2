@@ -195,6 +195,15 @@ async function run() {
       throw new Error("Outstanding teller batch dashboard data should be restricted to admin.");
     }
 
+    if (
+      !managerDashboardBody.loanAlerts?.canViewDetails ||
+      managerDashboardBody.loanAlerts.overdueCount < 1 ||
+      managerDashboardBody.loanAlerts.dueSoonCount < 1 ||
+      !managerDashboardBody.loanAlerts.items.some((item) => item.loanNo === "LN-DEMO-PASTDUE")
+    ) {
+      throw new Error("Manager dashboard should include role-gated overdue loan alert details.");
+    }
+
     const adminDashboard = await fetch(`${baseUrl}/api/dashboard`, {
       headers: { Cookie: adminCookie }
     });
@@ -207,6 +216,21 @@ async function run() {
       typeof adminDashboardBody.outstandingBatch.openingFunding !== "number"
     ) {
       throw new Error("Admin dashboard should include the current outstanding teller batch summary.");
+    }
+
+    const dashboardTellerLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "teller01", password: "p@55@LL" })
+    });
+    const dashboardTellerCookie = dashboardTellerLogin.headers.get("set-cookie")?.split(";")[0];
+    const tellerDashboard = await fetch(`${baseUrl}/api/dashboard`, {
+      headers: { Cookie: dashboardTellerCookie }
+    });
+    const tellerDashboardBody = await tellerDashboard.json();
+
+    if (!tellerDashboard.ok || tellerDashboardBody.loanAlerts?.canViewDetails) {
+      throw new Error("Teller dashboard should not expose portfolio-wide overdue loan details.");
     }
 
     const forbiddenUsers = await fetch(`${baseUrl}/api/admin/users`, {
