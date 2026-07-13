@@ -17,6 +17,7 @@ import {
   loanProducts,
   loanReleases,
   loans,
+  memberClassifications,
   memberApplications,
   memberImportBatches,
   memberImportRows,
@@ -3079,9 +3080,26 @@ function formatDateOnly(value) {
   ].join("-");
 }
 
+function normalizeMemberClassification(value) {
+  const normalizedValue = String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
+  return memberClassifications.find((classification) => classification === normalizedValue) || "";
+}
+
+function validateMemberClassification(value, fieldLabel = "Cluster or group") {
+  const classification = normalizeMemberClassification(value);
+
+  if (!classification) {
+    return {
+      error: `${fieldLabel} must be one of: ${memberClassifications.join(", ")}.`
+    };
+  }
+
+  return { value: classification };
+}
+
 function validateMemberProfileInput(body) {
   const name = String(body.name || "").trim();
-  const clusterName = String(body.group || body.clusterName || "").trim();
+  const clusterValidation = validateMemberClassification(body.group || body.clusterName);
   const contactNumber = String(body.contactNumber || "").trim();
   const address = String(body.address || "").trim();
   const birthdate = normalizeOptionalDate(body.birthdate);
@@ -3094,8 +3112,8 @@ function validateMemberProfileInput(body) {
     return { error: "Member full name is required." };
   }
 
-  if (!clusterName) {
-    return { error: "Cluster or group is required." };
+  if (clusterValidation.error) {
+    return { error: clusterValidation.error };
   }
 
   if (!["Active", "Inactive"].includes(status)) {
@@ -3105,7 +3123,7 @@ function validateMemberProfileInput(body) {
   return {
     value: {
       name,
-      group: clusterName,
+      group: clusterValidation.value,
       contactNumber,
       address,
       birthdate,
@@ -3178,12 +3196,13 @@ async function updateMemberProfile(memberId, input) {
 
 function sanitizeMemberImportRow(row) {
   const status = String(row.status || "Active").trim() || "Active";
+  const group = String(row.group || row.clusterName || "").trim();
 
   return {
     rowNumber: Number(row.rowNumber || row.rowNo || 0),
     memberNo: String(row.memberNo || "").trim(),
     name: String(row.name || row.fullName || "").trim(),
-    group: String(row.group || row.clusterName || "").trim(),
+    group,
     contactNumber: String(row.contactNumber || "").trim(),
     address: String(row.address || "").trim(),
     birthdate: String(row.birthdate || "").trim(),
@@ -3234,9 +3253,14 @@ async function validateMemberImportRows(inputRows) {
       const issues = [];
       const rowNumber = Number.isInteger(row.rowNumber) && row.rowNumber > 0 ? row.rowNumber : index + 2;
       const normalizedStatus = row.status.toLowerCase();
+      const clusterValidation = validateMemberClassification(row.group, "Cluster / group");
 
       if (!row.name) {
         issues.push("Missing full name");
+      }
+
+      if (clusterValidation.error) {
+        issues.push("Unknown cluster/group");
       }
 
       if (row.memberNo && duplicateMemberNos.has(row.memberNo)) {
@@ -3264,6 +3288,7 @@ async function validateMemberImportRows(inputRows) {
 
       return {
         ...row,
+        group: clusterValidation.value || row.group,
         rowNumber,
         birthdate: validBirthdate ? row.birthdate || null : null,
         membershipDate: validMembershipDate ? row.membershipDate || null : null,
@@ -4423,7 +4448,7 @@ async function finalizeMemberImportBatch(importNo, user) {
       members.push({
         id: row.memberNo,
         name: row.name,
-        group: row.group || "General Membership",
+        group: row.group,
         share: 0,
         savings: 0,
         status: row.status || "Active",
@@ -4515,7 +4540,7 @@ async function finalizeMemberImportBatch(importNo, user) {
         [
           row.memberNo,
           row.name,
-          row.group || "General Membership",
+          row.group,
           row.status || "Active",
           row.contactNumber || "",
           row.address || "",
@@ -8011,7 +8036,7 @@ async function closeTellerBatch(batchId, input, user) {
 
 function validateMemberApplication(body) {
   const fullName = String(body.fullName || "").trim();
-  const clusterName = String(body.clusterName || "").trim();
+  const clusterValidation = validateMemberClassification(body.clusterName, "Cluster");
   const contactNumber = String(body.contactNumber || "").trim();
   const initialShareCapital = Number(body.initialShareCapital || 0);
 
@@ -8019,8 +8044,8 @@ function validateMemberApplication(body) {
     return { error: "Full name is required." };
   }
 
-  if (!clusterName) {
-    return { error: "Cluster is required." };
+  if (clusterValidation.error) {
+    return { error: clusterValidation.error };
   }
 
   if (!contactNumber) {
@@ -8034,7 +8059,7 @@ function validateMemberApplication(body) {
   return {
     value: {
       fullName,
-      clusterName,
+      clusterName: clusterValidation.value,
       contactNumber,
       initialShareCapital: moneyValue(initialShareCapital)
     }

@@ -51,6 +51,14 @@ import { createRoot as createReactRoot } from "react-dom/client";
 const apiBase = import.meta.env.VITE_API_BASE_URL || "";
 const membersPollingMs = 5000;
 const memberDirectoryPageSizeOptions = [25, 50, 100];
+const memberClassifications = [
+  "REGULAR MEMBERS CAPTURE",
+  "REGULAR MEMBERS NON CAPTURE",
+  "RETIREES",
+  "REGULAR MEMBERS LGU",
+  "COMMUNITY A MEMBERS",
+  "COMMUNITY B MEMBERS"
+];
 
 const theme = extendTheme({
   styles: {
@@ -221,8 +229,8 @@ const memberImportFields = [
 ];
 
 const sampleMemberImportCsv = `Member No.,Full Name,Cluster,Contact Number,Address,Birthdate,Civil Status,Occupation,Membership Date,Status
-M-2026-004,Julieta M. Navarro,General Membership,09171234567,"Poblacion, Talisay",1985-02-14,Married,Sari-sari store owner,2026-06-15,Active
-M-2026-005,Roberto P. Dizon,Water Station Group,09181234567,"San Isidro, Talisay",1979-09-30,Married,Tricycle operator,2026-06-15,Active`;
+M-2026-004,Julieta M. Navarro,COMMUNITY A MEMBERS,09171234567,"Poblacion, Talisay",1985-02-14,Married,Sari-sari store owner,2026-06-15,Active
+M-2026-005,Roberto P. Dizon,REGULAR MEMBERS CAPTURE,09181234567,"San Isidro, Talisay",1979-09-30,Married,Tricycle operator,2026-06-15,Active`;
 
 function normalizeImportHeader(value) {
   return String(value || "")
@@ -359,9 +367,14 @@ function buildMemberImportPreview(rows, mapping, existingMembers = []) {
   return mappedRows.map((row) => {
     const issues = [];
     const normalizedStatus = row.status.toLowerCase();
+    const normalizedGroup = normalizeMemberClassification(row.group);
 
     if (!row.name) {
       issues.push("Missing full name");
+    }
+
+    if (!normalizedGroup) {
+      issues.push("Unknown cluster/group");
     }
 
     if (row.memberNo && duplicateUploadMemberNos.has(row.memberNo)) {
@@ -386,6 +399,7 @@ function buildMemberImportPreview(rows, mapping, existingMembers = []) {
 
     return {
       ...row,
+      group: normalizedGroup || row.group,
       status: row.status || "Active",
       issues
     };
@@ -2054,7 +2068,7 @@ function Members({ user }) {
   const [statement, setStatement] = useState(null);
   const [form, setForm] = useState({
     fullName: "",
-    clusterName: "General Membership",
+    clusterName: memberClassifications[0],
     contactNumber: "",
     initialShareCapital: 5000
   });
@@ -2361,7 +2375,7 @@ function Members({ user }) {
       setMessage(`${data.application.id} saved as Pending Approval.`);
       setForm({
         fullName: "",
-        clusterName: "General Membership",
+        clusterName: memberClassifications[0],
         contactNumber: "",
         initialShareCapital: 5000
       });
@@ -2594,7 +2608,11 @@ function Members({ user }) {
             </FormControl>
             <FormControl isRequired>
               <FormLabel>Cluster</FormLabel>
-              <Input value={form.clusterName} onChange={(event) => updateForm("clusterName", event.target.value)} />
+              <Select value={form.clusterName} onChange={(event) => updateForm("clusterName", event.target.value)}>
+                {memberClassifications.map((classification) => (
+                  <option key={classification} value={classification}>{classification}</option>
+                ))}
+              </Select>
             </FormControl>
             <FormControl isRequired>
               <FormLabel>Contact number</FormLabel>
@@ -3201,11 +3219,18 @@ function Members({ user }) {
               </FormControl>
               <FormControl>
                 <FormLabel>Cluster / Group</FormLabel>
-                <Input
-                  value={memberProfileForm.group}
-                  onChange={(event) => updateMemberProfileForm("group", event.target.value)}
-                  isReadOnly={!canEditMemberProfile}
-                />
+                {canEditMemberProfile ? (
+                  <Select
+                    value={memberProfileForm.group}
+                    onChange={(event) => updateMemberProfileForm("group", event.target.value)}
+                  >
+                    {memberClassifications.map((classification) => (
+                      <option key={classification} value={classification}>{classification}</option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Input value={memberProfileForm.group} isReadOnly />
+                )}
               </FormControl>
               <FormControl>
                 <FormLabel>Contact Number</FormLabel>
@@ -5721,6 +5746,11 @@ function buildLoanBreakdownPrintHtml(loan, preparedBy = "") {
 
 function formCategoryMark(currentCategory, category) {
   return currentCategory === category ? "( X )" : "(  )";
+}
+
+function normalizeMemberClassification(value) {
+  const normalizedValue = String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
+  return memberClassifications.find((classification) => classification === normalizedValue) || "";
 }
 
 function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "") {

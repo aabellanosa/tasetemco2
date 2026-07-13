@@ -15,9 +15,9 @@ ON DUPLICATE KEY UPDATE
   default_view = VALUES(default_view);
 
 INSERT INTO members (member_no, full_name, cluster_name, status, share_capital, savings_balance) VALUES
-  ('M-000482', 'Maria L. Santos', 'Market Vendors Cluster', 'Active', 62000, 184500),
-  ('M-000517', 'Benito P. Cruz', 'Rice Farmers Cluster', 'Active', 44000, 76800),
-  ('M-000621', 'Alma R. Dizon', 'Teachers Cluster', 'Active', 83000, 221400)
+  ('M-000482', 'Maria L. Santos', 'REGULAR MEMBERS CAPTURE', 'Active', 62000, 184500),
+  ('M-000517', 'Benito P. Cruz', 'REGULAR MEMBERS NON CAPTURE', 'Active', 44000, 76800),
+  ('M-000621', 'Alma R. Dizon', 'REGULAR MEMBERS LGU', 'Active', 83000, 221400)
 ON DUPLICATE KEY UPDATE
   full_name = VALUES(full_name),
   cluster_name = VALUES(cluster_name),
@@ -29,7 +29,7 @@ INSERT INTO member_applications (
   application_no, full_name, cluster_name, contact_number,
   initial_share_capital, status, created_by
 ) VALUES
-  ('MA-2026-0001', 'Julieta M. Navarro', 'General Membership', '0917-555-0148', 5000, 'Pending Approval', 'membership')
+  ('MA-2026-0001', 'Julieta M. Navarro', 'COMMUNITY A MEMBERS', '0917-555-0148', 5000, 'Pending Approval', 'membership')
 ON DUPLICATE KEY UPDATE
   full_name = VALUES(full_name),
   cluster_name = VALUES(cluster_name),

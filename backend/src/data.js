@@ -12,6 +12,15 @@ export const roles = [
   "Board / Read-Only Executive"
 ];
 
+export const memberClassifications = [
+  "REGULAR MEMBERS CAPTURE",
+  "REGULAR MEMBERS NON CAPTURE",
+  "RETIREES",
+  "REGULAR MEMBERS LGU",
+  "COMMUNITY A MEMBERS",
+  "COMMUNITY B MEMBERS"
+];
+
 export const users = [
   {
     id: 1,
@@ -221,7 +230,7 @@ export const members = [
   {
     id: "M-000482",
     name: "Maria L. Santos",
-    group: "Market Vendors Cluster",
+    group: "REGULAR MEMBERS CAPTURE",
     share: 62000,
     savings: 184500,
     status: "Active",
@@ -235,7 +244,7 @@ export const members = [
   {
     id: "M-000517",
     name: "Benito P. Cruz",
-    group: "Rice Farmers Cluster",
+    group: "REGULAR MEMBERS NON CAPTURE",
     share: 44000,
     savings: 76800,
     status: "Active",
@@ -249,7 +258,7 @@ export const members = [
   {
     id: "M-000621",
     name: "Alma R. Dizon",
-    group: "Teachers Cluster",
+    group: "REGULAR MEMBERS LGU",
     share: 83000,
     savings: 221400,
     status: "Active",
@@ -266,7 +275,7 @@ export const memberApplications = [
   {
     id: "MA-2026-0001",
     fullName: "Julieta M. Navarro",
-    clusterName: "General Membership",
+    clusterName: "COMMUNITY A MEMBERS",
     contactNumber: "0917-555-0148",
     initialShareCapital: 5000,
     status: "Pending Approval",

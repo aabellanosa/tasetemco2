@@ -122,7 +122,7 @@ async function run() {
       },
       body: JSON.stringify({
         fullName: "Smoke Test Applicant",
-        clusterName: "General Membership",
+        clusterName: "COMMUNITY A MEMBERS",
         contactNumber: "0999-000-0000",
         initialShareCapital: 5000
       })
@@ -450,7 +450,7 @@ async function run() {
       },
       body: JSON.stringify({
         name: approvalBody.member.name,
-        group: "Updated Smoke Cluster",
+        group: "RETIREES",
         contactNumber: "0999-111-2222",
         address: "Smoke Test Address",
         birthdate: "1990-01-01",
@@ -466,7 +466,7 @@ async function run() {
 
     if (
       !memberProfileUpdate.ok ||
-      memberProfileUpdateBody.member.group !== "Updated Smoke Cluster" ||
+      memberProfileUpdateBody.member.group !== "RETIREES" ||
       memberProfileUpdateBody.member.contactNumber !== "0999-111-2222" ||
       memberProfileUpdateBody.member.share !== 0 ||
       memberProfileUpdateBody.member.savings !== 0
@@ -503,7 +503,7 @@ async function run() {
             rowNumber: 2,
             memberNo: "M-SMOKE-IMPORT-001",
             name: "Import Ready Member",
-            group: "General Membership",
+            group: "COMMUNITY A MEMBERS",
             contactNumber: "0999-222-3333",
             address: "Smoke Import Address",
             birthdate: "1991-02-03",
@@ -516,7 +516,7 @@ async function run() {
             rowNumber: 3,
             memberNo: approvedMember.id,
             name: "",
-            group: "General Membership",
+            group: "COMMUNITY A MEMBERS",
             membershipDate: "2026-99-99",
             status: "Dormant"
           }
@@ -603,7 +603,7 @@ async function run() {
       },
       body: JSON.stringify({
         fullName: "Post Import Approval Member",
-        clusterName: "General Membership",
+        clusterName: "COMMUNITY A MEMBERS",
         contactNumber: "0999-333-4444",
         initialShareCapital: 5000
       })
@@ -2088,7 +2088,7 @@ async function run() {
       },
       body: JSON.stringify({
         fullName: "Forbidden Applicant",
-        clusterName: "General Membership",
+        clusterName: "COMMUNITY A MEMBERS",
         contactNumber: "0999-111-1111",
         initialShareCapital: 5000
       })

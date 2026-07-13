@@ -19,17 +19,17 @@ INSERT INTO members (
   contact_number, address, birthdate, civil_status, occupation, membership_date
 ) VALUES
   (
-    'M-000482', 'Maria L. Santos', 'Market Vendors Cluster', 'Active', 62000, 184500,
+    'M-000482', 'Maria L. Santos', 'REGULAR MEMBERS CAPTURE', 'Active', 62000, 184500,
     '0917-555-0101', 'Poblacion Public Market, Tarlac City', '1981-04-12', 'Married',
     'Market vendor', '2019-03-18'
   ),
   (
-    'M-000517', 'Benito P. Cruz', 'Rice Farmers Cluster', 'Active', 44000, 76800,
+    'M-000517', 'Benito P. Cruz', 'REGULAR MEMBERS NON CAPTURE', 'Active', 44000, 76800,
     '0918-555-0102', 'Brgy. San Isidro, Tarlac City', '1976-09-24', 'Married',
     'Rice farmer', '2020-07-06'
   ),
   (
-    'M-000621', 'Alma R. Dizon', 'Teachers Cluster', 'Active', 83000, 221400,
+    'M-000621', 'Alma R. Dizon', 'REGULAR MEMBERS LGU', 'Active', 83000, 221400,
     '0919-555-0103', 'Brgy. Maliwalo, Tarlac City', '1988-11-02', 'Single',
     'Public school teacher', '2021-01-15'
   )
@@ -184,7 +184,7 @@ INSERT INTO member_applications (
   application_no, full_name, cluster_name, contact_number,
   initial_share_capital, status, created_by
 ) VALUES
-  ('MA-2026-0001', 'Julieta M. Navarro', 'General Membership', '0917-555-0148', 5000, 'Pending Approval', 'membership')
+  ('MA-2026-0001', 'Julieta M. Navarro', 'COMMUNITY A MEMBERS', '0917-555-0148', 5000, 'Pending Approval', 'membership')
 ON CONFLICT (application_no) DO UPDATE SET
   full_name = EXCLUDED.full_name,
   cluster_name = EXCLUDED.cluster_name,
