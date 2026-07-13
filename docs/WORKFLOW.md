@@ -202,6 +202,8 @@ Members Workspace UI Refactor v1 organizes the Members screen into role-aware ta
 
 Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
 
+TASETEMCO Member Classification v1 makes cluster/group a controlled value instead of free text. Manual application and profile forms use a dropdown. Member imports normalize matching values case-insensitively and flag unknown classifications before staging or finalization. Approved values are `REGULAR MEMBERS CAPTURE`, `REGULAR MEMBERS NON CAPTURE`, `RETIREES`, `REGULAR MEMBERS LGU`, `COMMUNITY A MEMBERS`, and `COMMUNITY B MEMBERS`.
+
 Member Import Preview v0 is available only to the System Administrator and Membership Officer. It accepts pasted CSV text exported from Excel, detects columns, lets the user map columns to member profile fields, and shows validation issues before any import write is implemented. The current preview checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses.
 
 Member Import Staging v1 lets the System Administrator and Membership Officer save the mapped preview as a staged import batch. The system stores batch totals, ready rows, issue rows, creator, timestamp, and row-level validation issues. Staged rows are not active member records yet; a later finalization step should decide which ready rows become members.
@@ -702,6 +704,8 @@ The System Administrator also manages prototype staff users under Users. Admin c
 The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, and account status, but cannot see the shared prototype password, create or modify users, download backups, or reset demo data.
 
 Member Profile v1 adds editable master-data fields for contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. The System Administrator and Membership Officer can update these fields. Manager, Auditor, and other member-view roles can review the profile read-only. Financial balances remain transaction-derived and cannot be edited from the profile panel.
+
+TASETEMCO Member Classification v1 makes cluster/group a controlled value instead of free text. The approved values are `REGULAR MEMBERS CAPTURE`, `REGULAR MEMBERS NON CAPTURE`, `RETIREES`, `REGULAR MEMBERS LGU`, `COMMUNITY A MEMBERS`, and `COMMUNITY B MEMBERS`. Excel/CSV import rows with unknown classifications are treated as issue rows until corrected.
 
 Member Import Preview v0 supports client discovery of existing Excel columns before a write-enabled importer is built. Admin and Membership Officer can paste CSV text, map fields, and review validation results. The preview does not create or update member records.
 
