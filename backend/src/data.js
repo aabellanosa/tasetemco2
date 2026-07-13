@@ -471,6 +471,7 @@ export const loanApplications = [
     requestedPrincipal: 30000,
     requestedTermMonths: 12,
     purpose: "Farm inputs for the next planting season",
+    collateralType: "PDC",
     applicationDate: "2026-06-15",
     annualInterestRateBps: 3000,
     interestMethod: "Diminishing Balance",

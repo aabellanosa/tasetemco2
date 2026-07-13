@@ -44,6 +44,7 @@ pg.types.setTypeParser(1700, (value) => Number(value));
 
 const MONEY_SCALE = 100;
 const MAX_MONEY = 9999999999999.99;
+const loanCollateralTypes = ["PDC", "ATM Cards"];
 
 function moneyCents(value) {
   const amount = Number(value || 0);
@@ -243,6 +244,7 @@ const requiredSchemaColumns = {
     "requested_principal",
     "requested_term_months",
     "purpose",
+    "collateral_type",
     "application_date",
     "annual_interest_rate_bps",
     "interest_method",
@@ -938,6 +940,7 @@ function mapLoanApplication(row) {
     requestedPrincipal: Number(row.requestedPrincipal || 0),
     requestedTermMonths: Number(row.requestedTermMonths || 0),
     purpose: row.purpose,
+    collateralType: row.collateralType || "PDC",
     applicationDate: formatDateOnly(row.applicationDate),
     annualInterestRateBps: Number(row.annualInterestRateBps || 0),
     interestMethod: row.interestMethod,
@@ -986,6 +989,7 @@ async function listLoanApplications() {
             product_code AS productCode, product_name AS productName,
             requested_principal AS requestedPrincipal,
             requested_term_months AS requestedTermMonths, purpose,
+            collateral_type AS collateralType,
             application_date AS applicationDate,
             annual_interest_rate_bps AS annualInterestRateBps,
             interest_method AS interestMethod, payment_frequency AS paymentFrequency,
@@ -1036,6 +1040,7 @@ async function validateLoanApplicationInput(body) {
   const requestedPrincipal = Number(body.requestedPrincipal);
   const requestedTermMonths = Number(body.requestedTermMonths);
   const purpose = String(body.purpose || "").trim();
+  const collateralType = String(body.collateralType || "").trim();
   const applicationDate = formatDateOnly(body.applicationDate || new Date());
   const memberRows = await listMembers();
   const products = await listLoanProducts();
@@ -1074,6 +1079,10 @@ async function validateLoanApplicationInput(body) {
     return { error: "Loan purpose is required." };
   }
 
+  if (!loanCollateralTypes.includes(collateralType)) {
+    return { error: "Collateral type must be PDC or ATM Cards." };
+  }
+
   if (!isValidIsoDate(applicationDate)) {
     return { error: "Application date must be a valid YYYY-MM-DD date." };
   }
@@ -1087,6 +1096,7 @@ async function validateLoanApplicationInput(body) {
       requestedPrincipal: moneyValue(requestedPrincipal),
       requestedTermMonths,
       purpose: purpose.slice(0, 1000),
+      collateralType,
       applicationDate,
       annualInterestRateBps: product.annualInterestRateBps,
       interestMethod: product.interestMethod,
@@ -1133,7 +1143,7 @@ async function createLoanApplication(input, user) {
   await db.execute(
     `INSERT INTO loan_applications (
        application_no, member_no, member_name, product_code, product_name,
-       requested_principal, requested_term_months, purpose, application_date,
+       requested_principal, requested_term_months, purpose, collateral_type, application_date,
        annual_interest_rate_bps, interest_method, payment_frequency,
        processing_fee, service_fee_rate_bps, insurance_fee_rate_bps, cbu_rate_bps,
        savings_retention_rate_bps, cbu_optional, penalty_rate_bps,
@@ -1141,7 +1151,7 @@ async function createLoanApplication(input, user) {
        insurance_income_account, share_capital_account, savings_account,
        penalty_income_account, cash_account, status, created_by
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
     [
       applicationNo,
       input.memberNo,
@@ -1151,6 +1161,7 @@ async function createLoanApplication(input, user) {
       input.requestedPrincipal,
       input.requestedTermMonths,
       input.purpose,
+      input.collateralType,
       input.applicationDate,
       input.annualInterestRateBps,
       input.interestMethod,
@@ -1218,7 +1229,7 @@ async function updateLoanApplication(applicationNo, input, user) {
   await db.execute(
     `UPDATE loan_applications
      SET member_no = ?, member_name = ?, product_code = ?, product_name = ?,
-         requested_principal = ?, requested_term_months = ?, purpose = ?, application_date = ?,
+         requested_principal = ?, requested_term_months = ?, purpose = ?, collateral_type = ?, application_date = ?,
          annual_interest_rate_bps = ?, interest_method = ?, payment_frequency = ?,
          processing_fee = ?, service_fee_rate_bps = ?, insurance_fee_rate_bps = ?,
          cbu_rate_bps = ?, savings_retention_rate_bps = ?, cbu_optional = ?,
@@ -1235,6 +1246,7 @@ async function updateLoanApplication(applicationNo, input, user) {
       input.requestedPrincipal,
       input.requestedTermMonths,
       input.purpose,
+      input.collateralType,
       input.applicationDate,
       input.annualInterestRateBps,
       input.interestMethod,
@@ -1451,6 +1463,7 @@ async function submitLoanApplication(applicationNo, user) {
       `SELECT application_no AS applicationNo, member_no AS memberNo,
               product_code AS productCode, requested_principal AS requestedPrincipal,
               requested_term_months AS requestedTermMonths, purpose,
+              collateral_type AS collateralType,
               application_date AS applicationDate, status, created_by AS createdBy
        FROM loan_applications
        WHERE application_no = ?

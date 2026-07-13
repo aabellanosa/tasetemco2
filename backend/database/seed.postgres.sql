@@ -121,7 +121,7 @@ ON CONFLICT (product_code) DO UPDATE SET
 
 INSERT INTO loan_applications (
   application_no, member_no, member_name, product_code, product_name,
-  requested_principal, requested_term_months, purpose, application_date,
+  requested_principal, requested_term_months, purpose, collateral_type, application_date,
   annual_interest_rate_bps, interest_method, payment_frequency,
   processing_fee, service_fee_rate_bps, insurance_fee_rate_bps, cbu_rate_bps,
   savings_retention_rate_bps, cbu_optional, penalty_rate_bps, loans_receivable_account,
@@ -133,7 +133,7 @@ INSERT INTO loan_applications (
 ) VALUES
   (
     'LA-2026-0001', 'M-000517', 'Benito P. Cruz', 'SALARY', 'Salary Loan',
-    30000, 12, 'Farm inputs for the next planting season', '2026-06-15',
+    30000, 12, 'Farm inputs for the next planting season', 'PDC', '2026-06-15',
     3000, 'Diminishing Balance', 'Monthly', 0, 450, 150, 200, 100, TRUE,
     200, '1050', '4010', '4030', '4050', '3010', '2020', '4040',
     '1010', 'Submitted', 'loanofficer', 'loanofficer', '2026-06-15 10:00:00+08',
@@ -147,6 +147,7 @@ ON CONFLICT (application_no) DO UPDATE SET
   requested_principal = EXCLUDED.requested_principal,
   requested_term_months = EXCLUDED.requested_term_months,
   purpose = EXCLUDED.purpose,
+  collateral_type = EXCLUDED.collateral_type,
   application_date = EXCLUDED.application_date,
   annual_interest_rate_bps = EXCLUDED.annual_interest_rate_bps,
   interest_method = EXCLUDED.interest_method,

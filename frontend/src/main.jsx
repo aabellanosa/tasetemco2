@@ -6684,9 +6684,11 @@ const defaultLoanApplicationForm = {
   requestedPrincipal: 5000,
   requestedTermMonths: 3,
   purpose: "",
+  collateralType: "PDC",
   applicationDate: new Date().toISOString().slice(0, 10)
 };
 const commonLoanTermMonths = [1, 6, 9, 12, 18, 24, 36, 48, 60];
+const loanCollateralTypes = ["PDC", "ATM Cards"];
 const loanDocumentCategoryOptions = ["Providential", "Entrepreneurial", "Emergency", "Other"];
 
 const defaultLoanDocumentForm = {
@@ -6814,6 +6816,7 @@ function LoanApplications({ user }) {
       requestedPrincipal: application.requestedPrincipal,
       requestedTermMonths: application.requestedTermMonths,
       purpose: application.purpose,
+      collateralType: application.collateralType || "PDC",
       applicationDate: application.applicationDate
     });
     setMessage("");
@@ -7070,7 +7073,15 @@ function LoanApplications({ user }) {
               <FormLabel>Application Date</FormLabel>
               <Input type="date" value={form.applicationDate} onChange={(event) => updateForm("applicationDate", event.target.value)} />
             </FormControl>
-            <FormControl isRequired gridColumn={{ md: "span 2", xl: "span 3" }}>
+            <FormControl isRequired>
+              <FormLabel>Collateral Type</FormLabel>
+              <Select value={form.collateralType} onChange={(event) => updateForm("collateralType", event.target.value)}>
+                {loanCollateralTypes.map((collateralType) => (
+                  <option key={collateralType} value={collateralType}>{collateralType}</option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired gridColumn={{ md: "span 2", xl: "span 2" }}>
               <FormLabel>Loan Purpose</FormLabel>
               <Input value={form.purpose} onChange={(event) => updateForm("purpose", event.target.value)} />
             </FormControl>
@@ -7102,6 +7113,7 @@ function LoanApplications({ user }) {
                 <Th>Product</Th>
                 <Th isNumeric>Principal</Th>
                 <Th>Term</Th>
+                <Th>Collateral</Th>
                 <Th>Purpose</Th>
                 <Th>Status</Th>
                 <Th>Prepared By</Th>
@@ -7133,6 +7145,7 @@ function LoanApplications({ user }) {
                     </Td>
                     <Td isNumeric>{formatMoney(application.requestedPrincipal)}</Td>
                     <Td>{application.requestedTermMonths} months</Td>
+                    <Td>{application.collateralType || "PDC"}</Td>
                     <Td minW="220px">{application.purpose}</Td>
                     <Td>
                       <Badge colorScheme={statusColor(application.status)}>
@@ -7232,6 +7245,7 @@ function LoanApplications({ user }) {
                   <Text color="gray.600">
                     Requested {formatMoney(reviewApplication.requestedPrincipal)} for {reviewApplication.requestedTermMonths} months
                   </Text>
+                  <Text color="gray.600">Collateral: {reviewApplication.collateralType || "PDC"}</Text>
                   <Text color="gray.600">{reviewApplication.productName} - {reviewApplication.purpose}</Text>
                 </Box>
                 <FormControl isRequired>

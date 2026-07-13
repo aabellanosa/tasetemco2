@@ -2155,6 +2155,7 @@ async function run() {
         requestedPrincipal: 12000,
         requestedTermMonths: 6,
         purpose: "Smoke test livelihood supplies",
+        collateralType: "ATM Cards",
         applicationDate: "2026-06-19"
       })
     });
@@ -2165,6 +2166,7 @@ async function run() {
       !createLoanApplication.ok ||
       !smokeApplicationNo ||
       createLoanApplicationBody.application.status !== "Draft" ||
+      createLoanApplicationBody.application.collateralType !== "ATM Cards" ||
       createLoanApplicationBody.application.annualInterestRateBps !== 3000 ||
       createLoanApplicationBody.application.serviceFeeRateBps !== 450
     ) {
@@ -2210,6 +2212,7 @@ async function run() {
       !getLoanDocumentForm.ok ||
       getLoanDocumentFormBody.form.coMakerName !== "Manual Co Maker" ||
       getLoanDocumentFormBody.form.loanCategory !== "Providential" ||
+      Object.hasOwn(getLoanDocumentFormBody.form, "collateralType") ||
       getLoanDocumentFormBody.application.applicationNo !== smokeApplicationNo
     ) {
       throw new Error("Loan document form should be returned with its loan application.");
@@ -2229,6 +2232,7 @@ async function run() {
           requestedPrincipal: 15000,
           requestedTermMonths: 9,
           purpose: "Updated smoke test livelihood supplies",
+          collateralType: "PDC",
           applicationDate: "2026-06-19"
         })
       }
@@ -2238,6 +2242,7 @@ async function run() {
     if (
       !updateLoanApplication.ok ||
       updateLoanApplicationBody.application.requestedPrincipal !== 15000 ||
+      updateLoanApplicationBody.application.collateralType !== "PDC" ||
       updateLoanApplicationBody.application.status !== "Draft"
     ) {
       throw new Error("Loan Officer should edit their own draft application.");
@@ -2286,6 +2291,7 @@ async function run() {
           requestedPrincipal: 16000,
           requestedTermMonths: 9,
           purpose: "Submitted records must be immutable",
+          collateralType: "PDC",
           applicationDate: "2026-06-19"
         })
       }
@@ -2384,6 +2390,7 @@ async function run() {
           requestedPrincipal: 14000,
           requestedTermMonths: 8,
           purpose: "Livelihood supplies with updated income details",
+          collateralType: "ATM Cards",
           applicationDate: "2026-06-19"
         })
       }

@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS loan_applications (
   requested_principal DECIMAL(18,2) NOT NULL DEFAULT 0,
   requested_term_months INT NOT NULL DEFAULT 1,
   purpose TEXT NOT NULL,
+  collateral_type VARCHAR(30) NOT NULL DEFAULT 'PDC',
   application_date DATE NOT NULL,
   annual_interest_rate_bps INT NOT NULL DEFAULT 0,
   interest_method VARCHAR(40) NOT NULL,
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS loan_document_forms (
 );
 
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS credit_assessment_notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS collateral_type VARCHAR(30) NOT NULL DEFAULT 'PDC';
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS recommended_principal INT NOT NULL DEFAULT 0;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS recommended_term_months INT NOT NULL DEFAULT 0;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision VARCHAR(30);
