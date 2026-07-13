@@ -5844,8 +5844,8 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
   const moneyField = (value, width = 150) =>
     `<span class="fill" style="--fill-width:${width}px">${escapeHtml(formatMoney(value))}</span>`;
   const pesoField = (value, width = 105) =>
-    `<span class="peso">P ${moneyField(value, width)}</span>`;
-  const pesoBlank = (width = 105) => `<span class="peso">P ${blank(width)}</span>`;
+    `<span class="peso">${moneyField(value, width)}</span>`;
+  const pesoBlank = (width = 105) => `<span class="peso">${blank(width)}</span>`;
   const amortizationRows = Array.from(
     { length: 18 },
     () => "<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
@@ -6255,7 +6255,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       <div class="action-title">Action Taken</div>
       <div class="action-checks">${approvedMark} Approved &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${disapprovedMark} Disapproved</div>
       <div class="action-lines">
-        <span>Amount Approved</span><span>:</span><span>P ${moneyField(principal, 145)}</span>
+        <span>Amount Approved</span><span>:</span><span>${moneyField(principal, 145)}</span>
         <span>Interest Rate</span><span>:</span><span>${field(formatRateBps(application.annualInterestRateBps), 145)}</span>
         <span>Repayment Schedule</span><span>:</span><span>Amortization starts on ${blank(110)}</span>
         <span>Payable Every Months for</span><span>:</span><span>${field(termMonths, 85)}months.</span>
@@ -6290,7 +6290,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       <div class="payee"><strong>FE B. PENALES</strong><br>Coop Treasurer</div>
 
       <p class="ack">
-        I acknowledge receipt of the proceeds of my loan in the amount of P ${field(formatMoney(netProceeds), 205)}
+        I acknowledge receipt of the proceeds of my loan in the amount of ${field(formatMoney(netProceeds), 205)}
         and I hereby authorize the TASETEMCO<br>
         thru TMENHS with its authorized representative to deduct the amortization from my salary.
       </p>
@@ -6308,7 +6308,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         </div>
         <p class="indent">
           For value received, I/we, jointly and severally, promised to pay to <strong>TASETEMCO</strong>, Tabon, Bislig City,
-          the sum of ${blank(350)}Pesos, (P ${moneyField(principal, 90)}), Philippine Currency , with an
+          the sum of ${blank(350)}Pesos, (${moneyField(principal, 90)}), Philippine Currency , with an
           interest rate of ${blank(72)} percent (${field(formatRateBps(application.annualInterestRateBps), 52)}) per annum from the date hereof until
           paid according to the attached amortization schedule.
         </p>
@@ -6325,7 +6325,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         <div class="assignment-title">ASSIGNMENT OF DEPOSITS and/or SHARE CAPITAL</div>
         <p class="indent">
           I/We, the undersigned, for and in consideration of the loan obtained by me/us from the Cooperative,
-          in the amount of ${blank(210)}PESOS (P ${moneyField(principal, 70)}) as evidenced by the Promissory Note dated
+          in the amount of ${blank(210)}PESOS (${moneyField(principal, 70)}) as evidenced by the Promissory Note dated
           ${blank(80)},200 executed by me/us, do hereby assign in favor of the said Cooperative all my deposits,
           whether term or savings deposits, including share capital, which I/we now have hereafter may have except
           the amount of P ${blank(70)} share capital to qualify me/us to remain member/s of the Cooperative.
