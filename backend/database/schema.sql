@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS members (
   status VARCHAR(30) NOT NULL DEFAULT 'Active',
   share_capital DECIMAL(18,2) NOT NULL DEFAULT 0,
   savings_balance DECIMAL(18,2) NOT NULL DEFAULT 0,
+  previous_loan_balance DECIMAL(18,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

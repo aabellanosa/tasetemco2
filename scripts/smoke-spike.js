@@ -481,6 +481,7 @@ async function run() {
         civilStatus: "Single",
         occupation: "Prototype tester",
         membershipDate: "2026-06-14",
+        previousLoanBalance: 1250.75,
         status: "Active",
         share: 999999,
         savings: 999999
@@ -492,6 +493,7 @@ async function run() {
       !memberProfileUpdate.ok ||
       memberProfileUpdateBody.member.group !== "RETIREES" ||
       memberProfileUpdateBody.member.contactNumber !== "0999-111-2222" ||
+      memberProfileUpdateBody.member.previousLoanBalance !== 1250.75 ||
       memberProfileUpdateBody.member.share !== 0 ||
       memberProfileUpdateBody.member.savings !== 0
     ) {

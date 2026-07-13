@@ -2166,6 +2166,7 @@ function Members({ user }) {
     civilStatus: "",
     occupation: "",
     membershipDate: "",
+    previousLoanBalance: 0,
     status: "Active"
   });
   const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
@@ -2587,6 +2588,7 @@ function Members({ user }) {
         civilStatus: data.member.civilStatus || "",
         occupation: data.member.occupation || "",
         membershipDate: data.member.membershipDate ? String(data.member.membershipDate).slice(0, 10) : "",
+        previousLoanBalance: Number(data.member.previousLoanBalance || 0),
         status: data.member.status || "Active"
       });
     } catch (statementError) {
@@ -3227,7 +3229,7 @@ function Members({ user }) {
               Close
             </Button>
           </Flex>
-          <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={4} mb={5}>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4} mb={5}>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">
                 Cluster
@@ -3245,6 +3247,12 @@ function Members({ user }) {
                 Savings
               </Text>
               <Text fontWeight="bold">{formatMoney(statement.member.savings)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">
+                Previous Loan Balance
+              </Text>
+              <Text fontWeight="bold">{formatMoney(statement.member.previousLoanBalance || 0)}</Text>
             </Box>
           </Grid>
 
@@ -3344,6 +3352,19 @@ function Members({ user }) {
                   onChange={(event) => updateMemberProfileForm("membershipDate", event.target.value)}
                   isReadOnly={!canEditMemberProfile}
                 />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Previous Loan Balance</FormLabel>
+                <NumberInput
+                  min={0}
+                  precision={2}
+                  step={0.01}
+                  value={memberProfileForm.previousLoanBalance}
+                  onChange={(value) => updateMemberProfileForm("previousLoanBalance", Number(value || 0))}
+                  isReadOnly={!canEditMemberProfile}
+                >
+                  <NumberInputField />
+                </NumberInput>
               </FormControl>
               <FormControl>
                 <FormLabel>Status</FormLabel>

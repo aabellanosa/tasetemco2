@@ -143,7 +143,8 @@ const requiredSchemaColumns = {
     "birthdate",
     "civil_status",
     "occupation",
-    "membership_date"
+    "membership_date",
+    "previous_loan_balance"
   ],
   member_import_batches: [
     "import_no",
@@ -3071,7 +3072,8 @@ async function listMembers() {
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
             share_capital AS share, savings_balance AS savings, status,
             contact_number AS contactNumber, address, birthdate,
-            civil_status AS civilStatus, occupation, membership_date AS membershipDate
+            civil_status AS civilStatus, occupation, membership_date AS membershipDate,
+            previous_loan_balance AS previousLoanBalance
      FROM members
      ORDER BY member_no`
   );
@@ -3088,13 +3090,15 @@ async function listLedgerMemberLookup() {
       name: member.name,
       status: member.status,
       share: member.share,
-      savings: member.savings
+      savings: member.savings,
+      previousLoanBalance: member.previousLoanBalance || 0
     }));
   }
 
   const [rows] = await db.execute(
     `SELECT member_no AS id, full_name AS name, status,
-            share_capital AS share, savings_balance AS savings
+            share_capital AS share, savings_balance AS savings,
+            previous_loan_balance AS previousLoanBalance
      FROM members
      ORDER BY member_no`
   );
@@ -3176,6 +3180,7 @@ function validateMemberProfileInput(body) {
   const civilStatus = String(body.civilStatus || "").trim();
   const occupation = String(body.occupation || "").trim();
   const membershipDate = normalizeOptionalDate(body.membershipDate);
+  const previousLoanBalance = Number(body.previousLoanBalance || 0);
   const status = String(body.status || "Active").trim();
 
   if (name.length < 3) {
@@ -3190,6 +3195,10 @@ function validateMemberProfileInput(body) {
     return { error: "Member status must be Active or Inactive." };
   }
 
+  if (!isMoney(previousLoanBalance)) {
+    return { error: "Previous Loan Balance must be a valid money amount." };
+  }
+
   return {
     value: {
       name,
@@ -3200,6 +3209,7 @@ function validateMemberProfileInput(body) {
       civilStatus,
       occupation,
       membershipDate,
+      previousLoanBalance: moneyValue(previousLoanBalance),
       status
     }
   };
@@ -3234,7 +3244,8 @@ async function updateMemberProfile(memberId, input) {
   await db.execute(
     `UPDATE members
      SET full_name = ?, cluster_name = ?, contact_number = ?, address = ?,
-         birthdate = ?, civil_status = ?, occupation = ?, membership_date = ?, status = ?
+         birthdate = ?, civil_status = ?, occupation = ?, membership_date = ?,
+         previous_loan_balance = ?, status = ?
      WHERE member_no = ?`,
     [
       input.name,
@@ -3245,6 +3256,7 @@ async function updateMemberProfile(memberId, input) {
       input.civilStatus,
       input.occupation,
       input.membershipDate,
+      input.previousLoanBalance,
       input.status,
       memberId
     ]
@@ -3254,7 +3266,8 @@ async function updateMemberProfile(memberId, input) {
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
             share_capital AS share, savings_balance AS savings, status,
             contact_number AS contactNumber, address, birthdate,
-            civil_status AS civilStatus, occupation, membership_date AS membershipDate
+            civil_status AS civilStatus, occupation, membership_date AS membershipDate,
+            previous_loan_balance AS previousLoanBalance
      FROM members
      WHERE member_no = ?
      LIMIT 1`,
@@ -4521,6 +4534,7 @@ async function finalizeMemberImportBatch(importNo, user) {
         group: row.group,
         share: 0,
         savings: 0,
+        previousLoanBalance: 0,
         status: row.status || "Active",
         contactNumber: row.contactNumber || "",
         address: row.address || "",
@@ -5124,6 +5138,7 @@ async function approveMemberApplication(applicationId, user) {
         group: application.clusterName,
         share: 0,
         savings: 0,
+        previousLoanBalance: 0,
         status: "Active",
         contactNumber: application.contactNumber || "",
         address: "",
@@ -6145,7 +6160,8 @@ async function getMemberStatement(memberId) {
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
             share_capital AS share, savings_balance AS savings, status,
             contact_number AS contactNumber, address, birthdate,
-            civil_status AS civilStatus, occupation, membership_date AS membershipDate
+            civil_status AS civilStatus, occupation, membership_date AS membershipDate,
+            previous_loan_balance AS previousLoanBalance
      FROM members
      WHERE member_no = ?
      LIMIT 1`,

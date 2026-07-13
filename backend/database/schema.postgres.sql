@@ -28,6 +28,7 @@ ALTER TABLE members ADD COLUMN IF NOT EXISTS birthdate DATE;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS civil_status VARCHAR(40) NOT NULL DEFAULT '';
 ALTER TABLE members ADD COLUMN IF NOT EXISTS occupation VARCHAR(120) NOT NULL DEFAULT '';
 ALTER TABLE members ADD COLUMN IF NOT EXISTS membership_date DATE;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS previous_loan_balance NUMERIC(18,2) NOT NULL DEFAULT 0;
 
 UPDATE members
 SET cluster_name = CASE cluster_name
@@ -503,7 +504,8 @@ ALTER TABLE teller_fundings ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ;
 
 ALTER TABLE members
   ALTER COLUMN share_capital TYPE NUMERIC(18,2) USING share_capital::NUMERIC,
-  ALTER COLUMN savings_balance TYPE NUMERIC(18,2) USING savings_balance::NUMERIC;
+  ALTER COLUMN savings_balance TYPE NUMERIC(18,2) USING savings_balance::NUMERIC,
+  ALTER COLUMN previous_loan_balance TYPE NUMERIC(18,2) USING previous_loan_balance::NUMERIC;
 ALTER TABLE loan_products
   ADD COLUMN IF NOT EXISTS service_fee_rate_bps INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS insurance_fee_rate_bps INTEGER NOT NULL DEFAULT 0,
