@@ -340,6 +340,13 @@ export const loanProducts = [
   }
 ];
 
+function addDemoDays(days) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export const loanApplications = [
   {
     id: "LA-2026-0001",
@@ -376,12 +383,101 @@ export const loanApplications = [
     decidedAt: "",
     createdAt: "2026-06-15T01:30:00.000Z",
     updatedAt: "2026-06-15T02:00:00.000Z"
+  },
+  {
+    id: "LA-DEMO-PASTDUE",
+    applicationNo: "LA-DEMO-PASTDUE",
+    memberNo: "M-000621",
+    memberName: "Alma R. Dizon",
+    productCode: "REGULAR",
+    productName: "Regular Loan",
+    requestedPrincipal: 15000,
+    requestedTermMonths: 3,
+    purpose: "Demo posted loan for collection follow-up",
+    applicationDate: addDemoDays(-70),
+    annualInterestRateBps: 1200,
+    interestMethod: "Flat Interest",
+    paymentFrequency: "Monthly",
+    processingFee: 250,
+    penaltyRateBps: 200,
+    loansReceivableAccount: "1050",
+    interestIncomeAccount: "4010",
+    processingFeeAccount: "4030",
+    penaltyIncomeAccount: "4040",
+    cashAccount: "1010",
+    status: "Posted",
+    createdBy: "loanofficer",
+    submittedBy: "loanofficer",
+    submittedAt: `${addDemoDays(-70)}T02:00:00.000Z`,
+    creditAssessmentNotes: "Demo account for overdue collection monitoring.",
+    recommendedPrincipal: 15000,
+    recommendedTermMonths: 3,
+    decision: "Approved",
+    decisionRemarks: "Approved for seeded demo.",
+    decisionDate: addDemoDays(-69),
+    decidedBy: "approver",
+    decidedAt: `${addDemoDays(-69)}T03:00:00.000Z`,
+    createdAt: `${addDemoDays(-70)}T01:30:00.000Z`,
+    updatedAt: `${addDemoDays(-68)}T04:00:00.000Z`
   }
 ];
 
-export const loans = [];
+export const loans = [
+  {
+    loanNo: "LN-DEMO-PASTDUE",
+    applicationNo: "LA-DEMO-PASTDUE",
+    memberNo: "M-000621",
+    memberName: "Alma R. Dizon",
+    productCode: "REGULAR",
+    productName: "Regular Loan",
+    principal: 15000,
+    termMonths: 3,
+    annualInterestRateBps: 1200,
+    interestMethod: "Flat Interest",
+    paymentFrequency: "Monthly",
+    processingFee: 250,
+    totalInterest: 450,
+    totalPayable: 15450,
+    netProceeds: 14750,
+    installmentCount: 3,
+    firstPaymentDate: addDemoDays(-35),
+    maturityDate: addDemoDays(35),
+    status: "Posted",
+    computedBy: "loanofficer",
+    computedAt: `${addDemoDays(-68)}T04:00:00.000Z`,
+    createdAt: `${addDemoDays(-68)}T04:00:00.000Z`
+  }
+];
 
-export const loanInstallments = [];
+export const loanInstallments = [
+  {
+    loanNo: "LN-DEMO-PASTDUE",
+    installmentNo: 1,
+    dueDate: addDemoDays(-35),
+    principalDue: 5000,
+    interestDue: 150,
+    totalDue: 5150,
+    status: "Scheduled"
+  },
+  {
+    loanNo: "LN-DEMO-PASTDUE",
+    installmentNo: 2,
+    dueDate: addDemoDays(5),
+    principalDue: 5000,
+    interestDue: 150,
+    totalDue: 5150,
+    status: "Scheduled"
+  },
+  {
+    loanNo: "LN-DEMO-PASTDUE",
+    installmentNo: 3,
+    dueDate: addDemoDays(35),
+    principalDue: 5000,
+    interestDue: 150,
+    totalDue: 5150,
+    status: "Scheduled"
+  }
+];
 
 export const loanReleases = [];
 
@@ -452,7 +548,6 @@ export const dashboard = {
     { label: "Net surplus", value: 438500, note: "Before allocations" }
   ],
   watchItems: [
-    { title: "Past due loans", value: "4 accounts over 10 days" },
     { title: "Unposted teller batch", value: "1 branch batch pending review" },
     { title: "Dormant savings", value: "18 accounts flagged" }
   ]

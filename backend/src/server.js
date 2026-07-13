@@ -1358,6 +1358,62 @@ async function listLoans() {
   }));
 }
 
+function daysBetweenIsoDates(startDate, endDate) {
+  const start = new Date(`${formatDateOnly(startDate)}T00:00:00.000Z`);
+  const end = new Date(`${formatDateOnly(endDate)}T00:00:00.000Z`);
+  return Math.round((end.getTime() - start.getTime()) / 86400000);
+}
+
+function canViewLoanPortfolioAlerts(user) {
+  const allowedRoles = new Set([
+    "System Administrator",
+    "General Manager",
+    "Accountant / Bookkeeper",
+    "Loan Officer",
+    "Credit Committee / Approver",
+    "Auditor / Compliance Officer",
+    "Board / Read-Only Executive"
+  ]);
+  return allowedRoles.has(user?.role);
+}
+
+async function buildLoanPortfolioAlerts() {
+  const today = formatDateOnly(new Date());
+  const currentLoans = (await listLoans()).filter((loan) => loan.status === "Posted");
+  const items = currentLoans.flatMap((loan) =>
+    loan.installments
+      .filter((installment) => installment.status === "Scheduled")
+      .map((installment) => {
+        const daysUntilDue = daysBetweenIsoDates(today, installment.dueDate);
+        const severity = daysUntilDue < 0 ? "overdue" : daysUntilDue <= 7 ? "due-soon" : "";
+        return {
+          loanNo: loan.loanNo,
+          memberNo: loan.memberNo,
+          memberName: loan.memberName,
+          productName: loan.productName,
+          installmentNo: installment.installmentNo,
+          dueDate: installment.dueDate,
+          principalDue: installment.principalDue,
+          interestDue: installment.interestDue,
+          totalDue: installment.totalDue,
+          daysUntilDue,
+          severity,
+          statusLabel: daysUntilDue < 0 ? `${Math.abs(daysUntilDue)} days overdue` : `Due in ${daysUntilDue} days`
+        };
+      })
+      .filter((item) => item.severity)
+  );
+
+  items.sort((a, b) => a.daysUntilDue - b.daysUntilDue || a.memberName.localeCompare(b.memberName));
+
+  return {
+    canViewDetails: true,
+    overdueCount: items.filter((item) => item.severity === "overdue").length,
+    dueSoonCount: items.filter((item) => item.severity === "due-soon").length,
+    items
+  };
+}
+
 function addUtcDays(dateString, days) {
   const date = new Date(`${dateString}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -7899,24 +7955,33 @@ app.get("/api/dashboard", async (request, response) => {
     return;
   }
 
-  if (!isAdminUser(user)) {
-    response.json(dashboard);
-    return;
-  }
-
-  const activeBatch = await getCurrentTellerBatch({ username: "teller01" });
-  const rows = await listTellerBatchRows(activeBatch.id);
-  const openingFunding = await getAcknowledgedFundingTotal(activeBatch.id);
-
-  response.json({
+  const dashboardPayload = {
     ...dashboard,
-    outstandingBatch: {
+    watchItems: dashboard.watchItems.filter((item) => item.title !== "Past due loans"),
+    loanAlerts: canViewLoanPortfolioAlerts(user)
+      ? await buildLoanPortfolioAlerts()
+      : {
+          canViewDetails: false,
+          overdueCount: 0,
+          dueSoonCount: 0,
+          items: []
+        }
+  };
+
+  if (isAdminUser(user)) {
+    const activeBatch = await getCurrentTellerBatch({ username: "teller01" });
+    const rows = await listTellerBatchRows(activeBatch.id);
+    const openingFunding = await getAcknowledgedFundingTotal(activeBatch.id);
+
+    dashboardPayload.outstandingBatch = {
       activeBatch,
       openingFunding,
       rows,
       latestCashCount: await getLatestTellerCashCount()
-    }
-  });
+    };
+  }
+
+  response.json(dashboardPayload);
 });
 
 app.get("/api/loan-products", async (request, response) => {
