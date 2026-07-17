@@ -254,7 +254,7 @@ Teller Cash Funding v1b adds the funding-demand and payout guard. Accountant / B
 
 Teller Cash Funding v1c adds accounting completion to the reviewed-batch posting cycle. After Teller submits cash count and Bookkeeper reviews the batch, `Post reviewed batch` creates one funding-transfer journal for each unposted acknowledged funding: debit `1010 - Cash on Hand` and credit the source account recorded during preparation, normally `1020 - Cash in Bank`. Loan release and other teller transaction journals are posted by the same command. Funding remains `Acknowledged` because that status proves Teller custody; separate posting fields and the linked journal number prove that the transfer reached the general ledger. The batch cannot close while acknowledged funding remains unposted.
 
-Loan Collection v1a introduces exact scheduled installment collection. Teller/Cashier selects a posted loan and the system presents only its earliest unpaid installment. Early payment is allowed, but Teller cannot skip installments, alter the scheduled principal-interest split, or enter a partial or excess amount. A unique official receipt/reference is required. Recording creates an immutable cash-in row in the Open teller batch and marks that installment `Paid`. After Teller cash count and Bookkeeper review, `Post reviewed batch` debits Cash on Hand for the total received, credits Loans Receivable for scheduled principal, and credits Interest Income for scheduled interest. Loan Officer, Admin, Manager, Approver, and Auditor have read-only collection visibility.
+Loan Collection v1-v2 introduces flexible receipt collection against the earliest unpaid installment. Teller/Cashier selects a posted loan and the system presents the next collectible installment, the amount due now, and the total remaining loan balance. Teller may enter the actual amount received as a partial, full, or advance payment, but cannot exceed the remaining loan balance. The system previews the allocation before confirmation: interest is applied first, then principal, and any excess over the current installment is treated as advance principal payment. A unique official receipt/reference is required. Recording creates an immutable cash-in row in the Open teller batch and updates installment status as `Partial` or `Paid`. After Teller cash count and Bookkeeper review, `Post reviewed batch` debits Cash on Hand for the total received, credits Loans Receivable for principal applied, and credits Interest Income for interest applied. Bookkeeper sees the same principal-applied and interest-applied split in the unposted teller batch and batch details before posting. Loan Officer, Admin, Manager, Approver, and Auditor have read-only collection visibility.
 
 Loan Portfolio Watch v1 makes collection follow-up visible on authorized dashboards. The seeded demo includes one posted loan with an overdue installment and one installment due within 7 days. Borrower-level alert details are shown only to management, loan, accounting, audit, and executive roles because overdue loan information is sensitive member credit data. Teller/Cashier and Membership Officer dashboards do not receive portfolio-wide borrower details.
 
@@ -528,10 +528,12 @@ Sample accounting effect:
 ### 4.8 Loan Collection
 
 1. Teller selects loan account.
-2. System computes amount due, interest, penalties, and principal allocation.
-3. Teller receives payment.
-4. System updates loan amortization and outstanding balance.
-5. Accounting entry is generated and posted with teller batch.
+2. System shows amount due now and remaining loan balance.
+3. Teller receives the actual amount paid.
+4. System previews whether the receipt is partial, full, or advance.
+5. System applies payment to interest first, then principal.
+6. Bookkeeper reviews the allocation in the teller batch.
+7. Accounting entry is generated and posted with teller batch.
 
 Sample accounting effect:
 
@@ -747,7 +749,9 @@ Teller Cash Funding v1b requires no schema migration and no seed. It derives fun
 
 Teller Cash Funding v1c adds nullable `posted_by`, `posted_entry_no`, and `posted_at` columns to `teller_fundings`. Run `npm run pg:migrate` before starting or deploying this build. No seed is required. The migration is additive and preserves existing funding and tester data. Reviewed-batch posting is idempotent and rejects a funding source mapped to `1010 - Cash on Hand`.
 
-Loan Collection v1a adds the `loan_collections` Postgres table. Run `npm run pg:migrate` before starting or deploying this build. No seed is required. Each loan installment can have only one collection row, official receipt references are unique across cash-in transactions, and recording plus installment status update is transactional. Existing organically created posted loans become collectible without rebuilding their schedules.
+Loan Collection v1a adds the `loan_collections` Postgres table. Run `npm run pg:migrate` before starting or deploying this build. Loan Collection v1 allows multiple receipts against the same installment so partial payments can be completed later; official receipt references remain unique across cash-in transactions. Recording plus installment status update is transactional. Existing organically created posted loans become collectible without rebuilding their schedules.
+
+Loan Collection v2 is UI-only and requires no migration. It makes the allocation discoverable before Teller confirms the receipt and in Bookkeeper review surfaces: interest applied, principal applied, amount received, payment type, and balance after receipt.
 
 ## 7. Audit Trail Requirements
 
