@@ -170,6 +170,38 @@ function addMoney(...values) {
   return values.reduce((total, value) => total + moneyCents(value), 0) / MONEY_SCALE;
 }
 
+function previewLoanCollectionAllocation(amountReceived, installment, outstandingBalance = 0) {
+  const amount = Math.max(0, moneyValue(amountReceived));
+  const interestRemaining = moneyValue(installment?.interestRemaining ?? installment?.interestDue ?? 0);
+  const principalRemaining = moneyValue(installment?.principalRemaining ?? installment?.principalDue ?? 0);
+  const dueNow = moneyValue(installment?.totalRemaining ?? installment?.totalDue ?? 0);
+  const interestApplied = Math.min(amount, interestRemaining);
+  const principalApplied = Math.max(0, moneyValue(amount - interestApplied));
+  const remainingAfterReceipt = Math.max(0, moneyValue(outstandingBalance - amount));
+  const paymentType =
+    amount > dueNow
+      ? "Advance Payment"
+      : amount < dueNow
+        ? "Partial Payment"
+        : "Full Payment";
+
+  return {
+    amount,
+    interestApplied: moneyValue(interestApplied),
+    principalApplied: moneyValue(principalApplied),
+    remainingAfterReceipt,
+    paymentType,
+    paymentTypeColor: {
+      "Partial Payment": "orange",
+      "Full Payment": "green",
+      "Advance Payment": "blue"
+    }[paymentType],
+    principalRemaining,
+    interestRemaining,
+    dueNow
+  };
+}
+
 function percentOfMoney(amount, rateBps) {
   return Math.round((moneyCents(amount) * Number(rateBps || 0)) / 10000) / MONEY_SCALE;
 }
@@ -4016,6 +4048,8 @@ function Ledger({ user }) {
                           <Th isNumeric>Share Capital</Th>
                           <Th isNumeric>Fee</Th>
                           <Th isNumeric>Savings</Th>
+                          <Th isNumeric>Principal Applied</Th>
+                          <Th isNumeric>Interest Applied</Th>
                           <Th>Status</Th>
                         </Tr>
                       </Thead>
@@ -4030,6 +4064,12 @@ function Ledger({ user }) {
                             <Td isNumeric>{formatMoney(payment.shareCapitalAmount)}</Td>
                             <Td isNumeric>{formatMoney(payment.membershipFeeAmount)}</Td>
                             <Td isNumeric>{formatMoney(payment.savingsDepositAmount)}</Td>
+                            <Td isNumeric>
+                              {payment.batchType === "Loan Collection" ? formatMoney(payment.principalAmount) : ""}
+                            </Td>
+                            <Td isNumeric>
+                              {payment.batchType === "Loan Collection" ? formatMoney(payment.interestAmount) : ""}
+                            </Td>
                             <Td>
                               <Badge colorScheme="blue">{payment.status}</Badge>
                             </Td>
@@ -4037,7 +4077,7 @@ function Ledger({ user }) {
                         ))}
                         {tellerBatch.length === 0 ? (
                           <Tr>
-                            <Td colSpan={9} color="gray.500">
+                            <Td colSpan={11} color="gray.500">
                               No unposted teller batch payments.
                             </Td>
                           </Tr>
@@ -4397,6 +4437,8 @@ function Ledger({ user }) {
                           <Th>Reference</Th>
                           <Th isNumeric>Cash In</Th>
                           <Th isNumeric>Cash Out</Th>
+                          <Th isNumeric>Principal Applied</Th>
+                          <Th isNumeric>Interest Applied</Th>
                           <Th>Status</Th>
                           <Th>Journal Entry</Th>
                         </Tr>
@@ -4410,6 +4452,16 @@ function Ledger({ user }) {
                             <Td>{transaction.referenceNo}</Td>
                             <Td isNumeric>{transaction.cashReceived ? formatMoney(transaction.cashReceived) : ""}</Td>
                             <Td isNumeric>{transaction.cashOut ? formatMoney(transaction.cashOut) : ""}</Td>
+                            <Td isNumeric>
+                              {transaction.batchType === "Loan Collection"
+                                ? formatMoney(transaction.principalAmount)
+                                : ""}
+                            </Td>
+                            <Td isNumeric>
+                              {transaction.batchType === "Loan Collection"
+                                ? formatMoney(transaction.interestAmount)
+                                : ""}
+                            </Td>
                             <Td>
                               <Badge colorScheme={transaction.status === "Posted" ? "green" : "blue"}>
                                 {transaction.status}
@@ -4420,7 +4472,7 @@ function Ledger({ user }) {
                         ))}
                         {selectedBatchDetails.transactions.length === 0 ? (
                           <Tr>
-                            <Td colSpan={8} color="gray.500">No transactions found for this batch.</Td>
+                            <Td colSpan={10} color="gray.500">No transactions found for this batch.</Td>
                           </Tr>
                         ) : null}
                       </Tbody>
@@ -8790,18 +8842,11 @@ function LoanCollections({ user }) {
   const selectedOutstandingBalance = selectedLoan
     ? selectedLoan.installments.reduce((total, installment) => addMoney(total, installment.totalRemaining), 0)
     : 0;
-  const collectionAmount = moneyValue(form.amountReceived);
-  const collectionType =
-    selectedInstallment && collectionAmount > selectedInstallment.totalRemaining
-      ? "Advance Payment"
-      : selectedInstallment && collectionAmount < selectedInstallment.totalRemaining
-        ? "Partial Payment"
-        : "Full Payment";
-  const collectionTypeColor = {
-    "Partial Payment": "orange",
-    "Full Payment": "green",
-    "Advance Payment": "blue"
-  }[collectionType];
+  const collectionPreview = previewLoanCollectionAllocation(
+    form.amountReceived,
+    selectedInstallment,
+    selectedOutstandingBalance
+  );
 
   return (
     <VStack align="stretch" spacing={5} minW={0} maxW="100%">
@@ -8882,8 +8927,8 @@ function LoanCollections({ user }) {
                 <Th>Member</Th>
                 <Th>Installment</Th>
                 <Th>Reference</Th>
-                <Th isNumeric>Principal</Th>
-                <Th isNumeric>Interest</Th>
+                <Th isNumeric>Principal Applied</Th>
+                <Th isNumeric>Interest Applied</Th>
                 <Th isNumeric>Received</Th>
                 <Th>Batch</Th>
                 <Th>Status</Th>
@@ -8970,9 +9015,37 @@ function LoanCollections({ user }) {
                     <NumberInputField />
                   </NumberInput>
                 </FormControl>
-                <Badge colorScheme={collectionTypeColor} alignSelf="flex-start">
-                  {collectionType}
-                </Badge>
+                <Box borderWidth="1px" borderRadius="md" p={4} bg="gray.50">
+                  <Flex justify="space-between" gap={4} wrap="wrap" mb={3}>
+                    <Box>
+                      <Text fontWeight="bold">Payment Allocation Preview</Text>
+                      <Text color="gray.600" fontSize="sm">
+                        This is how the receipt will be applied when confirmed.
+                      </Text>
+                    </Box>
+                    <Badge colorScheme={collectionPreview.paymentTypeColor} alignSelf="flex-start">
+                      {collectionPreview.paymentType}
+                    </Badge>
+                  </Flex>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3}>
+                    <Box>
+                      <Text color="gray.500" fontSize="sm">Interest Applied</Text>
+                      <Text fontWeight="bold">{formatMoney(collectionPreview.interestApplied)}</Text>
+                    </Box>
+                    <Box>
+                      <Text color="gray.500" fontSize="sm">Principal Applied</Text>
+                      <Text fontWeight="bold">{formatMoney(collectionPreview.principalApplied)}</Text>
+                    </Box>
+                    <Box>
+                      <Text color="gray.500" fontSize="sm">Received</Text>
+                      <Text fontWeight="bold">{formatMoney(collectionPreview.amount)}</Text>
+                    </Box>
+                    <Box>
+                      <Text color="gray.500" fontSize="sm">Balance After Receipt</Text>
+                      <Text fontWeight="bold">{formatMoney(collectionPreview.remainingAfterReceipt)}</Text>
+                    </Box>
+                  </Grid>
+                </Box>
                 <Text color="gray.500" fontSize="sm">
                   Collections apply first to remaining interest, then principal. Any excess over this installment is treated as advance principal payment.
                 </Text>
