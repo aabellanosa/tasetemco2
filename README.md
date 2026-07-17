@@ -131,7 +131,6 @@ The current spike uses one shared prototype password in code. Production behavio
 | `manager` | General Manager | Dashboard |
 | `bookkeeper` | Accountant / Bookkeeper | General Ledger |
 | `loanofficer` | Loan Officer | Loans |
-| `approver` | Credit Committee / Approver | Loans |
 | `teller01` | Teller / Cashier | Dashboard |
 | `membership` | Membership Officer | Members |
 | `auditor` | Auditor / Compliance Officer | Financial Reports |
@@ -147,7 +146,6 @@ The React/Postgres pivot uses action-level permissions, not just screen access. 
 | General Manager | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
 | Accountant / Bookkeeper | No | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
 | Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
-| Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No |
 | Teller / Cashier | Yes | No | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
 | Membership Officer | Yes | Yes | Yes | No | Yes | No | No | No | No | No | No | No | No |
 | Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
@@ -189,25 +187,24 @@ Opening Balance Accounting Entries v1d.2 creates one balanced journal when an op
 
 Opening Balance Visibility v1e adds finalized opening balances to each member statement with batch number, cutover date, source reference, amounts, and linked journal number. The Member Subsidiary Ledger separately shows opening share capital and opening savings beside normal transaction movements and current balances.
 
-Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. Manager, Loan Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, and Appliance Loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee. This spike adds the `loan_products` Postgres table, so run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying the app build.
+Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. Manager, Loan Officer, Teller / Cashier, and Auditor have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, and Appliance Loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee. This spike adds the `loan_products` Postgres table, so run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying the app build.
 
 | Loan Product Access | View | Create / Edit |
 | --- | --- | --- |
 | System Administrator | Yes | Yes |
 | General Manager | Yes | No |
 | Loan Officer | Yes | No |
-| Credit Committee / Approver | Yes | No |
 | Teller / Cashier | Yes | No |
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
 Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, application date, and internal collateral type, then saves a Draft. Collateral type is limited to `PDC` or `ATM Cards`, supports management review only, and is intentionally excluded from the printed loan application form. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application.
 
-Loan Credit Review v1 lets the Credit Committee / Approver review only Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the member's requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable.
+Loan Credit Review v1 lets the System Administrator review Submitted applications and record assessment notes, recommended principal, recommended term, decision date, remarks, actor, and timestamp. Decisions are `Approved`, `Rejected`, or `Returned`. Rejection and return require remarks; approval cannot exceed the member's requested amount or term. Returned applications become editable by the originating Loan Officer and move back to Draft when saved. Approved and Rejected applications are immutable. The loan decision responsibility remains distinct, but the dedicated Approver demo login has been retired for TASETEMCO's current workflow.
 
 Loan Computation and Amortization Preview v1 lets the originating Loan Officer compute an Approved application using its snapshotted product terms. TASETEMCO products use 2.5% monthly diminishing-balance interest. Most loan products deduct a 4.5% service fee from principal, but Petty Cash Loan has no service fee. Salary, Educational, and Appliance loans also deduct 1.5% insurance, 2% CBU, and 1% savings retention; CBU can be removed during computation when the member is fully subscribed. The preview shows principal, interest, all deductions, net proceeds, total payable, maturity, and every installment, then saves the schedule once as `For Release`.
 
-Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Teller confirms the release date, unique voucher/reference number, and cash released, which must exactly equal computed net proceeds. The release is immutable, linked to the current Open teller batch, counted as cash-out, and changes the loan and application status to `Released`. Loan Officer, Approver, Admin, Manager, and Auditor have read-only release visibility. Bookkeeper journal posting remains Loan Release v1b.
+Loan Release v1a lets Teller/Cashier release only loans marked `For Release`. Teller confirms the release date, unique voucher/reference number, and cash released, which must exactly equal computed net proceeds. The release is immutable, linked to the current Open teller batch, counted as cash-out, and changes the loan and application status to `Released`. Loan Officer, Admin, Manager, and Auditor have read-only release visibility. Bookkeeper journal posting remains Loan Release v1b.
 
 Loan Release v1b brings released loans into the existing reviewed-batch posting control. After Teller submits cash count and Bookkeeper marks the batch Reviewed, one-button posting creates a balanced journal from the frozen application mappings: debit Loans Receivable for principal; credit Cash on Hand for net proceeds; credit Service Fee Other Income and Insurance Other Income for deducted fees; and credit Share Capital and Savings Deposits Payable for CBU/savings retention. Posted CBU and savings retention update member balances. The release, loan, and application become `Posted`, and release history and batch details retain the linked journal number. Reposting is idempotent.
 
@@ -223,10 +220,9 @@ Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment a
 
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
 | --- | --- | --- | --- | --- |
-| System Administrator | Yes | No | No | No |
+| System Administrator | Yes | No | No | Yes |
 | General Manager | Yes | No | No | No |
 | Loan Officer | Yes | Yes | Yes | No |
-| Credit Committee / Approver | Yes | No | No | Yes |
 | Auditor / Compliance Officer | Yes | No | No | No |
 | Teller / Cashier | No | No | No | No |
 | Membership Officer | No | No | No | No |
@@ -236,7 +232,6 @@ Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment a
 | System Administrator | Yes | No |
 | General Manager | Yes | No |
 | Loan Officer | Yes | Own approved applications |
-| Credit Committee / Approver | Yes | No |
 | Auditor / Compliance Officer | Yes | No |
 | Teller / Cashier | No | No |
 | Membership Officer | No | No |
@@ -255,7 +250,6 @@ Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment a
 | System Administrator | Yes | No |
 | General Manager | Yes | No |
 | Loan Officer | Yes | No |
-| Credit Committee / Approver | Yes | No |
 | Teller / Cashier | Yes | Yes |
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
@@ -266,7 +260,6 @@ Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment a
 | General Manager | Yes | No |
 | Accountant / Bookkeeper | Ledger and batch evidence | No |
 | Loan Officer | Yes | No |
-| Credit Committee / Approver | Yes | No |
 | Teller / Cashier | Yes | Yes |
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
