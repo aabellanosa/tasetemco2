@@ -8739,7 +8739,7 @@ function LoanCollections({ user }) {
   }, [loadCollections]);
 
   function nextInstallment(loan) {
-    return loan.installments.find((installment) => installment.status === "Scheduled") || null;
+    return loan.installments.find((installment) => installment.status !== "Paid" && installment.totalRemaining > 0) || null;
   }
 
   function startCollection(loan) {
@@ -8751,7 +8751,7 @@ function LoanCollections({ user }) {
     setForm({
       collectionDate: new Date().toISOString().slice(0, 10),
       referenceNo: "",
-      amountReceived: installment.totalDue
+      amountReceived: installment.totalRemaining
     });
     setMessage("");
     setError("");
@@ -8787,6 +8787,21 @@ function LoanCollections({ user }) {
     .map((loan) => ({ ...loan, nextInstallment: nextInstallment(loan) }))
     .filter((loan) => loan.nextInstallment);
   const selectedInstallment = selectedLoan ? nextInstallment(selectedLoan) : null;
+  const selectedOutstandingBalance = selectedLoan
+    ? selectedLoan.installments.reduce((total, installment) => addMoney(total, installment.totalRemaining), 0)
+    : 0;
+  const collectionAmount = moneyValue(form.amountReceived);
+  const collectionType =
+    selectedInstallment && collectionAmount > selectedInstallment.totalRemaining
+      ? "Advance Payment"
+      : selectedInstallment && collectionAmount < selectedInstallment.totalRemaining
+        ? "Partial Payment"
+        : "Full Payment";
+  const collectionTypeColor = {
+    "Partial Payment": "orange",
+    "Full Payment": "green",
+    "Advance Payment": "blue"
+  }[collectionType];
 
   return (
     <VStack align="stretch" spacing={5} minW={0} maxW="100%">
@@ -8794,7 +8809,7 @@ function LoanCollections({ user }) {
         <Box>
           <Heading size="md">Loan Collections</Heading>
           <Text color="gray.600" mt={1}>
-            Record the next exact scheduled installment. Partial, excess, and skipped-installment payments are not yet enabled.
+            Record actual loan payments. The system suggests the amount due, but Teller may accept partial or advance payments.
           </Text>
         </Box>
         <Button size="sm" variant="outline" onClick={loadCollections}>Refresh</Button>
@@ -8815,7 +8830,8 @@ function LoanCollections({ user }) {
                 <Th>Due Date</Th>
                 <Th isNumeric>Principal</Th>
                 <Th isNumeric>Interest</Th>
-                <Th isNumeric>Total Due</Th>
+                <Th isNumeric>Amount Due</Th>
+                <Th>Status</Th>
                 {canCreate ? <Th>Action</Th> : null}
               </Tr>
             </Thead>
@@ -8826,9 +8842,14 @@ function LoanCollections({ user }) {
                   <Td>{loan.memberName}</Td>
                   <Td>{loan.nextInstallment.installmentNo} of {loan.installmentCount}</Td>
                   <Td>{loan.nextInstallment.dueDate}</Td>
-                  <Td isNumeric>{formatMoney(loan.nextInstallment.principalDue)}</Td>
-                  <Td isNumeric>{formatMoney(loan.nextInstallment.interestDue)}</Td>
-                  <Td isNumeric fontWeight="bold">{formatMoney(loan.nextInstallment.totalDue)}</Td>
+                  <Td isNumeric>{formatMoney(loan.nextInstallment.principalRemaining)}</Td>
+                  <Td isNumeric>{formatMoney(loan.nextInstallment.interestRemaining)}</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(loan.nextInstallment.totalRemaining)}</Td>
+                  <Td>
+                    <Badge colorScheme={loan.nextInstallment.status === "Partial" ? "orange" : "blue"}>
+                      {loan.nextInstallment.status}
+                    </Badge>
+                  </Td>
                   {canCreate ? (
                     <Td>
                       <Button size="sm" colorScheme="green" onClick={() => startCollection(loan)}>
@@ -8840,7 +8861,7 @@ function LoanCollections({ user }) {
               ))}
               {!collectibleLoans.length ? (
                 <Tr>
-                  <Td colSpan={canCreate ? 8 : 7} color="gray.500">
+                  <Td colSpan={canCreate ? 9 : 8} color="gray.500">
                     No posted loan currently has an unpaid scheduled installment.
                   </Td>
                 </Tr>
@@ -8907,9 +8928,10 @@ function LoanCollections({ user }) {
                   <Text color="gray.600">
                     Installment {selectedInstallment.installmentNo} due {selectedInstallment.dueDate}
                   </Text>
-                  <Text color="gray.600">Principal: {formatMoney(selectedInstallment.principalDue)}</Text>
-                  <Text color="gray.600">Interest: {formatMoney(selectedInstallment.interestDue)}</Text>
-                  <Text fontWeight="bold">Total due: {formatMoney(selectedInstallment.totalDue)}</Text>
+                  <Text color="gray.600">Remaining principal: {formatMoney(selectedInstallment.principalRemaining)}</Text>
+                  <Text color="gray.600">Remaining interest: {formatMoney(selectedInstallment.interestRemaining)}</Text>
+                  <Text fontWeight="bold">Amount due now: {formatMoney(selectedInstallment.totalRemaining)}</Text>
+                  <Text color="gray.600">Total loan balance remaining: {formatMoney(selectedOutstandingBalance)}</Text>
                 </Box>
                 <FormControl isRequired>
                   <FormLabel>Collection Date</FormLabel>
@@ -8933,11 +8955,26 @@ function LoanCollections({ user }) {
                   />
                 </FormControl>
                 <FormControl>
-                  <FormLabel>Amount Received</FormLabel>
-                  <Input value={formatMoney(form.amountReceived)} isReadOnly />
+                  <FormLabel>Actual Amount Received</FormLabel>
+                  <NumberInput
+                    min={0.01}
+                    max={selectedOutstandingBalance || undefined}
+                    precision={2}
+                    step={0.01}
+                    value={form.amountReceived}
+                    onChange={(value) => setForm((current) => ({
+                      ...current,
+                      amountReceived: Number(value || 0)
+                    }))}
+                  >
+                    <NumberInputField />
+                  </NumberInput>
                 </FormControl>
+                <Badge colorScheme={collectionTypeColor} alignSelf="flex-start">
+                  {collectionType}
+                </Badge>
                 <Text color="gray.500" fontSize="sm">
-                  Early payment of the next installment is allowed. The scheduled principal and interest split cannot be changed.
+                  Collections apply first to remaining interest, then principal. Any excess over this installment is treated as advance principal payment.
                 </Text>
               </VStack>
             ) : null}
@@ -8948,7 +8985,7 @@ function LoanCollections({ user }) {
               colorScheme="green"
               onClick={confirmCollection}
               isLoading={busy}
-              isDisabled={!form.referenceNo.trim()}
+              isDisabled={!form.referenceNo.trim() || form.amountReceived <= 0 || form.amountReceived > selectedOutstandingBalance}
             >
               Confirm Collection
             </Button>

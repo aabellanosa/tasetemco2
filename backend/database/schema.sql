@@ -216,8 +216,7 @@ CREATE TABLE IF NOT EXISTS loan_collections (
   posted_by VARCHAR(80),
   posted_entry_no VARCHAR(40),
   posted_at TIMESTAMP NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (loan_no, installment_no)
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS member_applications (

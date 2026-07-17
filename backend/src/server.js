@@ -1680,9 +1680,88 @@ function mapLoan(row) {
           principalDue: Number(item.principalDue || 0),
           interestDue: Number(item.interestDue || 0),
           totalDue: Number(item.totalDue || 0),
+          principalPaid: Number(item.principalPaid || 0),
+          interestPaid: Number(item.interestPaid || 0),
+          totalPaid: Number(item.totalPaid || 0),
+          principalRemaining: Number(item.principalRemaining ?? item.principalDue ?? 0),
+          interestRemaining: Number(item.interestRemaining ?? item.interestDue ?? 0),
+          totalRemaining: Number(item.totalRemaining ?? item.totalDue ?? 0),
           status: item.status || "Scheduled"
         }))
       : []
+  };
+}
+
+function decorateLoanInstallments(installments, collections) {
+  const collectionTotalsByInstallment = new Map();
+
+  for (const collection of collections) {
+    const key = `${collection.loanNo}:${collection.installmentNo}`;
+    const current = collectionTotalsByInstallment.get(key) || {
+      principalPaid: 0,
+      interestPaid: 0,
+      totalPaid: 0
+    };
+
+    current.principalPaid = addMoney(current.principalPaid, collection.principalAmount);
+    current.interestPaid = addMoney(current.interestPaid, collection.interestAmount);
+    current.totalPaid = addMoney(current.totalPaid, collection.amountReceived);
+    collectionTotalsByInstallment.set(key, current);
+  }
+
+  return installments.map((installment) => {
+    const totals = collectionTotalsByInstallment.get(`${installment.loanNo}:${installment.installmentNo}`) || {
+      principalPaid: 0,
+      interestPaid: 0,
+      totalPaid: 0
+    };
+    const totalDue = moneyValue(installment.totalDue);
+    const principalDue = moneyValue(installment.principalDue);
+    const interestDue = moneyValue(installment.interestDue);
+    const totalPaid = moneyValue(totals.totalPaid);
+    const status =
+      totalPaid <= 0
+        ? installment.status || "Scheduled"
+        : totalPaid + 0.005 >= totalDue
+          ? "Paid"
+          : "Partial";
+
+    return {
+      ...installment,
+      principalPaid: moneyValue(totals.principalPaid),
+      interestPaid: moneyValue(totals.interestPaid),
+      totalPaid,
+      principalRemaining: Math.max(0, moneyValue(principalDue - totals.principalPaid)),
+      interestRemaining: Math.max(0, moneyValue(interestDue - totals.interestPaid)),
+      totalRemaining: Math.max(0, moneyValue(totalDue - totalPaid)),
+      status
+    };
+  });
+}
+
+function nextCollectibleInstallment(loan) {
+  return loan.installments.find((installment) => installment.status !== "Paid" && installment.totalRemaining > 0);
+}
+
+function loanOutstandingBalance(loan) {
+  return moneyValue(
+    loan.installments.reduce((total, installment) => addMoney(total, installment.totalRemaining), 0)
+  );
+}
+
+function allocateLoanCollectionPayment(amountReceived, installment) {
+  let remainingPayment = moneyValue(amountReceived);
+  const interestAmount = Math.min(remainingPayment, moneyValue(installment.interestRemaining ?? installment.interestDue));
+  remainingPayment = moneyValue(remainingPayment - interestAmount);
+  const scheduledPrincipal = Math.min(
+    remainingPayment,
+    moneyValue(installment.principalRemaining ?? installment.principalDue)
+  );
+  remainingPayment = moneyValue(remainingPayment - scheduledPrincipal);
+
+  return {
+    interestAmount: moneyValue(interestAmount),
+    principalAmount: moneyValue(scheduledPrincipal + Math.max(0, remainingPayment))
   };
 }
 
@@ -1692,7 +1771,10 @@ async function listLoans() {
   if (!db) {
     return loans.map((loan) => mapLoan({
       ...loan,
-      installments: loanInstallments.filter((item) => item.loanNo === loan.loanNo)
+      installments: decorateLoanInstallments(
+        loanInstallments.filter((item) => item.loanNo === loan.loanNo),
+        loanCollections.filter((item) => item.loanNo === loan.loanNo)
+      )
     }));
   }
 
@@ -1723,10 +1805,19 @@ async function listLoans() {
      FROM loan_installments
      ORDER BY loan_no, installment_no`
   );
+  const [collectionRows] = await db.execute(
+    `SELECT loan_no AS loanNo, installment_no AS installmentNo,
+            principal_amount AS principalAmount, interest_amount AS interestAmount,
+            amount_received AS amountReceived
+     FROM loan_collections`
+  );
 
   return loanRows.map((loan) => mapLoan({
     ...loan,
-    installments: installmentRows.filter((item) => item.loanNo === loan.loanNo)
+    installments: decorateLoanInstallments(
+      installmentRows.filter((item) => item.loanNo === loan.loanNo),
+      collectionRows.filter((item) => item.loanNo === loan.loanNo)
+    )
   }));
 }
 
@@ -2349,7 +2440,7 @@ async function listLoanCollections() {
   return rows.map(mapLoanCollection);
 }
 
-function validateLoanCollectionInput(body, installment, releaseDate = "") {
+function validateLoanCollectionInput(body, installment, releaseDate = "", outstandingBalance = installment.totalRemaining) {
   const collectionDate = formatDateOnly(body.collectionDate);
   const referenceNo = String(body.referenceNo || "").trim().toUpperCase();
   const amountReceived = Number(body.amountReceived);
@@ -2363,8 +2454,11 @@ function validateLoanCollectionInput(body, installment, releaseDate = "") {
   if (releaseDate && collectionDate < formatDateOnly(releaseDate)) {
     return { error: "Collection date cannot precede the loan release date." };
   }
-  if (!isMoney(amountReceived) || !moneyEquals(amountReceived, installment.totalDue)) {
-    return { error: "Amount received must exactly match the next scheduled installment." };
+  if (!isMoney(amountReceived) || amountReceived <= 0) {
+    return { error: "Amount received must be a valid amount greater than zero." };
+  }
+  if (moneyValue(amountReceived) > moneyValue(outstandingBalance) + 0.005) {
+    return { error: "Amount received cannot exceed the remaining loan balance." };
   }
 
   return { value: { collectionDate, referenceNo, amountReceived: moneyValue(amountReceived) } };
@@ -2394,14 +2488,16 @@ async function recordLoanCollection(loanNo, body, user) {
   if (!release || release.status !== "Posted") {
     return { error: "Posted loan release evidence was not found.", statusCode: 409 };
   }
-  const installment = loan.installments.find((item) => item.status === "Scheduled");
+  const installment = nextCollectibleInstallment(loan);
   if (!installment) {
     return { error: "This loan has no unpaid scheduled installment.", statusCode: 409 };
   }
-  const validation = validateLoanCollectionInput(body, installment, release.releaseDate);
+  const outstandingBalance = loanOutstandingBalance(loan);
+  const validation = validateLoanCollectionInput(body, installment, release.releaseDate, outstandingBalance);
   if (validation.error) {
     return { error: validation.error, statusCode: 400 };
   }
+  const allocation = allocateLoanCollectionPayment(validation.value.amountReceived, installment);
   const batchResult = await getOpenTellerBatch(user);
   if (batchResult.error) {
     return batchResult;
@@ -2420,8 +2516,8 @@ async function recordLoanCollection(loanNo, body, user) {
       batchId: batchResult.batch.id,
       memberNo: loan.memberNo,
       memberName: loan.memberName,
-      principalAmount: installment.principalDue,
-      interestAmount: installment.interestDue,
+      principalAmount: allocation.principalAmount,
+      interestAmount: allocation.interestAmount,
       ...validation.value,
       receivedBy: user.username,
       status: "Teller Batch",
@@ -2431,7 +2527,10 @@ async function recordLoanCollection(loanNo, body, user) {
     const storedInstallment = loanInstallments.find(
       (item) => item.loanNo === loanNo && item.installmentNo === installment.installmentNo
     );
-    storedInstallment.status = "Paid";
+    storedInstallment.status =
+      moneyValue(installment.totalPaid + validation.value.amountReceived) + 0.005 >= moneyValue(installment.totalDue)
+        ? "Paid"
+        : "Partial";
     return {
       collection: mapLoanCollection(collection),
       loan: (await listLoans()).find((item) => item.loanNo === loanNo)
@@ -2476,21 +2575,34 @@ async function recordLoanCollection(loanNo, body, user) {
               principal_due AS principalDue, interest_due AS interestDue,
               total_due AS totalDue, status
        FROM loan_installments
-       WHERE loan_no = ? AND status = 'Scheduled'
+       WHERE loan_no = ?
        ORDER BY installment_no
-       LIMIT 1
        FOR UPDATE`,
       [loanNo]
     );
-    const lockedInstallment = installmentRows[0];
+    const [collectionRows] = await connection.execute(
+      `SELECT loan_no AS loanNo, installment_no AS installmentNo,
+              principal_amount AS principalAmount, interest_amount AS interestAmount,
+              amount_received AS amountReceived
+       FROM loan_collections
+       WHERE loan_no = ?`,
+      [loanNo]
+    );
+    const decoratedInstallments = decorateLoanInstallments(
+      installmentRows.map((item) => ({ ...item, loanNo })),
+      collectionRows
+    );
+    const lockedInstallment = decoratedInstallments.find(
+      (item) => item.status !== "Paid" && item.totalRemaining > 0
+    );
     if (!lockedInstallment) {
       await connection.rollback();
       return { error: "This loan has no unpaid scheduled installment.", statusCode: 409 };
     }
-    const lockedValidation = validateLoanCollectionInput(body, {
-      ...lockedInstallment,
-      totalDue: Number(lockedInstallment.totalDue)
-    }, lockedLoan.releaseDate);
+    const lockedOutstandingBalance = moneyValue(
+      decoratedInstallments.reduce((total, item) => addMoney(total, item.totalRemaining), 0)
+    );
+    const lockedValidation = validateLoanCollectionInput(body, lockedInstallment, lockedLoan.releaseDate, lockedOutstandingBalance);
     if (lockedValidation.error) {
       await connection.rollback();
       return { error: lockedValidation.error, statusCode: 400 };
@@ -2499,6 +2611,10 @@ async function recordLoanCollection(loanNo, body, user) {
       await connection.rollback();
       return { error: "Official receipt or reference number already exists.", statusCode: 409 };
     }
+    const lockedAllocation = allocateLoanCollectionPayment(
+      lockedValidation.value.amountReceived,
+      lockedInstallment
+    );
     const collectionNo = await nextLoanCollectionNo(connection);
     await connection.execute(
       `INSERT INTO loan_collections (
@@ -2508,17 +2624,22 @@ async function recordLoanCollection(loanNo, body, user) {
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
       [
         collectionNo, loanNo, lockedInstallment.installmentNo, batchResult.batch.id,
-        lockedLoan.memberNo, lockedLoan.memberName, lockedInstallment.principalDue,
-        lockedInstallment.interestDue, lockedValidation.value.amountReceived,
+        lockedLoan.memberNo, lockedLoan.memberName, lockedAllocation.principalAmount,
+        lockedAllocation.interestAmount, lockedValidation.value.amountReceived,
         lockedValidation.value.collectionDate, lockedValidation.value.referenceNo,
         user.username
       ]
     );
+    const nextInstallmentStatus =
+      moneyValue(lockedInstallment.totalPaid + lockedValidation.value.amountReceived) + 0.005 >=
+      moneyValue(lockedInstallment.totalDue)
+        ? "Paid"
+        : "Partial";
     await connection.execute(
       `UPDATE loan_installments
-       SET status = 'Paid'
+       SET status = ?
        WHERE loan_no = ? AND installment_no = ?`,
-      [loanNo, lockedInstallment.installmentNo]
+      [nextInstallmentStatus, loanNo, lockedInstallment.installmentNo]
     );
     await connection.commit();
     return {

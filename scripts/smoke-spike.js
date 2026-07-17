@@ -3245,7 +3245,7 @@ async function run() {
       throw new Error("Collection date should not precede the actual loan release date.");
     }
 
-    const incorrectInstallmentAmount = await fetch(
+    const excessiveCollectionAmount = await fetch(
       `${baseUrl}/api/loans/${smokeLoanNo}/collections`,
       {
         method: "POST",
@@ -3255,14 +3255,14 @@ async function run() {
         },
         body: JSON.stringify({
           collectionDate: "2026-07-21",
-          referenceNo: "OR-LOAN-WRONG",
-          amountReceived: 1700
+          referenceNo: "OR-LOAN-EXCESSIVE",
+          amountReceived: 999999
         })
       }
     );
 
-    if (incorrectInstallmentAmount.status !== 400) {
-      throw new Error("Loan Collection v1a should require the exact next installment amount.");
+    if (excessiveCollectionAmount.status !== 400) {
+      throw new Error("Loan collections should reject payment above the remaining loan balance.");
     }
 
     const recordLoanCollection = await fetch(

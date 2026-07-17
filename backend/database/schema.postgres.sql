@@ -242,8 +242,7 @@ CREATE TABLE IF NOT EXISTS loan_collections (
   posted_by VARCHAR(80),
   posted_entry_no VARCHAR(40),
   posted_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (loan_no, installment_no)
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS member_applications (
@@ -556,6 +555,8 @@ ALTER TABLE loan_releases
   ALTER COLUMN savings_retention_amount TYPE NUMERIC(18,2) USING savings_retention_amount::NUMERIC,
   ALTER COLUMN net_proceeds TYPE NUMERIC(18,2) USING net_proceeds::NUMERIC,
   ALTER COLUMN cash_released TYPE NUMERIC(18,2) USING cash_released::NUMERIC;
+ALTER TABLE loan_collections
+  DROP CONSTRAINT IF EXISTS loan_collections_loan_no_installment_no_key;
 ALTER TABLE loan_collections
   ALTER COLUMN principal_amount TYPE NUMERIC(18,2) USING principal_amount::NUMERIC,
   ALTER COLUMN interest_amount TYPE NUMERIC(18,2) USING interest_amount::NUMERIC,
