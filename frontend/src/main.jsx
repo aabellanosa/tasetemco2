@@ -211,6 +211,36 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function filterMemberOptions(members, query, selectedMemberId = "") {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return members;
+  }
+
+  const filteredMembers = members.filter((member) =>
+    [
+      member.id,
+      member.name,
+      member.group,
+      member.contactNumber
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+
+  if (selectedMemberId && !filteredMembers.some((member) => member.id === selectedMemberId)) {
+    const selectedMember = members.find((member) => member.id === selectedMemberId);
+
+    if (selectedMember) {
+      return [selectedMember, ...filteredMembers];
+    }
+  }
+
+  return filteredMembers;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -2170,6 +2200,7 @@ function Members({ user }) {
     status: "Active"
   });
   const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
+  const [tellerMemberSearch, setTellerMemberSearch] = useState("");
   const [tellerTransactionType, setTellerTransactionType] = useState("initial-payment");
   const [approvedMemberName, setApprovedMemberName] = useState("");
   const [message, setMessage] = useState("");
@@ -2225,6 +2256,7 @@ function Members({ user }) {
     canCreateShareCapitalContribution ||
     canCreateSavingsDeposit ||
     canCreateSavingsWithdrawal;
+  const tellerMemberOptions = filterMemberOptions(activeMembers, tellerMemberSearch, selectedTellerMemberId);
   const selectedTellerMember = activeMembers.find((member) => member.id === selectedTellerMemberId);
   const tellerBatchRows = [
     ...initialPayments
@@ -2782,17 +2814,28 @@ function Members({ user }) {
           <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4} mb={5}>
             <FormControl isRequired>
               <FormLabel>Member</FormLabel>
+              <Input
+                mb={2}
+                value={tellerMemberSearch}
+                onChange={(event) => setTellerMemberSearch(event.target.value)}
+                placeholder="Search member name or number"
+              />
               <Select
-                placeholder="Select active member"
+                placeholder={
+                  tellerMemberOptions.length === 0 ? "No active members match" : "Select active member"
+                }
                 value={selectedTellerMemberId}
                 onChange={(event) => selectTellerMember(event.target.value)}
               >
-                {activeMembers.map((member) => (
+                {tellerMemberOptions.map((member) => (
                   <option key={member.id} value={member.id}>
                     {member.id} - {member.name}
                   </option>
                 ))}
               </Select>
+              <Text color="gray.500" fontSize="xs" mt={1}>
+                Showing {tellerMemberOptions.length} of {activeMembers.length} active members
+              </Text>
             </FormControl>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">
@@ -6816,6 +6859,7 @@ function LoanApplications({ user }) {
   const [members, setMembers] = useState([]);
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(defaultLoanApplicationForm);
+  const [loanMemberSearch, setLoanMemberSearch] = useState("");
   const [editingNo, setEditingNo] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -6839,6 +6883,7 @@ function LoanApplications({ user }) {
   const canDecide = user.permissions.includes("loans:applications:decide");
   const canPrepareDocument = canCreate || canEdit || user.username === "admin";
   const activeProducts = products.filter((product) => product.status === "Active");
+  const loanMemberOptions = filterMemberOptions(members, loanMemberSearch, form.memberNo);
   const selectedProduct = products.find((product) => product.code === form.productCode);
   const termOptions = allowedCommonLoanTerms(selectedProduct);
 
@@ -7098,12 +7143,23 @@ function LoanApplications({ user }) {
           <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4}>
             <FormControl isRequired>
               <FormLabel>Active Member</FormLabel>
+              <Input
+                mb={2}
+                value={loanMemberSearch}
+                onChange={(event) => setLoanMemberSearch(event.target.value)}
+                placeholder="Search member name or number"
+              />
               <Select value={form.memberNo} onChange={(event) => updateForm("memberNo", event.target.value)}>
-                <option value="">Select member</option>
-                {members.map((member) => (
+                <option value="">
+                  {loanMemberOptions.length === 0 ? "No active members match" : "Select member"}
+                </option>
+                {loanMemberOptions.map((member) => (
                   <option key={member.id} value={member.id}>{member.id} - {member.name}</option>
                 ))}
               </Select>
+              <Text color="gray.500" fontSize="xs" mt={1}>
+                Showing {loanMemberOptions.length} of {members.length} active members
+              </Text>
             </FormControl>
             <FormControl isRequired>
               <FormLabel>Loan Product</FormLabel>
