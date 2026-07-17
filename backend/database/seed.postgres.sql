@@ -3,7 +3,6 @@ INSERT INTO users (full_name, username, role_name, status, default_view) VALUES
   ('Victor M. Lim', 'manager', 'General Manager', 'Active', 'dashboard'),
   ('Grace P. Uy', 'bookkeeper', 'Accountant / Bookkeeper', 'Active', 'ledger'),
   ('Paolo C. Mendoza', 'loanofficer', 'Loan Officer', 'Active', 'loans'),
-  ('Lorna B. Aquino', 'approver', 'Credit Committee / Approver', 'Active', 'loans'),
   ('Nora S. Angeles', 'teller01', 'Teller / Cashier', 'Active', 'dashboard'),
   ('Arnel V. Bautista', 'membership', 'Membership Officer', 'Active', 'members'),
   ('Celia T. Abad', 'auditor', 'Auditor / Compliance Officer', 'Active', 'reports'),
@@ -13,6 +12,10 @@ ON CONFLICT (username) DO UPDATE SET
   role_name = EXCLUDED.role_name,
   status = EXCLUDED.status,
   default_view = EXCLUDED.default_view;
+
+UPDATE users
+SET status = 'Inactive'
+WHERE username = 'approver';
 
 INSERT INTO members (
   member_no, full_name, cluster_name, status, share_capital, savings_balance,
@@ -147,7 +150,7 @@ INSERT INTO loan_applications (
     200, '1050', '4010', '4030', '4050', '3010', '2020', '4040',
     '1010', 'Posted', 'loanofficer', 'loanofficer', CURRENT_TIMESTAMP - INTERVAL '70 days',
     'Demo account for overdue collection monitoring.', 15000, 3, 'Approved', 'Approved for seeded demo.',
-    CURRENT_DATE - INTERVAL '69 days', 'approver', CURRENT_TIMESTAMP - INTERVAL '69 days'
+    CURRENT_DATE - INTERVAL '69 days', 'admin', CURRENT_TIMESTAMP - INTERVAL '69 days'
   )
 ON CONFLICT (application_no) DO UPDATE SET
   member_no = EXCLUDED.member_no,

@@ -2334,28 +2334,30 @@ async function run() {
       throw new Error("Submitted loan applications should be immutable.");
     }
 
-    const approverLogin = await fetch(`${baseUrl}/api/login`, {
+    const retiredApproverLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: "approver", password: "p@55@LL" })
     });
-    const approverCookie = approverLogin.headers.get("set-cookie")?.split(";")[0];
-    const approverLoginBody = await approverLogin.json();
-    const approverLoanApplications = await fetch(`${baseUrl}/api/loan-applications`, {
-      headers: { Cookie: approverCookie }
+
+    if (retiredApproverLogin.status !== 401) {
+      throw new Error("Retired approver demo account should no longer be able to log in.");
+    }
+
+    const adminLoanApplicationsForDecision = await fetch(`${baseUrl}/api/loan-applications`, {
+      headers: { Cookie: adminCookie }
     });
-    const approverApplicationRows = await approverLoanApplications.json();
+    const adminDecisionApplicationRows = await adminLoanApplicationsForDecision.json();
 
     if (
-      !approverLogin.ok ||
-      !approverLoginBody.user.permissions.includes("loans:applications:decide") ||
-      !approverLoanApplications.ok ||
-      !approverApplicationRows.length ||
-      !approverApplicationRows.some(
+      !adminBody.user.permissions.includes("loans:applications:decide") ||
+      !adminLoanApplicationsForDecision.ok ||
+      !adminDecisionApplicationRows.length ||
+      !adminDecisionApplicationRows.some(
         (application) => application.applicationNo === smokeApplicationNo && application.status === "Submitted"
       )
     ) {
-      throw new Error("Credit Committee / Approver should see the submitted application queue.");
+      throw new Error("Admin should see and decide the submitted loan application queue.");
     }
 
     const invalidReturnDecision = await fetch(
@@ -2364,7 +2366,7 @@ async function run() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: approverCookie
+          Cookie: adminCookie
         },
         body: JSON.stringify({
           decision: "Returned",
@@ -2387,7 +2389,7 @@ async function run() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: approverCookie
+          Cookie: adminCookie
         },
         body: JSON.stringify({
           decision: "Returned",
@@ -2404,9 +2406,9 @@ async function run() {
     if (
       !returnLoanApplication.ok ||
       returnLoanApplicationBody.application.status !== "Returned" ||
-      returnLoanApplicationBody.application.decidedBy !== "approver"
+      returnLoanApplicationBody.application.decidedBy !== "admin"
     ) {
-      throw new Error("Approver should return a submitted application with recorded review evidence.");
+      throw new Error("Admin should return a submitted application with recorded review evidence.");
     }
 
     const editReturnedApplication = await fetch(
@@ -2457,7 +2459,7 @@ async function run() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: approverCookie
+          Cookie: adminCookie
         },
         body: JSON.stringify({
           decision: "Approved",
@@ -2480,7 +2482,7 @@ async function run() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: approverCookie
+          Cookie: adminCookie
         },
         body: JSON.stringify({
           decision: "Approved",
@@ -2500,7 +2502,7 @@ async function run() {
       approveLoanApplicationBody.application.recommendedPrincipal !== 13000 ||
       approveLoanApplicationBody.application.recommendedTermMonths !== 8
     ) {
-      throw new Error("Approver should approve a resubmitted application within requested limits.");
+      throw new Error("Admin should approve a resubmitted application within requested limits.");
     }
 
     const duplicateCreditDecision = await fetch(
@@ -2509,7 +2511,7 @@ async function run() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: approverCookie
+          Cookie: adminCookie
         },
         body: JSON.stringify({
           decision: "Rejected",
@@ -2648,40 +2650,32 @@ async function run() {
       throw new Error("Loan Officer should see saved computations and installment schedules.");
     }
 
-    const approverLoans = await fetch(`${baseUrl}/api/loans`, {
-      headers: { Cookie: approverCookie }
+    const adminLoans = await fetch(`${baseUrl}/api/loans`, {
+      headers: { Cookie: adminCookie }
     });
-    const approverLoanRows = await approverLoans.json();
+    const adminLoanRows = await adminLoans.json();
 
     if (
-      !approverLoans.ok ||
-      !approverLoanRows.some((loan) => loan.loanNo === smokeLoanNo && loan.status === "For Release")
+      !adminLoans.ok ||
+      !adminLoanRows.some((loan) => loan.loanNo === smokeLoanNo && loan.status === "For Release")
     ) {
-      throw new Error("Approver should have read-only visibility of saved loan computations.");
+      throw new Error("Admin should have read-only visibility of saved loan computations.");
     }
 
-    const forbiddenApproverComputation = await fetch(
+    const forbiddenAdminComputation = await fetch(
       `${baseUrl}/api/loan-applications/${smokeApplicationNo}/computation-preview`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: approverCookie
+          Cookie: adminCookie
         },
         body: JSON.stringify({ firstPaymentDate: "2026-07-19" })
       }
     );
 
-    if (forbiddenApproverComputation.status !== 403) {
-      throw new Error("Approver should not create loan computations.");
-    }
-
-    const adminLoans = await fetch(`${baseUrl}/api/loans`, {
-      headers: { Cookie: adminCookie }
-    });
-
-    if (!adminLoans.ok) {
-      throw new Error("Admin should have read-only visibility of loan computations.");
+    if (forbiddenAdminComputation.status !== 403) {
+      throw new Error("Admin should decide applications but should not create loan computations.");
     }
 
     const forbiddenMembershipLoans = await fetch(`${baseUrl}/api/loans`, {

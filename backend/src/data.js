@@ -5,7 +5,6 @@ export const roles = [
   "General Manager",
   "Accountant / Bookkeeper",
   "Loan Officer",
-  "Credit Committee / Approver",
   "Teller / Cashier",
   "Membership Officer",
   "Auditor / Compliance Officer",
@@ -52,34 +51,27 @@ export const users = [
   },
   {
     id: 5,
-    name: "Lorna B. Aquino",
-    username: "approver",
-    role: "Credit Committee / Approver",
-    defaultView: "loans"
-  },
-  {
-    id: 6,
     name: "Nora S. Angeles",
     username: "teller01",
     role: "Teller / Cashier",
     defaultView: "dashboard"
   },
   {
-    id: 7,
+    id: 6,
     name: "Arnel V. Bautista",
     username: "membership",
     role: "Membership Officer",
     defaultView: "members"
   },
   {
-    id: 8,
+    id: 7,
     name: "Celia T. Abad",
     username: "auditor",
     role: "Auditor / Compliance Officer",
     defaultView: "reports"
   },
   {
-    id: 9,
+    id: 8,
     name: "Roberto J. Villanueva",
     username: "board",
     role: "Board / Read-Only Executive",
@@ -92,7 +84,6 @@ export const roleViews = {
   "General Manager": ["dashboard", "members", "loans", "ledger", "reports"],
   "Accountant / Bookkeeper": ["dashboard", "ledger", "reports"],
   "Loan Officer": ["dashboard", "members", "loans"],
-  "Credit Committee / Approver": ["dashboard", "members", "loans", "reports"],
   "Teller / Cashier": ["dashboard", "members", "loans"],
   "Membership Officer": ["dashboard", "members"],
   "Auditor / Compliance Officer": ["dashboard", "members", "loans", "ledger", "reports", "users"],
@@ -118,6 +109,7 @@ export const rolePermissions = {
     "loans:products:view",
     "loans:products:manage",
     "loans:applications:view",
+    "loans:applications:decide",
     "loans:computations:view",
     "loans:releases:view",
     "loans:collections:view",
@@ -163,17 +155,6 @@ export const rolePermissions = {
     "loans:applications:submit",
     "loans:computations:view",
     "loans:computations:create",
-    "loans:releases:view",
-    "loans:collections:view"
-  ],
-  "Credit Committee / Approver": [
-    "members:view",
-    "members:applications:view",
-    "reports:view",
-    "loans:products:view",
-    "loans:applications:view",
-    "loans:applications:decide",
-    "loans:computations:view",
     "loans:releases:view",
     "loans:collections:view"
   ],
@@ -556,7 +537,7 @@ export const loanApplications = [
     decision: "Approved",
     decisionRemarks: "Approved for seeded demo.",
     decisionDate: addDemoDays(-69),
-    decidedBy: "approver",
+    decidedBy: "admin",
     decidedAt: `${addDemoDays(-69)}T03:00:00.000Z`,
     createdAt: `${addDemoDays(-70)}T01:30:00.000Z`,
     updatedAt: `${addDemoDays(-68)}T04:00:00.000Z`

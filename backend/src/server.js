@@ -1833,7 +1833,6 @@ function canViewLoanPortfolioAlerts(user) {
     "General Manager",
     "Accountant / Bookkeeper",
     "Loan Officer",
-    "Credit Committee / Approver",
     "Auditor / Compliance Officer",
     "Board / Read-Only Executive"
   ]);
@@ -8870,7 +8869,7 @@ app.post("/api/loan-applications/:applicationNo/decision", async (request, respo
   }
 
   if (!hasPermission(user, "loans:applications:decide")) {
-    response.status(403).json({ error: "Credit Committee / Approver access required" });
+    response.status(403).json({ error: "Authorized loan decision access required" });
     return;
   }
 

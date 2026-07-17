@@ -856,7 +856,7 @@ function Login({ onLogin }) {
                   Demo access
                 </Text>
                 <Text mt={2} fontSize="sm" color="gray.500">
-                  Try admin, manager, bookkeeper, loanofficer, approver, teller01,
+                  Try admin, manager, bookkeeper, loanofficer, teller01,
                   membership, auditor, or board. Password: p@55@LL
                 </Text>
               </Box>
@@ -7176,7 +7176,7 @@ function LoanApplications({ user }) {
         <Box>
           <Heading size="md">Loan Applications</Heading>
           <Text color="gray.600" mt={1}>
-            Loan Officers prepare and submit applications. Credit Committee / Approver records the credit decision.
+            Loan Officers prepare and submit applications. Admin records the credit decision.
           </Text>
         </Box>
         <Button size="sm" variant="outline" onClick={loadWorkspace}>
