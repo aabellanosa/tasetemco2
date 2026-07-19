@@ -61,10 +61,10 @@
                 <td>System Administrator</td>
                 <td>Process, Approve, Import Preview</td>
                 <td>View</td>
-                <td>View, Approve</td>
+                <td>View, Decide</td>
                 <td>View</td>
                 <td>View</td>
-                <td>View</td>
+                <td>Prepare, Lock, View</td>
                 <td>Admin</td>
                 <td>View</td>
               </tr>
@@ -72,10 +72,10 @@
                 <td>General Manager</td>
                 <td>View</td>
                 <td>View</td>
-                <td>Approve</td>
+                <td>View, Funding Approve</td>
                 <td>View</td>
                 <td>View</td>
-                <td>Approve</td>
+                <td>Lock, View</td>
                 <td>None</td>
                 <td>View</td>
               </tr>
@@ -175,8 +175,8 @@
           <article>
             <h3>Loans</h3>
             <p>
-              Loan staff can prepare applications, record credit decisions, generate
-              amortization schedules, release funded loans, and collect scheduled installments.
+              Loan staff prepare applications and amortization schedules; System Administrator
+              records the audited decision; Teller releases funded loans and collects installments.
             </p>
           </article>
           <article>
@@ -306,8 +306,24 @@
               <li>Loan collections may be partial, full, or advance receipts.</li>
               <li>Collection receipts apply first to interest, then principal, with the split visible before posting.</li>
               <li>Deducted service fee, insurance, CBU, and savings retention are posted to their mapped accounts.</li>
-              <li>Opening balance imports are previewed separately before any cutover balance write exists.</li>
+              <li>Opening balance imports are staged and finalized separately with linked cutover journals.</li>
               <li>Reports are generated from posted ledger entries.</li>
+            </ol>
+          </article>
+
+          <article>
+            <h3>SUMMO Monthly Report</h3>
+            <ol>
+              <li>Bookkeeper downloads the standard monthly XLSX template and active-member reference sheet.</li>
+              <li>External payables and deductions are entered as member-numbered line items.</li>
+              <li>System validates reporting month, member, category, amount, reference, and reversals.</li>
+              <li>Bookkeeper reviews and finalizes a valid import batch; it does not post journals.</li>
+              <li>System combines imported movements with scheduled loan dues, posted cash collections, and carried balances.</li>
+              <li>System applies effective-dated interest rules, rounds components to cents, and flags unmapped loans.</li>
+              <li>Bookkeeper refreshes and reconciles the Regular Members Capture draft.</li>
+              <li>General Manager locks the month; Auditor and Board retain read-only access.</li>
+              <li>Export produces printable Regular Capture, Loan Details, and Audit sheets.</li>
+              <li>Reopening a locked month also unlocks every later locked SUMMO month for chronological regeneration.</li>
             </ol>
           </article>
         </div>
@@ -351,17 +367,18 @@
       <section class="section" id="reports">
         <div class="section-heading">
           <p class="eyebrow">Accounting output</p>
-          <h2>Ledger-Driven Reports</h2>
+          <h2>Financial and Operational Reports</h2>
           <p>
-            TASETEMCO treats the general ledger as the source of financial
-            statements. Savings, share capital, and loans should reconcile to
-            their subsidiary ledgers.
+            TASETEMCO treats the general ledger as the source of financial statements.
+            SUMMO is a separate operational monthly receivables report that temporarily
+            combines system records with validated report-only Excel inputs.
           </p>
         </div>
 
         <div class="report-list">
           <span>Daily Cash Position</span>
           <span>Member Subsidiary Ledger</span>
+          <span>SUMMO — Regular Members Capture</span>
           <span>Control Account Reconciliation</span>
           <span>Trial Balance</span>
           <span>Statement of Financial Condition</span>

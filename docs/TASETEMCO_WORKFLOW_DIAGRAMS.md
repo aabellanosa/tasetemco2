@@ -1,0 +1,370 @@
+# TASETEMCO Current-System Workflow Diagrams
+
+Updated: 20 July 2026
+
+These diagrams describe the implemented React, Node/Express, and Postgres prototype. They distinguish operational records, teller-batch posting, report-only SUMMO imports, and role handoffs.
+
+Legend:
+
+```text
+[Role]       staff action
+(System)     validation, calculation, persistence, or generated output
+-->          workflow handoff
+==>          general-ledger effect
+```
+
+## 1. Membership, Initial Payment, and Member Setup
+
+```text
+[Membership Officer]
+  Encode application and required initial share capital
+        |
+        v
+(System) Validate and save Pending Approval
+        |
+        v
+[System Administrator] Approve membership
+        |
+        v
+(System) Create active member with controlled cluster/type
+        |
+        v
+[Teller] Collect initial share, membership fee, and savings
+        |
+        v
+(System) Add immutable receipt to Open Teller Batch
+        |
+        v
+[Bookkeeper] Review batch --> Post --> Close
+        |
+        v
+==> Cash / Share Capital / Fee Income / Savings Payable
+```
+
+Member setup additions:
+
+```text
+[Membership Officer or Admin]
+  Maintain profile and controlled member classification
+
+[Membership Officer, Loan Officer, or Admin]
+  Maintain previous/existing loan rows
+  (label, application date, balance, notes)
+
+(System)
+  Treat previous-loan rows as setup/reference data only
+  Do not create cash movement or a new system loan
+```
+
+## 2. Member Masterlist Import
+
+```text
+[Membership Officer or Admin]
+  Paste CSV exported from the client workbook
+  Map source columns to member fields
+        |
+        v
+(System)
+  Normalize member number and cluster/type
+  Validate names, dates, duplicates, status, and classifications
+  Mark each row Ready or Issue
+        |
+        v
+[Membership Officer or Admin] Stage reviewed import batch
+        |
+        v
+[System Administrator] Finalize ready rows
+        |
+        v
+(System)
+  Create active member profiles with zero financial balances
+  Retain skipped and issue rows as audit evidence
+```
+
+## 3. Financial Opening Balance Import
+
+```text
+[Bookkeeper or Admin]
+  Map member, share capital, savings, cutover date, and source reference
+        |
+        v
+(System) Validate member, money, dates, duplicates, and prior finalization
+        |
+        v
+[Bookkeeper or Admin] Stage and review batch
+        |
+        v
+[System Administrator] Finalize ready rows
+        |
+        v
+(System)
+  Update member share/savings balances
+  Retain source and batch evidence
+        |
+        v
+==> Debit Opening Balance Clearing
+    Credit Share Capital
+    Credit Savings Deposits Payable
+```
+
+## 4. Normal Teller Transaction and Batch Lifecycle
+
+```text
+[Teller]
+  Select active member
+  Record initial payment, share contribution,
+  savings deposit, or savings withdrawal
+        |
+        v
+(System)
+  Validate balance, amount, member status, and unique reference
+  Add transaction to Open batch
+        |
+        v
+[Teller] Count cash --> Submit batch
+        |
+        v
+[Bookkeeper]
+  Review cash evidence and variance
+  Record required variance note
+  Mark Reviewed
+        |
+        v
+[Bookkeeper] Post reviewed batch
+        |
+        v
+(System) Create and link source journals
+        |
+        v
+[Bookkeeper] Close fully posted batch
+        |
+        v
+(System) Lock history and open the next batch
+```
+
+## 5. Loan Application and Decision — No Dedicated Loan Approver
+
+```text
+[Loan Officer]
+  Select active member and loan product
+  Encode amount, term, purpose, date, and internal collateral
+  Save/edit own Draft
+  Prepare and print supporting paper form
+        |
+        v
+[Loan Officer] Submit application
+        |
+        v
+(System) Make Submitted application read-only
+        |
+        v
+[System Administrator]
+  Review assessment and supporting data
+  Approve, Reject, or Return
+        |                         |
+        | Returned                | Approved
+        v                         v
+[Loan Officer] Revise Draft   [Loan Officer]
+  and resubmit                 Preview and save computation
+                                  |
+                                  v
+                              (System)
+                                Create immutable loan and schedule
+                                Mark For Release
+```
+
+Controls:
+
+```text
+The dedicated Credit Committee / Approver login and role are removed.
+The decision remains a separate audited step owned by System Administrator.
+Loan Officer cannot decide, release cash, or post the resulting journal.
+```
+
+## 6. Loan Computation and Documents
+
+```text
+[Loan Officer]
+  Select Approved application and first-payment date
+        |
+        v
+(System)
+  Use snapshotted product terms
+  Calculate deductions, net proceeds, and installment schedule
+        |
+        v
+[Loan Officer]
+  Review computation
+  Save immutable schedule
+  Print loan breakdown / amortization attachment
+        |
+        v
+(System) Mark loan For Release; no cash moves yet
+```
+
+## 7. Teller Funding and Loan Release
+
+```text
+(System) Show For Release demand and available teller cash
+        |
+        v
+[Bookkeeper] Prepare funding transfer
+        |
+        v
+[General Manager] Approve funding
+        |
+        v
+[Assigned Teller] Acknowledge funding into Open batch
+        |
+        v
+(System) Recalculate available cash and guard concurrent releases
+        |
+        v
+[Teller] Release exact net proceeds with unique voucher
+        |
+        v
+(System) Add release as Open-batch cash-out evidence
+        |
+        v
+[Bookkeeper] Review and post batch
+        |
+        v
+==> Funding: Debit Cash on Hand / Credit source account
+==> Release: Debit Loans Receivable / Credit Cash and deductions
+```
+
+## 8. Flexible Loan Collection
+
+```text
+[Teller] Select posted loan and next collectible installment
+        |
+        v
+(System) Show due now, remaining loan balance, and payment preview
+        |
+        v
+[Teller]
+  Enter actual partial, full, or advance receipt
+  Enter unique OR/reference
+        |
+        v
+(System)
+  Apply payment to interest first, then principal
+  Prevent receipt above remaining loan balance
+  Mark installment Partial or Paid
+  Add receipt to Open Teller Batch
+        |
+        v
+[Bookkeeper] Review allocation and post batch
+        |
+        v
+==> Debit Cash on Hand
+    Credit Interest Income
+    Credit Loans Receivable
+```
+
+## 9. Standard Ledger-Driven Reports
+
+```text
+[Teller and operational modules] Produce source evidence
+        |
+        v
+[Bookkeeper] Review and post teller batches/journals
+        |
+        v
+(System)
+  Daily Cash Position
+  Member Subsidiary Ledger
+  Control Account Reconciliation
+  Trial Balance
+  Statement of Financial Condition
+        |
+        v
+[Manager / Board / Auditor] Read-only review and oversight
+```
+
+## 10. SUMMO Monthly Report — Regular Members Capture
+
+```text
+(System)
+  Provide standard XLSX template plus active-member reference sheet
+        |
+        v
+[Bookkeeper]
+  Enter unsupported external movements as line items:
+  LBP, G-mar, canteen, WRS, TFEA, CBU, provident,
+  secured savings, honorarium, payroll deduction, and adjustments
+        |
+        v
+[Bookkeeper] Upload XLSX and review Ready / Issue rows
+        |
+        v
+(System)
+  Require member number, in-period date, category,
+  positive amount, unique reference, and valid reversal reference
+        |
+        v
+[Bookkeeper] Finalize valid import batch
+        |
+        v
+(System)
+  Combine finalized external movements with:
+    active Regular Capture roster
+    scheduled system loan installments due in the month
+    posted system cash collections
+    opening balance or prior locked SUMMO ending balance
+
+  Calculate configurable interest and two-decimal totals
+  Carry member credit when ending balance is negative
+  Block locking for unmapped loan products or period-chain issues
+        |
+        v
+[Bookkeeper] Refresh and reconcile Draft
+        |
+        v
+[General Manager] Lock monthly version
+        |
+        v
+(System)
+  Snapshot rows, rates, totals, actors, and audit evidence
+  Export printable XLSX with Regular Capture, Loan Details, and Audit sheets
+        |
+        v
+[Auditor / Board] Read-only review
+```
+
+SUMMO source boundary:
+
+```text
+System data is authoritative where implemented.
+Excel supplies only temporary external/report-supporting movements.
+SUMMO Excel imports do not post accounting journals.
+Finalized imports are immutable; corrections use a superseding batch or reversal.
+Reopening a locked month also unlocks every later locked SUMMO month.
+```
+
+## 11. Administration and Audit
+
+```text
+[System Administrator]
+  Maintain users, roles, loan products, and demo data
+        |
+        v
+(System)
+  Preserve individual actors, timestamps, references,
+  source batches, posting links, decisions, locks, and reopen reasons
+        |
+        v
+[Auditor] Review users, transactions, batches, journals, and reports read-only
+```
+
+## 12. Current Role Separation Summary
+
+```text
+Membership Officer  prepares member records
+System Administrator approves membership and decides submitted loans
+Loan Officer         prepares applications, documents, and computations
+Bookkeeper           reviews/posts batches, prepares funding, and prepares SUMMO
+General Manager      approves teller funding and locks/reopens SUMMO periods
+Teller               receives/releases cash and acknowledges assigned funding
+Auditor / Board      review authorized evidence and reports without posting
+```

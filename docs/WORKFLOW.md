@@ -1,5 +1,7 @@
 # TASETEMCO Workflow Document
 
+For the current role-handoff views, see [TASETEMCO Current-System Workflow Diagrams](TASETEMCO_WORKFLOW_DIAGRAMS.md).
+
 ## 1. Purpose
 
 TASETEMCO is a cooperative operations and accounting system prototype. Its goal is to support day-to-day cooperative transactions and produce reliable ledger-based financial reports, especially the Statement of Financial Condition and Statement of Operations.
@@ -305,7 +307,7 @@ Loan Portfolio Watch v1 makes collection follow-up visible on authorized dashboa
 | Auditor / Compliance Officer | Yes | No | No | No |
 | Other roles | No | No | No | No |
 
-The implemented status flow is `Draft -> Submitted -> Approved -> For Release -> Released -> Posted`, with alternate `Rejected` or `Returned` decisions. A returned application follows `Returned -> Draft -> Submitted`. Loan collections are not yet implemented.
+The implemented status flow is `Draft -> Submitted -> Approved -> For Release -> Released -> Posted`, with alternate `Rejected` or `Returned` decisions. A returned application follows `Returned -> Draft -> Submitted`. The dedicated Approver role is removed; System Administrator owns the separate audited decision step. Flexible partial, full, and advance loan collections are implemented against the earliest collectible installment.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
@@ -344,6 +346,16 @@ The Reports screen includes a Control Account Reconciliation report that compare
 The Reports screen includes a Trial Balance report that summarizes posted general ledger debit and credit totals per account and flags whether the ledger is Balanced or Out of Balance.
 
 The Reports screen includes a Statement of Financial Condition report. It presents assets, liabilities, and equity from posted general ledger balances. Until formal closing entries are built, current-period income and expense balances are shown as Current Period Surplus or Deficit under equity.
+
+SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Bookkeeper downloads a standard XLSX template, imports report-only external movements as member-numbered line items, reviews validation, finalizes the import, and refreshes a draft. The system combines those rows with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. Locked exports contain Regular Capture, Loan Details, and Audit sheets. SUMMO imports do not create accounting journals because the external categories remain outside their future cost-center modules.
+
+| SUMMO Access | View / Export | Prepare Imports and Drafts | Lock / Reopen |
+| --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes |
+| General Manager | Yes | No | Yes |
+| Accountant / Bookkeeper | Yes | Yes | No |
+| Auditor / Compliance Officer | Yes | No | No |
+| Board / Read-Only Executive | Yes | No | No |
 
 ## 4. Core Workflow
 
