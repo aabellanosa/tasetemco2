@@ -4709,8 +4709,215 @@ function Ledger({ user }) {
   );
 }
 
-function Reports() {
+function SummoReport({ user }) {
+  const defaultPeriod = new Date().toISOString().slice(0, 7);
+  const [period, setPeriod] = useState(defaultPeriod);
+  const [periodData, setPeriodData] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const [selectedBatch, setSelectedBatch] = useState(null);
+  const [workbook, setWorkbook] = useState(null);
+  const [sourceLabel, setSourceLabel] = useState("SUMMO external movements");
+  const [supersedesImportNo, setSupersedesImportNo] = useState("");
+  const [supersedeReason, setSupersedeReason] = useState("");
+  const [reopenReason, setReopenReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+  const canPrepare = user.permissions.includes("reports:summo:prepare");
+  const canLock = user.permissions.includes("reports:summo:lock");
+
+  const loadSummo = useCallback(async () => {
+    setError("");
+    try {
+      const [periodRows, importRows] = await Promise.all([
+        api("/api/reports/summo/periods"),
+        api(`/api/reports/summo/imports?period=${period}`)
+      ]);
+      setPeriodData(periodRows.find((row) => row.period === period) || null);
+      setBatches(importRows);
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }, [period]);
+
+  useEffect(() => { loadSummo(); }, [loadSummo]);
+
+  async function runAction(action) {
+    setIsBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await action();
+      await loadSummo();
+      return result;
+    } catch (actionError) {
+      setError(actionError.message);
+      return null;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function uploadWorkbook() {
+    if (!workbook) { setError("Choose a SUMMO XLSX workbook first."); return; }
+    await runAction(async () => {
+      const form = new FormData();
+      form.append("period", period);
+      form.append("sourceLabel", sourceLabel);
+      if (supersedesImportNo) form.append("supersedesImportNo", supersedesImportNo);
+      if (supersedesImportNo) form.append("supersedeReason", supersedeReason);
+      form.append("workbook", workbook);
+      const response = await fetch(`${apiBase}/api/reports/summo/imports`, {
+        method: "POST", credentials: "include", body: form
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "SUMMO workbook upload failed.");
+      setSelectedBatch(data);
+      setMessage(`${data.batch.importNo} staged with ${data.batch.readyRows} ready row(s).`);
+      return data;
+    });
+  }
+
+  async function openBatch(importNo) {
+    const result = await runAction(() => api(`/api/reports/summo/imports/${importNo}`));
+    if (result) setSelectedBatch(result);
+  }
+
+  async function finalizeBatch(importNo) {
+    const result = await runAction(() => api(`/api/reports/summo/imports/${importNo}/finalize`, { method: "POST" }));
+    if (result) {
+      setSelectedBatch(result);
+      setMessage(`${importNo} finalized for SUMMO calculation.`);
+    }
+  }
+
+  async function refreshDraft() {
+    const result = await runAction(() => api(`/api/reports/summo/periods/${period}/refresh`, { method: "POST" }));
+    if (result) setMessage(`${period} draft refreshed.`);
+  }
+
+  async function lockPeriod() {
+    const result = await runAction(() => api(`/api/reports/summo/periods/${period}/lock`, { method: "POST" }));
+    if (result) setMessage(`${period} locked as version ${result.version}.`);
+  }
+
+  async function reopenPeriod() {
+    const result = await runAction(() => api(`/api/reports/summo/periods/${period}/reopen`, {
+      method: "POST", body: JSON.stringify({ reason: reopenReason })
+    }));
+    if (result) setMessage(`Reopened ${result.affectedPeriods.join(", ")}.`);
+  }
+
+  const report = periodData?.snapshot;
+  return (
+    <VStack align="stretch" spacing={5}>
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" gap={4} wrap="wrap" align="end">
+          <Box>
+            <Heading size="md">Regular Members Capture SUMMO</Heading>
+            <Text color="gray.600" mt={1}>Monthly payables, settlements, carried balances, and external worksheet inputs.</Text>
+          </Box>
+          <FormControl maxW="220px">
+            <FormLabel>Reporting month</FormLabel>
+            <Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+          </FormControl>
+        </Flex>
+        <HStack mt={4} spacing={3} wrap="wrap">
+          <Badge colorScheme={periodData?.status === "Locked" ? "green" : periodData ? "blue" : "gray"}>
+            {periodData?.status || "Not prepared"}
+          </Badge>
+          {periodData ? <Text fontSize="sm">Version {periodData.version} · prepared by {periodData.preparedBy || "-"}</Text> : null}
+        </HStack>
+        {error ? <Text color="red.500" mt={3}>{error}</Text> : null}
+        {message ? <Text color="green.600" mt={3}>{message}</Text> : null}
+      </Box>
+
+      {canPrepare ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
+            <Box>
+              <Heading size="sm">External Movement Import</Heading>
+              <Text color="gray.600" fontSize="sm">Use the generated template; imports support SUMMO only and do not post journals.</Text>
+            </Box>
+            <Button size="sm" variant="outline" as="a" href={`${apiBase}/api/reports/summo/template?period=${period}`}>
+              Download Template
+            </Button>
+          </Flex>
+          <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>
+            <FormControl><FormLabel>Source label</FormLabel><Input value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} /></FormControl>
+            <FormControl><FormLabel>XLSX workbook</FormLabel><Input type="file" accept=".xlsx" p={1} onChange={(e) => setWorkbook(e.target.files?.[0] || null)} /></FormControl>
+            <FormControl>
+              <FormLabel>Supersedes finalized batch (optional)</FormLabel>
+              <Select value={supersedesImportNo} onChange={(e) => setSupersedesImportNo(e.target.value)}>
+                <option value="">New batch</option>
+                {batches.filter((batch) => batch.status === "Finalized").map((batch) => <option key={batch.importNo}>{batch.importNo}</option>)}
+              </Select>
+            </FormControl>
+            <FormControl isDisabled={!supersedesImportNo}>
+              <FormLabel>Supersession reason</FormLabel>
+              <Input value={supersedeReason} onChange={(e) => setSupersedeReason(e.target.value)} />
+            </FormControl>
+          </Grid>
+          <Button mt={4} onClick={uploadWorkbook} isLoading={isBusy}>Stage Workbook</Button>
+        </Box>
+      ) : null}
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Heading size="sm" mb={3}>Import Batches</Heading>
+        <TableContainer>
+          <Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Status</Th><Th isNumeric>Ready</Th><Th isNumeric>Issues</Th><Th>Source</Th><Th>Action</Th></Tr></Thead>
+            <Tbody>{batches.map((batch) => (
+              <Tr key={batch.importNo}><Td>{batch.importNo}</Td><Td><Badge>{batch.status}</Badge></Td><Td isNumeric>{batch.readyRows}</Td>
+                <Td isNumeric>{batch.issueRows}</Td><Td>{batch.sourceLabel}</Td><Td><Button size="xs" onClick={() => openBatch(batch.importNo)}>Review</Button></Td></Tr>
+            ))}{!batches.length ? <Tr><Td colSpan={6} color="gray.500">No SUMMO imports for this month.</Td></Tr> : null}</Tbody>
+          </Table>
+        </TableContainer>
+        {selectedBatch ? (
+          <Box mt={4} borderWidth="1px" borderRadius="md" p={4}>
+            <Flex justify="space-between" wrap="wrap" gap={3}><Text fontWeight="bold">{selectedBatch.batch.importNo} rows</Text>
+              {canPrepare && selectedBatch.batch.status === "Staged" ? <Button size="sm" onClick={() => finalizeBatch(selectedBatch.batch.importNo)} isDisabled={selectedBatch.batch.issueRows > 0}>Finalize</Button> : null}
+            </Flex>
+            <TableContainer mt={3}><Table size="sm"><Thead><Tr><Th>Row</Th><Th>Member</Th><Th>Category</Th><Th>Reference</Th><Th isNumeric>Amount</Th><Th>Result</Th></Tr></Thead>
+              <Tbody>{selectedBatch.rows.map((row) => <Tr key={`${row.importNo}-${row.rowNumber}`}><Td>{row.rowNumber}</Td><Td>{row.memberNo}<br />{row.memberName}</Td><Td>{row.movementType}</Td><Td>{row.referenceNo}</Td><Td isNumeric>{formatMoney(row.amount)}</Td><Td><Badge colorScheme={row.issues.length ? "orange" : "green"}>{row.issues.join("; ") || row.rowStatus}</Badge></Td></Tr>)}</Tbody>
+            </Table></TableContainer>
+          </Box>
+        ) : null}
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" wrap="wrap" gap={3} mb={4}>
+          <Heading size="sm">Monthly Draft</Heading>
+          <HStack wrap="wrap">
+            {canPrepare ? <Button size="sm" onClick={refreshDraft} isLoading={isBusy} isDisabled={periodData?.status === "Locked"}>Refresh Draft</Button> : null}
+            {canLock ? <Button size="sm" colorScheme="green" onClick={lockPeriod} isDisabled={!periodData || periodData.status !== "Draft" || periodData.validationIssues.length > 0}>Lock Period</Button> : null}
+            {report?.rows ? <Button size="sm" variant="outline" as="a" href={`${apiBase}/api/reports/summo/periods/${period}.xlsx`}>Export XLSX</Button> : null}
+          </HStack>
+        </Flex>
+        {periodData?.validationIssues?.length ? <Box bg="orange.50" p={3} borderRadius="md" mb={4}>{periodData.validationIssues.map((issue) => <Text key={issue} color="orange.700">• {issue}</Text>)}</Box> : null}
+        {report?.rows ? (
+          <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Current Charges</Th><Th isNumeric>Previous Total</Th><Th isNumeric>Gross Payable</Th><Th isNumeric>Settlements</Th><Th isNumeric>Balance</Th></Tr></Thead>
+            <Tbody>{report.rows.map((row) => <Tr key={row.memberNo}><Td>{row.memberNo}<br />{row.memberName}</Td><Td isNumeric>{formatMoney(row.currentCharges)}</Td><Td isNumeric>{formatMoney(row.previousBalanceTotal)}</Td><Td isNumeric>{formatMoney(row.grossPayable)}</Td><Td isNumeric>{formatMoney(row.settlements)}</Td><Td isNumeric fontWeight="bold">{formatMoney(row.endingBalance)}</Td></Tr>)}</Tbody>
+          </Table></TableContainer>
+        ) : <Text color="gray.500">Prepare the draft after finalizing the required movement imports.</Text>}
+      </Box>
+
+      {canLock && periodData?.status === "Locked" ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm">Reopen Forward Chain</Heading><Text color="gray.600" fontSize="sm" mt={1}>Reopening this month also unlocks every later locked SUMMO period.</Text>
+          <Flex mt={3} gap={3} wrap="wrap"><Input value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} placeholder="Required audit reason" maxW="520px" /><Button colorScheme="orange" onClick={reopenPeriod} isDisabled={!reopenReason.trim()}>Reopen</Button></Flex>
+        </Box>
+      ) : null}
+    </VStack>
+  );
+}
+
+function Reports({ user }) {
   const reportOptions = [
+    {
+      id: "summo-regular-capture",
+      title: "SUMMO — Regular Members Capture",
+      description: "Monthly member payables, settlements, carried balances, and Excel-supported movements."
+    },
     {
       id: "daily-cash-position",
       title: "Daily Cash Position",
@@ -4839,6 +5046,8 @@ function Reports() {
       </Flex>
 
       {error ? <Text color="red.500">{error}</Text> : null}
+
+      {selectedReport === "summo-regular-capture" ? <SummoReport user={user} /> : null}
 
       {selectedReport === "daily-cash-position" && summary ? (
         <>
@@ -9338,7 +9547,7 @@ function Shell({ user, onLogout }) {
     }
 
     if (view === "reports") {
-      return <Reports />;
+      return <Reports user={user} />;
     }
 
     if (view === "users") {

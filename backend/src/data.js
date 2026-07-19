@@ -106,6 +106,8 @@ export const rolePermissions = {
     "teller-batches:view",
     "ledger:view",
     "reports:view",
+    "reports:summo:prepare",
+    "reports:summo:lock",
     "users:view",
     "loans:products:view",
     "loans:products:manage",
@@ -127,6 +129,7 @@ export const rolePermissions = {
     "teller-batches:view",
     "ledger:view",
     "reports:view",
+    "reports:summo:lock",
     "loans:products:view",
     "loans:applications:view",
     "loans:computations:view",
@@ -143,6 +146,7 @@ export const rolePermissions = {
     "teller-cash-counts:view",
     "teller-batches:view",
     "reports:view",
+    "reports:summo:prepare",
     "loans:collections:view",
     "teller-fundings:view",
     "teller-fundings:prepare"
@@ -649,6 +653,12 @@ export const memberImportRows = [];
 export const openingBalanceImportBatches = [];
 
 export const openingBalanceImportRows = [];
+
+export const summoImportBatches = [];
+
+export const summoImportRows = [];
+
+export const summoPeriods = [];
 
 export const initialPayments = [
   {

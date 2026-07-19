@@ -325,3 +325,14 @@ ON CONFLICT (release_no) DO UPDATE SET
   posted_by = EXCLUDED.posted_by,
   posted_entry_no = EXCLUDED.posted_entry_no,
   posted_at = EXCLUDED.posted_at;
+
+INSERT INTO summo_rules (cluster_name, rule_key, effective_from, value_text) VALUES
+  ('REGULAR MEMBERS CAPTURE', 'RATE_GMAR_BPS', '2000-01', '200'),
+  ('REGULAR MEMBERS CAPTURE', 'RATE_PREVIOUS_BALANCE_BPS', '2000-01', '200'),
+  ('REGULAR MEMBERS CAPTURE', 'RATE_PETTY_CASH_BPS', '2000-01', '250'),
+  ('REGULAR MEMBERS CAPTURE', 'PRODUCT_SALARY', '2000-01', 'salaryLoan'),
+  ('REGULAR MEMBERS CAPTURE', 'PRODUCT_EMERGENCY', '2000-01', 'emergencyLoan'),
+  ('REGULAR MEMBERS CAPTURE', 'PRODUCT_APPLIANCE', '2000-01', 'applianceLoan'),
+  ('REGULAR MEMBERS CAPTURE', 'PRODUCT_EDUCATIONAL', '2000-01', 'educationalLoan'),
+  ('REGULAR MEMBERS CAPTURE', 'PRODUCT_PETTY-CASH', '2000-01', 'pettyCash')
+ON CONFLICT (cluster_name, rule_key, effective_from) DO NOTHING;

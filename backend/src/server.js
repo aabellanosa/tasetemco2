@@ -4,6 +4,7 @@ import path from "node:path";
 import cookie from "cookie";
 import dotenv from "dotenv";
 import express from "express";
+import multer from "multer";
 import pg from "pg";
 import {
   dashboard,
@@ -32,11 +33,26 @@ import {
   savingsDeposits,
   savingsWithdrawals,
   shareCapitalContributions,
+  summoImportBatches,
+  summoImportRows,
+  summoPeriods,
   tellerBatches,
   tellerCashCounts,
   tellerFundings,
   users
 } from "./data.js";
+import {
+  SUMMO_CLUSTER,
+  SUMMO_DEFAULT_RATES,
+  SUMMO_PRODUCT_COLUMNS,
+  buildMovementTemplate,
+  buildSummoWorkbook,
+  calculateSummo,
+  normalizePeriod,
+  parseMovementWorkbook,
+  previousPeriod,
+  validateImportedMovements
+} from "./summo.js";
 
 dotenv.config();
 
@@ -89,6 +105,10 @@ function percentOfMoney(amount, rateBps) {
 }
 
 const app = express();
+const summoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }
+});
 const host = process.env.HOST || (process.env.RENDER ? "0.0.0.0" : "127.0.0.1");
 const port = Number(process.env.PORT || 4000);
 const frontendDistCandidates = [
@@ -111,6 +131,10 @@ const sessions = new Map();
 let pool = null;
 
 const persistedTables = [
+  "summo_import_rows",
+  "summo_import_batches",
+  "summo_periods",
+  "summo_rules",
   "journal_entry_lines",
   "journal_entries",
   "loan_collections",
@@ -138,6 +162,9 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  summo_import_batches: ["import_no", "report_period", "status", "created_by"],
+  summo_import_rows: ["import_no", "member_no", "movement_type", "amount", "row_status"],
+  summo_periods: ["report_period", "cluster_name", "status", "snapshot"],
   users: ["additional_roles"],
   members: [
     "contact_number",
@@ -6194,6 +6221,409 @@ async function getStatementOfFinancialConditionReport() {
   };
 }
 
+function mapSummoImportBatch(row) {
+  return {
+    importNo: row.importNo,
+    period: row.period,
+    cluster: row.cluster || SUMMO_CLUSTER,
+    sourceLabel: row.sourceLabel || "SUMMO XLSX",
+    status: row.status,
+    totalRows: Number(row.totalRows || 0),
+    readyRows: Number(row.readyRows || 0),
+    issueRows: Number(row.issueRows || 0),
+    supersedesImportNo: row.supersedesImportNo || "",
+    supersededByImportNo: row.supersededByImportNo || "",
+    supersedeReason: row.supersedeReason || "",
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+    finalizedBy: row.finalizedBy || "",
+    finalizedAt: row.finalizedAt || ""
+  };
+}
+
+function mapSummoImportRow(row) {
+  return {
+    id: row.id,
+    importNo: row.importNo,
+    rowNumber: Number(row.rowNumber || 0),
+    memberNo: row.memberNo,
+    memberName: row.memberName,
+    movementDate: formatDateOnly(row.movementDate),
+    movementType: row.movementType,
+    sourceUnit: row.sourceUnit || "",
+    referenceNo: row.referenceNo,
+    amount: Number(row.amount || 0),
+    remarks: row.remarks || "",
+    reversesReference: row.reversesReference || "",
+    uniqueKey: row.uniqueKey || "",
+    rowStatus: row.rowStatus,
+    issues: Array.isArray(row.issues) ? row.issues : safeJsonParse(row.issues, [])
+  };
+}
+
+function mapSummoPeriod(row) {
+  return {
+    period: row.period,
+    cluster: row.cluster || SUMMO_CLUSTER,
+    status: row.status || "Draft",
+    version: Number(row.version || 1),
+    snapshot: row.snapshot && typeof row.snapshot === "object" ? row.snapshot : safeJsonParse(row.snapshot, {}),
+    validationIssues: Array.isArray(row.validationIssues)
+      ? row.validationIssues
+      : safeJsonParse(row.validationIssues, []),
+    preparedBy: row.preparedBy || "",
+    preparedAt: row.preparedAt || "",
+    lockedBy: row.lockedBy || "",
+    lockedAt: row.lockedAt || "",
+    reopenedBy: row.reopenedBy || "",
+    reopenedAt: row.reopenedAt || "",
+    reopenReason: row.reopenReason || ""
+  };
+}
+
+async function nextSummoImportNo(period) {
+  const db = await getPool();
+  if (!db) return `SI-${period.replace("-", "")}-${String(summoImportBatches.length + 1).padStart(4, "0")}`;
+  const [rows] = await db.execute(`SELECT COUNT(*) AS countValue FROM summo_import_batches WHERE report_period = ?`, [period]);
+  return `SI-${period.replace("-", "")}-${String(Number(rows[0]?.countValue || 0) + 1).padStart(4, "0")}`;
+}
+
+async function listSummoImportBatches(period = "") {
+  const db = await getPool();
+  if (!db) {
+    return summoImportBatches
+      .filter((batch) => !period || batch.period === period)
+      .map(mapSummoImportBatch);
+  }
+  const params = [];
+  const where = period ? "WHERE report_period = ?" : "";
+  if (period) params.push(period);
+  const [rows] = await db.execute(
+    `SELECT import_no AS importNo, report_period AS period, cluster_name AS cluster,
+            source_label AS sourceLabel, status, total_rows AS totalRows,
+            ready_rows AS readyRows, issue_rows AS issueRows,
+            COALESCE(supersedes_import_no, '') AS supersedesImportNo,
+            COALESCE(superseded_by_import_no, '') AS supersededByImportNo,
+            COALESCE(supersede_reason, '') AS supersedeReason,
+            created_by AS createdBy, created_at AS createdAt,
+            COALESCE(finalized_by, '') AS finalizedBy, finalized_at AS finalizedAt
+     FROM summo_import_batches ${where}
+     ORDER BY created_at DESC, id DESC`,
+    params
+  );
+  return rows.map(mapSummoImportBatch);
+}
+
+async function getSummoImportBatch(importNo) {
+  const db = await getPool();
+  if (!db) {
+    const batch = summoImportBatches.find((item) => item.importNo === importNo);
+    if (!batch) return { error: "SUMMO import batch was not found.", statusCode: 404 };
+    return { batch: mapSummoImportBatch(batch), rows: summoImportRows.filter((row) => row.importNo === importNo).map(mapSummoImportRow) };
+  }
+  const batches = await listSummoImportBatches();
+  const batch = batches.find((item) => item.importNo === importNo);
+  if (!batch) return { error: "SUMMO import batch was not found.", statusCode: 404 };
+  const [rows] = await db.execute(
+    `SELECT id, import_no AS importNo, row_no AS rowNumber, member_no AS memberNo,
+            member_name AS memberName, movement_date AS movementDate,
+            movement_type AS movementType, source_unit AS sourceUnit,
+            reference_no AS referenceNo, amount, remarks,
+            reverses_reference AS reversesReference, unique_key AS uniqueKey,
+            row_status AS rowStatus, issues
+     FROM summo_import_rows WHERE import_no = ? ORDER BY row_no`,
+    [importNo]
+  );
+  return { batch, rows: rows.map(mapSummoImportRow) };
+}
+
+async function listFinalizedSummoMovements(period) {
+  const db = await getPool();
+  if (!db) {
+    const activeImports = new Set(
+      summoImportBatches
+        .filter((batch) => batch.period === period && batch.status === "Finalized" && !batch.supersededByImportNo)
+        .map((batch) => batch.importNo)
+    );
+    return summoImportRows
+      .filter((row) => activeImports.has(row.importNo) && row.rowStatus === "Finalized")
+      .map(mapSummoImportRow);
+  }
+  const [rows] = await db.execute(
+    `SELECT row.id, row.import_no AS importNo, row.row_no AS rowNumber,
+            row.member_no AS memberNo, row.member_name AS memberName,
+            row.movement_date AS movementDate, row.movement_type AS movementType,
+            row.source_unit AS sourceUnit, row.reference_no AS referenceNo,
+            row.amount, row.remarks, row.reverses_reference AS reversesReference,
+            row.unique_key AS uniqueKey, row.row_status AS rowStatus, row.issues
+     FROM summo_import_rows row
+     INNER JOIN summo_import_batches batch ON batch.import_no = row.import_no
+     WHERE batch.report_period = ? AND batch.status = 'Finalized'
+       AND batch.superseded_by_import_no IS NULL AND row.row_status = 'Finalized'
+     ORDER BY batch.created_at, row.row_no`,
+    [period]
+  );
+  return rows.map(mapSummoImportRow);
+}
+
+async function createSummoImportBatch({ period, sourceLabel, supersedesImportNo, supersedeReason, buffer }, user) {
+  const normalizedPeriod = normalizePeriod(period);
+  if (!normalizedPeriod) return { error: "Reporting period must be YYYY-MM.", statusCode: 400 };
+  if (!buffer?.length) return { error: "An XLSX workbook is required.", statusCode: 400 };
+  const parsed = await parseMovementWorkbook(buffer);
+  if (parsed.error) return { error: parsed.error, statusCode: 400 };
+  const memberRows = await listMembers();
+  const existingRows = await listFinalizedSummoMovements(normalizedPeriod);
+  const validatedRows = validateImportedMovements(parsed.rows, {
+    period: normalizedPeriod,
+    members: memberRows,
+    existingRows: supersedesImportNo ? existingRows.filter((row) => row.importNo !== supersedesImportNo) : existingRows
+  });
+  if (!validatedRows.length) return { error: "The workbook contains no movement rows.", statusCode: 400 };
+  if (supersedesImportNo) {
+    const existing = await getSummoImportBatch(supersedesImportNo);
+    if (existing.error || existing.batch.status !== "Finalized" || existing.batch.period !== normalizedPeriod) {
+      return { error: "Only a finalized batch from the same period can be superseded.", statusCode: 409 };
+    }
+    if (!String(supersedeReason || "").trim()) return { error: "A supersession reason is required.", statusCode: 400 };
+  }
+  const importNo = await nextSummoImportNo(normalizedPeriod);
+  const summary = {
+    totalRows: validatedRows.length,
+    readyRows: validatedRows.filter((row) => row.rowStatus === "Ready").length,
+    issueRows: validatedRows.filter((row) => row.rowStatus === "Issue").length
+  };
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    summoImportBatches.unshift({
+      importNo, period: normalizedPeriod, cluster: SUMMO_CLUSTER,
+      sourceLabel: String(sourceLabel || "SUMMO XLSX").slice(0, 160), status: "Staged", ...summary,
+      supersedesImportNo: supersedesImportNo || "", supersededByImportNo: "",
+      supersedeReason: String(supersedeReason || "").trim(), createdBy: user.username, createdAt: now
+    });
+    validatedRows.forEach((row, index) => summoImportRows.push({ id: `${importNo}-${index + 1}`, importNo, ...row }));
+    return getSummoImportBatch(importNo);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `INSERT INTO summo_import_batches (
+         import_no, report_period, cluster_name, source_label, status,
+         total_rows, ready_rows, issue_rows, supersedes_import_no,
+         supersede_reason, created_by
+       ) VALUES (?, ?, ?, ?, 'Staged', ?, ?, ?, ?, ?, ?)`,
+      [importNo, normalizedPeriod, SUMMO_CLUSTER, String(sourceLabel || "SUMMO XLSX").slice(0, 160),
+        summary.totalRows, summary.readyRows, summary.issueRows, supersedesImportNo || null,
+        String(supersedeReason || "").trim(), user.username]
+    );
+    for (const row of validatedRows) {
+      await connection.execute(
+        `INSERT INTO summo_import_rows (
+           import_no, row_no, member_no, member_name, movement_date, movement_type,
+           source_unit, reference_no, amount, remarks, reverses_reference,
+           unique_key, row_status, issues
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)`,
+        [importNo, row.rowNumber, row.memberNo, row.memberName, row.movementDate || null, row.movementType,
+          row.sourceUnit, row.referenceNo, row.amount, row.remarks, row.reversesReference,
+          row.uniqueKey, row.rowStatus, JSON.stringify(row.issues)]
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+  return getSummoImportBatch(importNo);
+}
+
+async function finalizeSummoImportBatch(importNo, user) {
+  const result = await getSummoImportBatch(importNo);
+  if (result.error) return result;
+  if (result.batch.status !== "Staged") return { error: "Only staged SUMMO imports can be finalized.", statusCode: 409 };
+  if (result.batch.issueRows > 0 || result.batch.readyRows === 0) {
+    return { error: "Resolve every row issue before finalizing the import.", statusCode: 409 };
+  }
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    const batch = summoImportBatches.find((item) => item.importNo === importNo);
+    Object.assign(batch, { status: "Finalized", finalizedBy: user.username, finalizedAt: now });
+    summoImportRows.filter((row) => row.importNo === importNo).forEach((row) => { row.rowStatus = "Finalized"; });
+    if (batch.supersedesImportNo) {
+      const old = summoImportBatches.find((item) => item.importNo === batch.supersedesImportNo);
+      if (old) Object.assign(old, { status: "Superseded", supersededByImportNo: importNo });
+    }
+    return getSummoImportBatch(importNo);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `UPDATE summo_import_batches SET status = 'Finalized', finalized_by = ?, finalized_at = CURRENT_TIMESTAMP
+       WHERE import_no = ? AND status = 'Staged'`, [user.username, importNo]
+    );
+    await connection.execute(`UPDATE summo_import_rows SET row_status = 'Finalized' WHERE import_no = ?`, [importNo]);
+    if (result.batch.supersedesImportNo) {
+      await connection.execute(
+        `UPDATE summo_import_batches SET status = 'Superseded', superseded_by_import_no = ? WHERE import_no = ?`,
+        [importNo, result.batch.supersedesImportNo]
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+  return getSummoImportBatch(importNo);
+}
+
+async function listSummoPeriods() {
+  const db = await getPool();
+  if (!db) return summoPeriods.map(mapSummoPeriod).sort((a, b) => b.period.localeCompare(a.period));
+  const [rows] = await db.execute(
+    `SELECT report_period AS period, cluster_name AS cluster, status, version,
+            snapshot, validation_issues AS validationIssues, prepared_by AS preparedBy,
+            prepared_at AS preparedAt, locked_by AS lockedBy, locked_at AS lockedAt,
+            reopened_by AS reopenedBy, reopened_at AS reopenedAt, reopen_reason AS reopenReason
+     FROM summo_periods WHERE cluster_name = ? ORDER BY report_period DESC`, [SUMMO_CLUSTER]
+  );
+  return rows.map(mapSummoPeriod);
+}
+
+async function getSummoPeriod(period) {
+  return (await listSummoPeriods()).find((item) => item.period === period) || null;
+}
+
+async function getEffectiveSummoRules(period) {
+  const rates = { ...SUMMO_DEFAULT_RATES };
+  const productColumns = { ...SUMMO_PRODUCT_COLUMNS };
+  const db = await getPool();
+  if (!db) return { rates, productColumns };
+  const [rows] = await db.execute(
+    `SELECT rule_key AS ruleKey, value_text AS valueText, effective_from AS effectiveFrom
+     FROM summo_rules
+     WHERE cluster_name = ? AND effective_from <= ?
+     ORDER BY rule_key, effective_from DESC`,
+    [SUMMO_CLUSTER, period]
+  );
+  const effective = new Map();
+  rows.forEach((row) => { if (!effective.has(row.ruleKey)) effective.set(row.ruleKey, row.valueText); });
+  rates.gmarInterestBps = Number(effective.get("RATE_GMAR_BPS") ?? rates.gmarInterestBps);
+  rates.previousBalanceInterestBps = Number(effective.get("RATE_PREVIOUS_BALANCE_BPS") ?? rates.previousBalanceInterestBps);
+  rates.pettyCashInterestBps = Number(effective.get("RATE_PETTY_CASH_BPS") ?? rates.pettyCashInterestBps);
+  for (const [key, value] of effective.entries()) {
+    if (key.startsWith("PRODUCT_") && value) productColumns[key.slice(8)] = value;
+  }
+  return { rates, productColumns };
+}
+
+async function calculateSummoDraft(period) {
+  const normalizedPeriod = normalizePeriod(period);
+  if (!normalizedPeriod) return { error: "Reporting period must be YYYY-MM.", statusCode: 400 };
+  const previous = await getSummoPeriod(previousPeriod(normalizedPeriod));
+  const movements = await listFinalizedSummoMovements(normalizedPeriod);
+  const openingRows = movements.filter((row) => row.movementType === "OPENING_BALANCE");
+  const predecessorIssues = [];
+  if (previous && previous.status !== "Locked") predecessorIssues.push("The preceding SUMMO period must be locked first.");
+  if (previous && openingRows.length > 0) predecessorIssues.push("Opening balances are allowed only when no preceding SUMMO period exists.");
+  if (!previous && openingRows.length === 0) predecessorIssues.push("An opening SUMMO balance import is required for the first period.");
+  const rules = await getEffectiveSummoRules(normalizedPeriod);
+  const report = calculateSummo({
+    period: normalizedPeriod,
+    members: await listMembers(),
+    loans: await listLoans(),
+    collections: await listLoanCollections(),
+    movements,
+    priorRows: previous?.status === "Locked" ? previous.snapshot.rows || [] : [],
+    rates: rules.rates,
+    productColumns: rules.productColumns
+  });
+  if (report.error) return { error: report.error, statusCode: 400 };
+  report.issues = [...predecessorIssues, ...report.issues];
+  return report;
+}
+
+async function saveSummoDraft(period, user) {
+  const existing = await getSummoPeriod(period);
+  if (existing?.status === "Locked") return { error: "Reopen the locked SUMMO period before refreshing it.", statusCode: 409 };
+  const report = await calculateSummoDraft(period);
+  if (report.error) return report;
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    if (existing) {
+      const target = summoPeriods.find((item) => item.period === period);
+      Object.assign(target, { status: "Draft", snapshot: report, validationIssues: report.issues, preparedBy: user.username, preparedAt: now });
+    } else {
+      summoPeriods.push({ period, cluster: SUMMO_CLUSTER, status: "Draft", version: 1, snapshot: report,
+        validationIssues: report.issues, preparedBy: user.username, preparedAt: now });
+    }
+    return getSummoPeriod(period);
+  }
+  await db.execute(
+    `INSERT INTO summo_periods (
+       report_period, cluster_name, status, version, snapshot, validation_issues, prepared_by, prepared_at
+     ) VALUES (?, ?, 'Draft', 1, ?::jsonb, ?::jsonb, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (report_period, cluster_name) DO UPDATE SET
+       status = 'Draft', snapshot = EXCLUDED.snapshot, validation_issues = EXCLUDED.validation_issues,
+       prepared_by = EXCLUDED.prepared_by, prepared_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`,
+    [period, SUMMO_CLUSTER, JSON.stringify(report), JSON.stringify(report.issues), user.username]
+  );
+  return getSummoPeriod(period);
+}
+
+async function lockSummoPeriod(period, user) {
+  const existing = await getSummoPeriod(period);
+  if (!existing || existing.status !== "Draft") return { error: "A prepared SUMMO draft is required.", statusCode: 409 };
+  if (existing.validationIssues.length) return { error: "Resolve every SUMMO validation issue before locking.", statusCode: 409 };
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    const target = summoPeriods.find((item) => item.period === period);
+    Object.assign(target, { status: "Locked", lockedBy: user.username, lockedAt: now });
+    return getSummoPeriod(period);
+  }
+  await db.execute(
+    `UPDATE summo_periods SET status = 'Locked', locked_by = ?, locked_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP WHERE report_period = ? AND cluster_name = ?`,
+    [user.username, period, SUMMO_CLUSTER]
+  );
+  return getSummoPeriod(period);
+}
+
+async function reopenSummoPeriods(period, reason, user) {
+  const normalizedPeriod = normalizePeriod(period);
+  const cleanReason = String(reason || "").trim();
+  if (!normalizedPeriod || !cleanReason) return { error: "A valid period and reopening reason are required.", statusCode: 400 };
+  const affected = (await listSummoPeriods()).filter((item) => item.period >= normalizedPeriod && item.status === "Locked");
+  if (!affected.length) return { error: "No locked SUMMO periods were found in the forward chain.", statusCode: 409 };
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    affected.forEach((item) => {
+      const target = summoPeriods.find((periodRow) => periodRow.period === item.period);
+      Object.assign(target, { status: "Draft", version: item.version + 1, snapshot: {}, validationIssues: ["Draft must be regenerated after reopening."],
+        lockedBy: "", lockedAt: "", reopenedBy: user.username, reopenedAt: now, reopenReason: cleanReason });
+    });
+    return { affectedPeriods: affected.map((item) => item.period), periods: await listSummoPeriods() };
+  }
+  await db.execute(
+    `UPDATE summo_periods SET status = 'Draft', version = version + 1, snapshot = '{}'::jsonb,
+            validation_issues = '["Draft must be regenerated after reopening."]'::jsonb,
+            locked_by = '', locked_at = NULL, reopened_by = ?, reopened_at = CURRENT_TIMESTAMP,
+            reopen_reason = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE cluster_name = ? AND report_period >= ? AND status = 'Locked'`,
+    [user.username, cleanReason, SUMMO_CLUSTER, normalizedPeriod]
+  );
+  return { affectedPeriods: affected.map((item) => item.period), periods: await listSummoPeriods() };
+}
+
 async function getLatestTellerCashCount() {
   const rows = await listTellerCashCounts();
   return rows[0] || null;
@@ -10224,6 +10654,131 @@ app.get("/api/reports/daily-cash-position", async (request, response) => {
   }
 
   response.json(await getDailyCashPositionReport());
+});
+
+app.get("/api/reports/summo/template", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:summo:prepare") && !isAdminUser(user)) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  const period = normalizePeriod(request.query.period);
+  if (!period) return response.status(400).json({ error: "Reporting period must be YYYY-MM." });
+  const buffer = await buildMovementTemplate({ period, members: await listMembers() });
+  response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  response.setHeader("Content-Disposition", `attachment; filename="SUMMO-input-${period}.xlsx"`);
+  return response.send(Buffer.from(buffer));
+});
+
+app.get("/api/reports/summo/imports", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:view")) return response.status(403).json({ error: "Access denied" });
+  const period = request.query.period ? normalizePeriod(request.query.period) : "";
+  return response.json(await listSummoImportBatches(period));
+});
+
+app.get("/api/reports/summo/imports/:importNo", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:view")) return response.status(403).json({ error: "Access denied" });
+  const result = await getSummoImportBatch(request.params.importNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.post("/api/reports/summo/imports", summoUpload.single("workbook"), async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:summo:prepare") && !isAdminUser(user)) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  try {
+    const result = await createSummoImportBatch({
+      period: request.body.period,
+      sourceLabel: request.body.sourceLabel,
+      supersedesImportNo: request.body.supersedesImportNo,
+      supersedeReason: request.body.supersedeReason,
+      buffer: request.file?.buffer
+    }, user);
+    if (result.error) return response.status(result.statusCode).json({ error: result.error });
+    return response.status(201).json(result);
+  } catch (error) {
+    console.error("SUMMO workbook import failed:", error);
+    return response.status(400).json({ error: "The SUMMO workbook could not be read. Use the generated XLSX template." });
+  }
+});
+
+app.post("/api/reports/summo/imports/:importNo/finalize", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:summo:prepare") && !isAdminUser(user)) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  const result = await finalizeSummoImportBatch(request.params.importNo, user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.get("/api/reports/summo/periods", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:view")) return response.status(403).json({ error: "Access denied" });
+  return response.json(await listSummoPeriods());
+});
+
+app.get("/api/reports/summo/periods/:period/view", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:view")) return response.status(403).json({ error: "Access denied" });
+  const period = await getSummoPeriod(normalizePeriod(request.params.period));
+  if (!period) return response.status(404).json({ error: "SUMMO period was not found." });
+  return response.json(period);
+});
+
+app.post("/api/reports/summo/periods/:period/refresh", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:summo:prepare") && !isAdminUser(user)) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  const result = await saveSummoDraft(normalizePeriod(request.params.period), user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.post("/api/reports/summo/periods/:period/lock", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:summo:lock") && !isAdminUser(user)) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  const result = await lockSummoPeriod(normalizePeriod(request.params.period), user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.post("/api/reports/summo/periods/:period/reopen", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:summo:lock") && !isAdminUser(user)) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  const result = await reopenSummoPeriods(request.params.period, request.body.reason, user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.get("/api/reports/summo/periods/:period.xlsx", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:view")) return response.status(403).json({ error: "Access denied" });
+  const period = await getSummoPeriod(normalizePeriod(request.params.period));
+  if (!period?.snapshot?.rows) return response.status(404).json({ error: "Prepare the SUMMO period before exporting it." });
+  const buffer = await buildSummoWorkbook(period.snapshot, period);
+  response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  response.setHeader("Content-Disposition", `attachment; filename="SUMMO-${period.period}-${period.status}.xlsx"`);
+  return response.send(Buffer.from(buffer));
 });
 
 app.get("/api/reports/member-subsidiary-ledger", async (request, response) => {

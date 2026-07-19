@@ -23,7 +23,8 @@
     "test": "node scripts/smoke-spike.js",
     "smoke": "node scripts/smoke-spike.js",
     "smoke:postgres": "node scripts/smoke-postgres.js",
-    "check": "node --check backend/src/server.js && node --check backend/src/data.js && node --check scripts/smoke-spike.js && node --check scripts/smoke-postgres.js && node --check scripts/pg-maintenance.js && npm --prefix frontend run check"
+    "smoke:summo": "node scripts/smoke-summo.js",
+    "check": "node --check backend/src/server.js && node --check backend/src/data.js && node --check backend/src/summo.js && node --check scripts/smoke-spike.js && node --check scripts/smoke-postgres.js && node --check scripts/smoke-summo.js && node --check scripts/pg-maintenance.js && npm --prefix frontend run check"
   },
   "engines": {
     "node": ">=22.5.0"
