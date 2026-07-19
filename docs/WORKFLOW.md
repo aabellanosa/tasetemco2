@@ -87,6 +87,7 @@ Typical access:
 
 - Create loan applications
 - View borrower profile and account history
+- Maintain previous / existing loan balances during client data setup
 - Encode loan terms, collateral, co-makers, and amortization details
 - Recommend approval or rejection
 - Monitor delinquency and collection status
@@ -194,6 +195,8 @@ The React/Postgres pivot separates screen access from action access. A role may 
 | Membership Officer | Yes | Yes | Yes | No | Yes | No | No | No | No | No | No | No | No |
 | Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
 | Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No | No |
+
+Previous / Existing Loans are maintained separately from general member profile fields. System Administrator, Membership Officer, and Loan Officer can encode multiple historical loan rows with loan label, application date, outstanding balance, and notes. These setup balances do not create teller cash movement, loan release records, or ledger entries.
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
@@ -701,6 +704,8 @@ The System Administrator also manages prototype staff users under Users. Admin c
 The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, and account status, but cannot see the shared prototype password, create or modify users, download backups, or reset demo data.
 
 Member Profile v1 adds editable master-data fields for contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. The System Administrator and Membership Officer can update these fields. Manager, Auditor, and other member-view roles can review the profile read-only. Financial balances remain transaction-derived and cannot be edited from the profile panel.
+
+Previous / Existing Loans v1 replaces the single manual previous-loan amount with a normalized multi-row member detail table. Each row captures loan label, application date, outstanding balance, and notes. System Administrator, Membership Officer, and Loan Officer can maintain this loan-history section; Loan Officer receives this specific capability without receiving full member-profile edit access.
 
 TASETEMCO Member Classification v1 makes cluster/group a controlled value instead of free text. The approved values are `REGULAR MEMBERS CAPTURE`, `REGULAR MEMBERS NON CAPTURE`, `RETIREES`, `REGULAR MEMBERS LGU`, `COMMUNITY A MEMBERS`, and `COMMUNITY B MEMBERS`. Excel/CSV import rows with unknown classifications are treated as issue rows until corrected.
 
