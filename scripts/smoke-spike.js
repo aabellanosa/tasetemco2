@@ -500,6 +500,31 @@ async function run() {
       throw new Error("Membership should update profile fields without changing balances.");
     }
 
+    const managerPreviousLoansUpdate = await fetch(
+      `${baseUrl}/api/members/${approvalBody.member.id}/previous-loans`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: managerCookie
+        },
+        body: JSON.stringify({
+          previousLoans: [
+            {
+              loanLabel: "Manager Loan",
+              applicationDate: "2025-01-15",
+              outstandingBalance: 1000,
+              notes: "Should be blocked"
+            }
+          ]
+        })
+      }
+    );
+
+    if (managerPreviousLoansUpdate.status !== 403) {
+      throw new Error("Manager should not be allowed to update member previous loans.");
+    }
+
     const managerImportCreate = await fetch(`${baseUrl}/api/member-import-batches`, {
       method: "POST",
       headers: {
@@ -2111,6 +2136,61 @@ async function run() {
 
     if (loanOfficerBody.user.permissions.includes("members:applications:create")) {
       throw new Error("Loan officer should not have member application create permission.");
+    }
+
+    if (!loanOfficerBody.user.permissions.includes("members:previous-loans:edit")) {
+      throw new Error("Loan officer should be able to edit member previous loan records.");
+    }
+
+    const loanOfficerPreviousLoansUpdate = await fetch(
+      `${baseUrl}/api/members/${approvalBody.member.id}/previous-loans`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: loanOfficerCookie
+        },
+        body: JSON.stringify({
+          previousLoans: [
+            {
+              loanLabel: "Salary Loan",
+              applicationDate: "2025-01-15",
+              outstandingBalance: 2500.5,
+              notes: "Manual client record"
+            },
+            {
+              loanLabel: "Emergency Loan",
+              applicationDate: "2025-05-20",
+              outstandingBalance: 1200,
+              notes: ""
+            }
+          ]
+        })
+      }
+    );
+    const loanOfficerPreviousLoansBody = await loanOfficerPreviousLoansUpdate.json();
+
+    if (
+      !loanOfficerPreviousLoansUpdate.ok ||
+      loanOfficerPreviousLoansBody.previousLoans.length !== 2 ||
+      loanOfficerPreviousLoansBody.totalPreviousLoanBalance !== 3700.5
+    ) {
+      throw new Error("Loan Officer should update multiple previous loan balances for a member.");
+    }
+
+    const previousLoanStatement = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
+      headers: { Cookie: loanOfficerCookie }
+    });
+    const previousLoanStatementBody = await previousLoanStatement.json();
+
+    if (
+      !previousLoanStatement.ok ||
+      previousLoanStatementBody.previousLoans.length !== 2 ||
+      !previousLoanStatementBody.previousLoans.some(
+        (loan) => loan.loanLabel === "Salary Loan" && loan.outstandingBalance === 2500.5
+      )
+    ) {
+      throw new Error("Member statement should expose previous loan rows.");
     }
 
     const forbiddenCreate = await fetch(`${baseUrl}/api/member-applications`, {

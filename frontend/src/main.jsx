@@ -2231,6 +2231,7 @@ function Members({ user }) {
     previousLoanBalance: 0,
     status: "Active"
   });
+  const [previousLoanRows, setPreviousLoanRows] = useState([]);
   const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
   const [tellerMemberSearch, setTellerMemberSearch] = useState("");
   const [tellerTransactionType, setTellerTransactionType] = useState("initial-payment");
@@ -2242,6 +2243,7 @@ function Members({ user }) {
   const approvalNotice = useDisclosure();
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canEditMemberProfile = user.permissions.includes("members:profile:edit");
+  const canEditPreviousLoans = user.permissions.includes("members:previous-loans:edit");
   const canViewApplications = user.permissions.includes("members:applications:view");
   const canApproveApplication = user.permissions.includes("members:applications:approve");
   const canViewInitialPayments = user.permissions.includes("members:initial-payments:view");
@@ -2355,6 +2357,9 @@ function Members({ user }) {
       }))
   ];
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatchRows);
+  const statementPreviousLoanTotal = statement
+    ? previousLoanRows.reduce((total, row) => addMoney(total, row.outstandingBalance), 0)
+    : 0;
 
   const loadMembersWorkflow = useCallback(
     async ({ silent = false } = {}) => {
@@ -2655,6 +2660,15 @@ function Members({ user }) {
         previousLoanBalance: Number(data.member.previousLoanBalance || 0),
         status: data.member.status || "Active"
       });
+      setPreviousLoanRows(
+        (data.previousLoans || []).map((row) => ({
+          id: row.id,
+          loanLabel: row.loanLabel || "",
+          applicationDate: row.applicationDate ? String(row.applicationDate).slice(0, 10) : "",
+          outstandingBalance: Number(row.outstandingBalance || 0),
+          notes: row.notes || ""
+        }))
+      );
     } catch (statementError) {
       setError(statementError.message);
     }
@@ -2684,6 +2698,64 @@ function Members({ user }) {
       await loadMembersWorkflow();
     } catch (profileError) {
       setError(profileError.message);
+    }
+  }
+
+  function addPreviousLoanRow() {
+    setPreviousLoanRows((current) => [
+      ...current,
+      {
+        id: `new-${Date.now()}`,
+        loanLabel: "",
+        applicationDate: "",
+        outstandingBalance: 0,
+        notes: ""
+      }
+    ]);
+  }
+
+  function updatePreviousLoanRow(index, field, value) {
+    setPreviousLoanRows((current) =>
+      current.map((row, rowIndex) => (rowIndex === index ? { ...row, [field]: value } : row))
+    );
+  }
+
+  function removePreviousLoanRow(index) {
+    setPreviousLoanRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
+  }
+
+  async function submitPreviousLoans(event) {
+    event.preventDefault();
+
+    if (!statement) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await api(`/api/members/${statement.member.id}/previous-loans`, {
+        method: "PUT",
+        body: JSON.stringify({ previousLoans: previousLoanRows })
+      });
+      setStatement((current) => ({
+        ...current,
+        previousLoans: data.previousLoans
+      }));
+      setPreviousLoanRows(
+        data.previousLoans.map((row) => ({
+          id: row.id,
+          loanLabel: row.loanLabel || "",
+          applicationDate: row.applicationDate ? String(row.applicationDate).slice(0, 10) : "",
+          outstandingBalance: Number(row.outstandingBalance || 0),
+          notes: row.notes || ""
+        }))
+      );
+      setMessage(`${statement.member.id} previous loans updated.`);
+      await loadMembersWorkflow();
+    } catch (previousLoanError) {
+      setError(previousLoanError.message);
     }
   }
 
@@ -3325,9 +3397,9 @@ function Members({ user }) {
             </Box>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">
-                Previous Loan Balance
+                Previous / Existing Loans
               </Text>
-              <Text fontWeight="bold">{formatMoney(statement.member.previousLoanBalance || 0)}</Text>
+              <Text fontWeight="bold">{formatMoney(statementPreviousLoanTotal)}</Text>
             </Box>
           </Grid>
 
@@ -3429,19 +3501,6 @@ function Members({ user }) {
                 />
               </FormControl>
               <FormControl>
-                <FormLabel>Previous Loan Balance</FormLabel>
-                <NumberInput
-                  min={0}
-                  precision={2}
-                  step={0.01}
-                  value={memberProfileForm.previousLoanBalance}
-                  onChange={(value) => updateMemberProfileForm("previousLoanBalance", Number(value || 0))}
-                  isReadOnly={!canEditMemberProfile}
-                >
-                  <NumberInputField />
-                </NumberInput>
-              </FormControl>
-              <FormControl>
                 <FormLabel>Status</FormLabel>
                 <Select
                   value={memberProfileForm.status}
@@ -3453,6 +3512,125 @@ function Members({ user }) {
                 </Select>
               </FormControl>
             </Grid>
+          </Box>
+
+          <Box
+            as={canEditPreviousLoans ? "form" : "div"}
+            onSubmit={canEditPreviousLoans ? submitPreviousLoans : undefined}
+            borderWidth="1px"
+            borderRadius="md"
+            p={4}
+            mb={5}
+          >
+            <Flex justify="space-between" align="center" gap={4} wrap="wrap" mb={4}>
+              <Box>
+                <Heading size="sm">Previous / Existing Loans</Heading>
+                <Text color="gray.600" mt={1}>
+                  Historical loan balances captured during member setup. These do not create new cash releases.
+                </Text>
+              </Box>
+              {canEditPreviousLoans ? (
+                <HStack>
+                  <Button type="button" size="sm" variant="outline" onClick={addPreviousLoanRow}>
+                    Add Loan
+                  </Button>
+                  <Button type="submit" size="sm" colorScheme="green">
+                    Save Loans
+                  </Button>
+                </HStack>
+              ) : (
+                <Badge colorScheme="gray">Read only</Badge>
+              )}
+            </Flex>
+            <TableContainer>
+              <Table size="sm">
+                <Thead>
+                  <Tr>
+                    <Th>Loan Label</Th>
+                    <Th>Application Date</Th>
+                    <Th isNumeric>Outstanding Balance</Th>
+                    <Th>Notes</Th>
+                    {canEditPreviousLoans ? <Th>Action</Th> : null}
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {previousLoanRows.map((row, index) => (
+                    <Tr key={row.id || index}>
+                      <Td minW="180px">
+                        {canEditPreviousLoans ? (
+                          <Input
+                            size="sm"
+                            value={row.loanLabel}
+                            onChange={(event) => updatePreviousLoanRow(index, "loanLabel", event.target.value)}
+                            placeholder="Salary Loan"
+                          />
+                        ) : (
+                          row.loanLabel || "-"
+                        )}
+                      </Td>
+                      <Td minW="150px">
+                        {canEditPreviousLoans ? (
+                          <Input
+                            size="sm"
+                            type="date"
+                            value={row.applicationDate}
+                            onChange={(event) => updatePreviousLoanRow(index, "applicationDate", event.target.value)}
+                          />
+                        ) : (
+                          formatDate(row.applicationDate)
+                        )}
+                      </Td>
+                      <Td isNumeric minW="160px">
+                        {canEditPreviousLoans ? (
+                          <NumberInput
+                            min={0}
+                            precision={2}
+                            step={0.01}
+                            value={row.outstandingBalance}
+                            onChange={(value) =>
+                              updatePreviousLoanRow(index, "outstandingBalance", Number(value || 0))
+                            }
+                          >
+                            <NumberInputField textAlign="right" />
+                          </NumberInput>
+                        ) : (
+                          formatMoney(row.outstandingBalance)
+                        )}
+                      </Td>
+                      <Td minW="220px">
+                        {canEditPreviousLoans ? (
+                          <Input
+                            size="sm"
+                            value={row.notes}
+                            onChange={(event) => updatePreviousLoanRow(index, "notes", event.target.value)}
+                            placeholder="Reference or remarks"
+                          />
+                        ) : (
+                          row.notes || "-"
+                        )}
+                      </Td>
+                      {canEditPreviousLoans ? (
+                        <Td>
+                          <Button type="button" size="sm" variant="outline" onClick={() => removePreviousLoanRow(index)}>
+                            Remove
+                          </Button>
+                        </Td>
+                      ) : null}
+                    </Tr>
+                  ))}
+                  {previousLoanRows.length === 0 ? (
+                    <Tr>
+                      <Td colSpan={canEditPreviousLoans ? 5 : 4} color="gray.500">
+                        No previous loans recorded.
+                      </Td>
+                    </Tr>
+                  ) : null}
+                </Tbody>
+              </Table>
+            </TableContainer>
+            <Flex justify="flex-end" mt={3}>
+              <Text fontWeight="bold">Total: {formatMoney(statementPreviousLoanTotal)}</Text>
+            </Flex>
           </Box>
 
           <TableContainer>

@@ -21,6 +21,7 @@ import {
   memberApplications,
   memberImportBatches,
   memberImportRows,
+  memberPreviousLoans,
   members,
   openingBalanceImportBatches,
   openingBalanceImportRows,
@@ -130,6 +131,7 @@ const persistedTables = [
   "loan_products",
   "member_import_rows",
   "member_import_batches",
+  "member_previous_loans",
   "member_applications",
   "members",
   "users"
@@ -159,6 +161,17 @@ const requiredSchemaColumns = {
     "finalized_at",
     "imported_rows",
     "skipped_rows"
+  ],
+  member_previous_loans: [
+    "member_no",
+    "loan_label",
+    "application_date",
+    "outstanding_balance",
+    "notes",
+    "created_by",
+    "updated_by",
+    "created_at",
+    "updated_at"
   ],
   member_import_rows: [
     "import_no",
@@ -3397,6 +3410,167 @@ async function updateMemberProfile(memberId, input) {
   return { member: rows[0] };
 }
 
+function mapMemberPreviousLoan(row) {
+  return {
+    id: Number(row.id || 0),
+    memberNo: row.memberNo,
+    loanLabel: row.loanLabel || "",
+    applicationDate: formatDateOnly(row.applicationDate),
+    outstandingBalance: Number(row.outstandingBalance || 0),
+    notes: row.notes || "",
+    createdBy: row.createdBy || "",
+    updatedBy: row.updatedBy || "",
+    createdAt: row.createdAt || "",
+    updatedAt: row.updatedAt || ""
+  };
+}
+
+function validateMemberPreviousLoanRows(rows) {
+  if (!Array.isArray(rows)) {
+    return { error: "Previous loans must be submitted as a list." };
+  }
+
+  const cleanedRows = [];
+
+  for (const [index, row] of rows.entries()) {
+    const loanLabel = String(row.loanLabel || row.label || "").trim();
+    const applicationDate = normalizeOptionalDate(row.applicationDate);
+    const outstandingBalance = Number(row.outstandingBalance || row.balance || 0);
+    const notes = String(row.notes || "").trim();
+    const hasAnyValue = loanLabel || row.applicationDate || notes || Number(row.outstandingBalance || row.balance || 0) > 0;
+
+    if (!hasAnyValue) {
+      continue;
+    }
+
+    if (!loanLabel) {
+      return { error: `Previous loan row ${index + 1} needs a loan label.` };
+    }
+    if (row.applicationDate && !applicationDate) {
+      return { error: `Previous loan row ${index + 1} has an invalid application date.` };
+    }
+    if (!isMoney(outstandingBalance) || outstandingBalance < 0) {
+      return { error: `Previous loan row ${index + 1} needs a valid non-negative balance.` };
+    }
+
+    cleanedRows.push({
+      loanLabel,
+      applicationDate,
+      outstandingBalance: moneyValue(outstandingBalance),
+      notes
+    });
+  }
+
+  return { value: cleanedRows };
+}
+
+async function listMemberPreviousLoans(memberId) {
+  const db = await getPool();
+
+  if (!db) {
+    return memberPreviousLoans
+      .filter((loan) => loan.memberNo === memberId)
+      .sort((left, right) => String(right.applicationDate || "").localeCompare(String(left.applicationDate || "")))
+      .map(mapMemberPreviousLoan);
+  }
+
+  const [rows] = await db.execute(
+    `SELECT id, member_no AS memberNo, loan_label AS loanLabel,
+            application_date AS applicationDate, outstanding_balance AS outstandingBalance,
+            notes, created_by AS createdBy, updated_by AS updatedBy,
+            created_at AS createdAt, updated_at AS updatedAt
+     FROM member_previous_loans
+     WHERE member_no = ?
+     ORDER BY application_date DESC NULLS LAST, id DESC`,
+    [memberId]
+  );
+
+  return rows.map(mapMemberPreviousLoan);
+}
+
+async function replaceMemberPreviousLoans(memberId, rows, user) {
+  const memberRows = await listMembers();
+  const member = memberRows.find((item) => item.id === memberId);
+
+  if (!member) {
+    return { error: "Member was not found.", statusCode: 404 };
+  }
+
+  const validation = validateMemberPreviousLoanRows(rows);
+
+  if (validation.error) {
+    return { error: validation.error, statusCode: 400 };
+  }
+
+  const db = await getPool();
+
+  if (!db) {
+    for (let index = memberPreviousLoans.length - 1; index >= 0; index -= 1) {
+      if (memberPreviousLoans[index].memberNo === memberId) {
+        memberPreviousLoans.splice(index, 1);
+      }
+    }
+
+    const nextId = () => Math.max(0, ...memberPreviousLoans.map((loan) => Number(loan.id) || 0)) + 1;
+    const now = new Date().toISOString();
+    for (const row of validation.value) {
+      memberPreviousLoans.push({
+        id: nextId(),
+        memberNo: memberId,
+        ...row,
+        createdBy: user.username,
+        updatedBy: user.username,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    return {
+      previousLoans: await listMemberPreviousLoans(memberId),
+      totalPreviousLoanBalance: validation.value.reduce(
+        (total, row) => addMoney(total, row.outstandingBalance),
+        0
+      )
+    };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(`DELETE FROM member_previous_loans WHERE member_no = ?`, [memberId]);
+
+    for (const row of validation.value) {
+      await connection.execute(
+        `INSERT INTO member_previous_loans (
+           member_no, loan_label, application_date, outstanding_balance, notes, created_by, updated_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          memberId,
+          row.loanLabel,
+          row.applicationDate,
+          row.outstandingBalance,
+          row.notes,
+          user.username,
+          user.username
+        ]
+      );
+    }
+
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  const previousLoans = await listMemberPreviousLoans(memberId);
+  return {
+    previousLoans,
+    totalPreviousLoanBalance: previousLoans.reduce((total, row) => addMoney(total, row.outstandingBalance), 0)
+  };
+}
+
 function sanitizeMemberImportRow(row) {
   const status = String(row.status || "Active").trim() || "Active";
   const group = String(row.group || row.clusterName || "").trim();
@@ -6273,7 +6447,8 @@ async function getMemberStatement(memberId) {
           }))
       ));
 
-    return { member, transactions };
+    const previousLoans = await listMemberPreviousLoans(member.id);
+    return { member, previousLoans, transactions };
   }
 
   const [memberRows] = await db.execute(
@@ -6363,6 +6538,7 @@ async function getMemberStatement(memberId) {
 
   return {
     member,
+    previousLoans: await listMemberPreviousLoans(memberId),
     transactions: [
       ...openingBalanceRows,
       ...initialPaymentRows,
@@ -9297,6 +9473,29 @@ app.patch("/api/members/:memberId/profile", async (request, response) => {
   }
 
   const result = await updateMemberProfile(request.params.memberId, validation.value);
+
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error });
+    return;
+  }
+
+  response.json(result);
+});
+
+app.put("/api/members/:memberId/previous-loans", async (request, response) => {
+  const user = parseSession(request);
+
+  if (!user) {
+    response.status(401).json({ error: "Login required" });
+    return;
+  }
+
+  if (!hasPermission(user, "members:previous-loans:edit")) {
+    response.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const result = await replaceMemberPreviousLoans(request.params.memberId, request.body.previousLoans, user);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });
