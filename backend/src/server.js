@@ -4117,17 +4117,29 @@ async function getMemberChargeReconciliation(filters = {}) {
   const dateFrom = normalizeOptionalDate(filters.dateFrom);
   const dateTo = normalizeOptionalDate(filters.dateTo);
   const costCenterCode = String(filters.costCenterCode || "").trim().toUpperCase();
+  const memberNo = String(filters.memberNo || "").trim();
   const status = String(filters.status || "").trim();
   if ((filters.dateFrom && !dateFrom) || (filters.dateTo && !dateTo) || (dateFrom && dateTo && dateFrom > dateTo)) {
     return { error: "Provide a valid date range.", statusCode: 400 };
   }
   if (status && !["Draft", "Finalized"].includes(status)) return { error: "Batch status filter is invalid.", statusCode: 400 };
   const allBatches = await listMemberChargeBatches();
-  const batches = allBatches.filter((batch) => (!dateFrom || batch.transactionDate >= dateFrom) &&
+  let batches = allBatches.filter((batch) => (!dateFrom || batch.transactionDate >= dateFrom) &&
     (!dateTo || batch.transactionDate <= dateTo) && (!costCenterCode || batch.costCenterCode === costCenterCode) &&
     (!status || batch.status === status));
+  if (memberNo) {
+    const memberBatches = [];
+    for (const batch of batches) {
+      const details = await getMemberChargeBatch(batch.batchNo);
+      const memberEntries = details.entries.filter((entry) => entry.memberNo === memberNo);
+      if (memberEntries.length) memberBatches.push({ ...batch, entryCount: memberEntries.length,
+        totalAmount: memberEntries.reduce((sum, entry) => addMoney(sum, entry.amount), 0) });
+    }
+    batches = memberBatches;
+  }
   const includedBatchNos = new Set(batches.map((batch) => batch.batchNo));
-  const movements = (await listMemberChargeMovements()).filter((movement) => includedBatchNos.has(movement.batchNo));
+  const movements = (await listMemberChargeMovements()).filter((movement) =>
+    includedBatchNos.has(movement.batchNo) && (!memberNo || movement.memberNo === memberNo));
   const byCostCenterMap = new Map();
   const byDateMap = new Map();
   for (const batch of batches) {
@@ -4150,7 +4162,7 @@ async function getMemberChargeReconciliation(filters = {}) {
     byDateMap.set(movement.transactionDate, day);
   }
   return {
-    filters: { dateFrom: dateFrom || "", dateTo: dateTo || "", costCenterCode, status },
+    filters: { dateFrom: dateFrom || "", dateTo: dateTo || "", costCenterCode, memberNo, status },
     summary: {
       batchCount: batches.length,
       draftBatchCount: batches.filter((batch) => batch.status === "Draft").length,
@@ -4162,6 +4174,8 @@ async function getMemberChargeReconciliation(filters = {}) {
     },
     byCostCenter: Array.from(byCostCenterMap.values()).sort((a, b) => a.costCenterName.localeCompare(b.costCenterName)),
     byDate: Array.from(byDateMap.values()).sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)),
+    memberOptions: (await listMembers()).map((member) => ({ id: member.id, name: member.name,
+      group: member.group, contactNumber: member.contactNumber || "" })),
     batches,
     movements
   };

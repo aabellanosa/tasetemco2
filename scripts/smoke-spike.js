@@ -909,6 +909,19 @@ async function run() {
       throw new Error("Manager should receive filtered cost-center reconciliation totals and drill-down data.");
     }
 
+    const memberReconciliationQuery = new URLSearchParams({
+      dateFrom: summoDate, dateTo: summoDate, memberNo: "M-000482", status: "Finalized"
+    });
+    const memberChargeReview = await fetch(`${baseUrl}/api/member-charge-reconciliation?${memberReconciliationQuery}`, {
+      headers: { Cookie: managerCookie }
+    });
+    const memberChargeReviewBody = await memberChargeReview.json();
+    if (!memberChargeReview.ok || memberChargeReviewBody.summary.finalizedSourceAmount !== 200 ||
+      memberChargeReviewBody.summary.reversalAmount !== -80 || memberChargeReviewBody.summary.netPayableMovement !== 120 ||
+      !memberChargeReviewBody.movements.every((movement) => movement.memberNo === "M-000482")) {
+      throw new Error("Member-filtered reconciliation should recalculate sources and movements for only that member.");
+    }
+
     const forbiddenMembershipChargeReview = await fetch(`${baseUrl}/api/member-charge-reconciliation`, {
       headers: { Cookie: cookie }
     });

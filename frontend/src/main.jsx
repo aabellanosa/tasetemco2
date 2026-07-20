@@ -244,36 +244,6 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
-function filterMemberOptions(members, query, selectedMemberId = "") {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  if (!normalizedQuery) {
-    return members;
-  }
-
-  const filteredMembers = members.filter((member) =>
-    [
-      member.id,
-      member.name,
-      member.group,
-      member.contactNumber
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery)
-  );
-
-  if (selectedMemberId && !filteredMembers.some((member) => member.id === selectedMemberId)) {
-    const selectedMember = members.find((member) => member.id === selectedMemberId);
-
-    if (selectedMember) {
-      return [selectedMember, ...filteredMembers];
-    }
-  }
-
-  return filteredMembers;
-}
-
 function MemberCombobox({ members, value, onChange, placeholder = "Search member name or number", maxResults = 15 }) {
   const selectedMember = members.find((member) => member.id === value);
   const selectedLabel = selectedMember ? `${selectedMember.name} (${selectedMember.id})` : "";
@@ -282,10 +252,15 @@ function MemberCombobox({ members, value, onChange, placeholder = "Search member
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuPosition, setMenuPosition] = useState(null);
   const inputRef = useRef(null);
+  const tabSelectionRef = useRef(false);
   const matches = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized || (selectedMember && query === selectedLabel)) return members.slice(0, maxResults);
-    return members.filter((member) => `${member.name} ${member.id}`.toLowerCase().includes(normalized)).slice(0, maxResults);
+    if (selectedMember && query === selectedLabel) {
+      return [selectedMember, ...members.filter((member) => member.id !== selectedMember.id)].slice(0, maxResults);
+    }
+    if (!normalized) return members.slice(0, maxResults);
+    return members.filter((member) => [member.name, member.id, member.group, member.contactNumber]
+      .join(" ").toLowerCase().includes(normalized)).slice(0, maxResults);
   }, [members, query, selectedLabel, selectedMember, maxResults]);
 
   useEffect(() => {
@@ -312,6 +287,9 @@ function MemberCombobox({ members, value, onChange, placeholder = "Search member
       event.preventDefault(); setActiveIndex((current) => Math.max(current - 1, 0));
     } else if (event.key === "Enter" && isOpen && matches[activeIndex]) {
       event.preventDefault(); selectMember(matches[activeIndex]);
+    } else if (event.key === "Tab" && isOpen && matches[activeIndex]) {
+      tabSelectionRef.current = true;
+      selectMember(matches[activeIndex]);
     } else if (event.key === "Escape") {
       setIsOpen(false);
     }
@@ -321,7 +299,11 @@ function MemberCombobox({ members, value, onChange, placeholder = "Search member
     <Input ref={inputRef} size="sm" value={query} placeholder={placeholder} autoComplete="off"
       role="combobox" aria-expanded={isOpen} aria-autocomplete="list"
       onFocus={() => { openMenu(); setActiveIndex(0); }}
-      onBlur={() => { setIsOpen(false); if (!value) setQuery(""); else setQuery(selectedLabel); }}
+      onBlur={() => {
+        setIsOpen(false);
+        if (tabSelectionRef.current) { tabSelectionRef.current = false; return; }
+        if (!value) setQuery(""); else setQuery(selectedLabel);
+      }}
       onKeyDown={handleKeyDown}
       onChange={(event) => { setQuery(event.target.value); onChange(""); openMenu(); setActiveIndex(0); }} />
     {isOpen && menuPosition ? <Portal><Box position="fixed" top={`${menuPosition.top}px`} left={`${menuPosition.left}px`}
@@ -2402,7 +2384,8 @@ function MemberChargeReview() {
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = `${today.slice(0, 7)}-01`;
   const [centers, setCenters] = useState([]);
-  const [filters, setFilters] = useState({ dateFrom: monthStart, dateTo: today, costCenterCode: "", status: "" });
+  const [members, setMembers] = useState([]);
+  const [filters, setFilters] = useState({ dateFrom: monthStart, dateTo: today, costCenterCode: "", memberNo: "", status: "" });
   const [report, setReport] = useState(null);
   const [details, setDetails] = useState(null);
   const [error, setError] = useState("");
@@ -2414,7 +2397,7 @@ function MemberChargeReview() {
       const [centerRows, data] = await Promise.all([
         api("/api/cost-centers"), api(`/api/member-charge-reconciliation${query ? `?${query}` : ""}`)
       ]);
-      setCenters(centerRows); setReport(data); setDetails(null); setError("");
+      setCenters(centerRows); setMembers(data.memberOptions || []); setReport(data); setDetails(null); setError("");
     } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
   }, [filters]);
   useEffect(() => { loadReport(); }, []);
@@ -2429,10 +2412,12 @@ function MemberChargeReview() {
         <Text color="gray.600">Read-only reconciliation of drafts, finalized sources, reversals, and net member payables.</Text></Box>
         <Button onClick={() => loadReport()} isLoading={busy}>Refresh</Button></Flex>
       {error ? <Text color="red.700" mb={3}>{error}</Text> : null}
-      <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={3} alignItems="end">
+      <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(6, 1fr)" }} gap={3} alignItems="end">
         <FormControl><FormLabel>From</FormLabel><Input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} /></FormControl>
         <FormControl><FormLabel>To</FormLabel><Input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} /></FormControl>
         <FormControl><FormLabel>Cost Center</FormLabel><Select value={filters.costCenterCode} onChange={(e) => setFilters({ ...filters, costCenterCode: e.target.value })}><option value="">All cost centers</option>{centers.map((center) => <option key={center.code} value={center.code}>{center.name}</option>)}</Select></FormControl>
+        <FormControl><FormLabel>Member</FormLabel><MemberCombobox members={members} value={filters.memberNo}
+          onChange={(memberNo) => setFilters((current) => ({ ...current, memberNo }))} placeholder="All members / search" /></FormControl>
         <FormControl><FormLabel>Status</FormLabel><Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">All statuses</option><option>Draft</option><option>Finalized</option></Select></FormControl>
         <Button colorScheme="green" onClick={() => loadReport()} isLoading={busy}>Apply Filters</Button>
       </Grid>
@@ -2537,7 +2522,6 @@ function Members({ user }) {
   const [previousLoanUnlockReason, setPreviousLoanUnlockReason] = useState("");
   const [previousLoanDecisionRemarks, setPreviousLoanDecisionRemarks] = useState("");
   const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
-  const [tellerMemberSearch, setTellerMemberSearch] = useState("");
   const [tellerTransactionType, setTellerTransactionType] = useState("initial-payment");
   const [approvedMemberName, setApprovedMemberName] = useState("");
   const [message, setMessage] = useState("");
@@ -2599,7 +2583,6 @@ function Members({ user }) {
     canCreateShareCapitalContribution ||
     canCreateSavingsDeposit ||
     canCreateSavingsWithdrawal;
-  const tellerMemberOptions = filterMemberOptions(activeMembers, tellerMemberSearch, selectedTellerMemberId);
   const selectedTellerMember = activeMembers.find((member) => member.id === selectedTellerMemberId);
   const tellerBatchRows = [
     ...initialPayments
@@ -3270,27 +3253,14 @@ function Members({ user }) {
           <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4} mb={5}>
             <FormControl isRequired>
               <FormLabel>Member</FormLabel>
-              <Input
-                mb={2}
-                value={tellerMemberSearch}
-                onChange={(event) => setTellerMemberSearch(event.target.value)}
-                placeholder="Search member name or number"
-              />
-              <Select
-                placeholder={
-                  tellerMemberOptions.length === 0 ? "No active members match" : "Select active member"
-                }
+              <MemberCombobox
+                members={activeMembers}
                 value={selectedTellerMemberId}
-                onChange={(event) => selectTellerMember(event.target.value)}
-              >
-                {tellerMemberOptions.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.id} - {member.name}
-                  </option>
-                ))}
-              </Select>
+                onChange={selectTellerMember}
+                placeholder="Search active member name or number"
+              />
               <Text color="gray.500" fontSize="xs" mt={1}>
-                Showing {tellerMemberOptions.length} of {activeMembers.length} active members
+                Search and select from {activeMembers.length} active members
               </Text>
             </FormControl>
             <Box borderWidth="1px" borderRadius="md" p={4}>
@@ -5163,6 +5133,7 @@ function SummoReport({ user }) {
   const [supersedesImportNo, setSupersedesImportNo] = useState("");
   const [supersedeReason, setSupersedeReason] = useState("");
   const [reopenReason, setReopenReason] = useState("");
+  const [selectedMemberNo, setSelectedMemberNo] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -5252,6 +5223,15 @@ function SummoReport({ user }) {
   }
 
   const report = periodData?.snapshot;
+  const reportMembers = (report?.rows || []).map((row) => ({
+    id: row.memberNo, name: row.memberName, group: report?.cluster || "REGULAR MEMBERS CAPTURE", contactNumber: ""
+  }));
+  const visibleReportRows = selectedMemberNo
+    ? (report?.rows || []).filter((row) => row.memberNo === selectedMemberNo)
+    : report?.rows || [];
+  const visibleSystemMovements = selectedMemberNo
+    ? (report?.systemMovementDetails || []).filter((row) => row.memberNo === selectedMemberNo)
+    : report?.systemMovementDetails || [];
   return (
     <VStack align="stretch" spacing={5}>
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
@@ -5262,7 +5242,7 @@ function SummoReport({ user }) {
           </Box>
           <FormControl maxW="220px">
             <FormLabel>Reporting month</FormLabel>
-            <Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+            <Input type="month" value={period} onChange={(event) => { setPeriod(event.target.value); setSelectedMemberNo(""); }} />
           </FormControl>
         </Flex>
         <HStack mt={4} spacing={3} wrap="wrap">
@@ -5337,6 +5317,13 @@ function SummoReport({ user }) {
           </HStack>
         </Flex>
         {periodData?.validationIssues?.length ? <Box bg="orange.50" p={3} borderRadius="md" mb={4}>{periodData.validationIssues.map((issue) => <Text key={issue} color="orange.700">• {issue}</Text>)}</Box> : null}
+        {report?.rows ? <Flex gap={2} align="end" wrap="wrap" mb={4}>
+          <FormControl maxW={{ base: "100%", md: "420px" }}><FormLabel>View one member (optional)</FormLabel>
+            <MemberCombobox members={reportMembers} value={selectedMemberNo} onChange={setSelectedMemberNo}
+              placeholder="Search report member name or number" />
+          </FormControl>
+          {selectedMemberNo ? <Button size="sm" variant="outline" onClick={() => setSelectedMemberNo("")}>Show All</Button> : null}
+        </Flex> : null}
         {report?.sourceSummary ? <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={4}>
           <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Movements</Text><Text fontWeight="bold">{report.sourceSummary.systemMovementCount}</Text><Text fontSize="xs">{report.sourceSummary.pendingCostCenterBatchCount} draft batches pending</Text></Box>
           <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Canteen</Text><Text fontWeight="bold">{formatMoney(report.sourceSummary.systemCanteenAmount)}</Text></Box>
@@ -5345,12 +5332,12 @@ function SummoReport({ user }) {
         </Grid> : null}
         {report?.rows ? (
           <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Canteen</Th><Th isNumeric>WRS</Th><Th isNumeric>Current Charges</Th><Th isNumeric>Previous Total</Th><Th isNumeric>Gross Payable</Th><Th isNumeric>Settlements</Th><Th isNumeric>Balance</Th></Tr></Thead>
-            <Tbody>{report.rows.map((row) => <Tr key={row.memberNo}><Td>{row.memberNo}<br />{row.memberName}</Td><Td isNumeric>{formatMoney(row.canteen)}</Td><Td isNumeric>{formatMoney(row.wrs)}</Td><Td isNumeric>{formatMoney(row.currentCharges)}</Td><Td isNumeric>{formatMoney(row.previousBalanceTotal)}</Td><Td isNumeric>{formatMoney(row.grossPayable)}</Td><Td isNumeric>{formatMoney(row.settlements)}</Td><Td isNumeric fontWeight="bold">{formatMoney(row.endingBalance)}</Td></Tr>)}</Tbody>
+            <Tbody>{visibleReportRows.map((row) => <Tr key={row.memberNo}><Td>{row.memberNo}<br />{row.memberName}</Td><Td isNumeric>{formatMoney(row.canteen)}</Td><Td isNumeric>{formatMoney(row.wrs)}</Td><Td isNumeric>{formatMoney(row.currentCharges)}</Td><Td isNumeric>{formatMoney(row.previousBalanceTotal)}</Td><Td isNumeric>{formatMoney(row.grossPayable)}</Td><Td isNumeric>{formatMoney(row.settlements)}</Td><Td isNumeric fontWeight="bold">{formatMoney(row.endingBalance)}</Td></Tr>)}</Tbody>
           </Table></TableContainer>
         ) : <Text color="gray.500">Prepare the draft after finalizing the required movement imports.</Text>}
-        {report?.systemMovementDetails?.length ? <Box mt={5}><Heading size="sm" mb={2}>System Cost Center Drill-down</Heading>
+        {visibleSystemMovements.length ? <Box mt={5}><Heading size="sm" mb={2}>System Cost Center Drill-down</Heading>
           <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Member</Th><Th>Cost Center</Th><Th>Batch / Movement</Th><Th>SUMMO Column</Th><Th isNumeric>Amount</Th><Th>Correction Link</Th></Tr></Thead>
-            <Tbody>{report.systemMovementDetails.map((movement) => <Tr key={movement.referenceNo}><Td>{formatDate(movement.movementDate)}</Td><Td>{movement.memberName}<br /><Text fontSize="xs">{movement.memberNo}</Text></Td><Td>{movement.costCenterName}</Td><Td>{movement.batchNo}<br /><Text fontSize="xs">{movement.referenceNo}</Text></Td><Td><Badge colorScheme={movement.movementType === "REVERSAL" ? "red" : "green"}>{movement.movementType}</Badge></Td><Td isNumeric>{formatMoney(movement.amount)}</Td><Td>{movement.reversesReference || "-"}</Td></Tr>)}</Tbody>
+            <Tbody>{visibleSystemMovements.map((movement) => <Tr key={movement.referenceNo}><Td>{formatDate(movement.movementDate)}</Td><Td>{movement.memberName}<br /><Text fontSize="xs">{movement.memberNo}</Text></Td><Td>{movement.costCenterName}</Td><Td>{movement.batchNo}<br /><Text fontSize="xs">{movement.referenceNo}</Text></Td><Td><Badge colorScheme={movement.movementType === "REVERSAL" ? "red" : "green"}>{movement.movementType}</Badge></Td><Td isNumeric>{formatMoney(movement.amount)}</Td><Td>{movement.reversesReference || "-"}</Td></Tr>)}</Tbody>
           </Table></TableContainer></Box> : null}
       </Box>
 
@@ -7751,7 +7738,6 @@ function LoanApplications({ user }) {
   const [members, setMembers] = useState([]);
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(defaultLoanApplicationForm);
-  const [loanMemberSearch, setLoanMemberSearch] = useState("");
   const [editingNo, setEditingNo] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -7775,7 +7761,6 @@ function LoanApplications({ user }) {
   const canDecide = user.permissions.includes("loans:applications:decide");
   const canPrepareDocument = canCreate || canEdit || user.username === "admin";
   const activeProducts = products.filter((product) => product.status === "Active");
-  const loanMemberOptions = filterMemberOptions(members, loanMemberSearch, form.memberNo);
   const selectedProduct = products.find((product) => product.code === form.productCode);
   const termOptions = allowedCommonLoanTerms(selectedProduct);
 
@@ -8035,22 +8020,14 @@ function LoanApplications({ user }) {
           <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4}>
             <FormControl isRequired>
               <FormLabel>Active Member</FormLabel>
-              <Input
-                mb={2}
-                value={loanMemberSearch}
-                onChange={(event) => setLoanMemberSearch(event.target.value)}
-                placeholder="Search member name or number"
+              <MemberCombobox
+                members={members}
+                value={form.memberNo}
+                onChange={(memberNo) => updateForm("memberNo", memberNo)}
+                placeholder="Search active member name or number"
               />
-              <Select value={form.memberNo} onChange={(event) => updateForm("memberNo", event.target.value)}>
-                <option value="">
-                  {loanMemberOptions.length === 0 ? "No active members match" : "Select member"}
-                </option>
-                {loanMemberOptions.map((member) => (
-                  <option key={member.id} value={member.id}>{member.id} - {member.name}</option>
-                ))}
-              </Select>
               <Text color="gray.500" fontSize="xs" mt={1}>
-                Showing {loanMemberOptions.length} of {members.length} active members
+                Search and select from {members.length} active members
               </Text>
             </FormControl>
             <FormControl isRequired>
@@ -9335,6 +9312,7 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
 function LoanReleases({ user }) {
   const [loans, setLoans] = useState([]);
   const [releases, setReleases] = useState([]);
+  const [search, setSearch] = useState("");
   const [position, setPosition] = useState(null);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [form, setForm] = useState({
@@ -9402,7 +9380,11 @@ function LoanReleases({ user }) {
     }
   }
 
-  const readyLoans = loans.filter((loan) => loan.status === "For Release");
+  const normalizedSearch = search.trim().toLowerCase();
+  const matchesLoanSearch = (item) => !normalizedSearch || [item.loanNo, item.memberNo, item.memberName]
+    .join(" ").toLowerCase().includes(normalizedSearch);
+  const readyLoans = loans.filter((loan) => loan.status === "For Release" && matchesLoanSearch(loan));
+  const filteredReleases = releases.filter(matchesLoanSearch);
 
   return (
     <VStack align="stretch" spacing={5} minW={0} maxW="100%">
@@ -9418,6 +9400,12 @@ function LoanReleases({ user }) {
 
       {message ? <Text color="green.600">{message}</Text> : null}
       {error ? <Text color="red.500">{error}</Text> : null}
+
+      <FormControl maxW={{ base: "100%", md: "420px" }}>
+        <FormLabel>Find loan or member</FormLabel>
+        <Input value={search} onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search loan no., member name, or member no." />
+      </FormControl>
 
       {canCreate ? (
         <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
@@ -9480,7 +9468,7 @@ function LoanReleases({ user }) {
                 {!readyLoans.length ? (
                   <Tr>
                     <Td colSpan={9} color="gray.500">
-                      No computed loans are currently marked For Release.
+                      {normalizedSearch ? "No release-ready loans match the search." : "No computed loans are currently marked For Release."}
                     </Td>
                   </Tr>
                 ) : null}
@@ -9508,7 +9496,7 @@ function LoanReleases({ user }) {
               </Tr>
             </Thead>
             <Tbody>
-              {releases.map((release) => (
+              {filteredReleases.map((release) => (
                 <Tr key={release.releaseNo}>
                   <Td>{release.releaseNo}</Td>
                   <Td>{release.loanNo}</Td>
@@ -9524,7 +9512,7 @@ function LoanReleases({ user }) {
             </Tbody>
           </Table>
         </TableContainer>
-        {!releases.length ? <Text color="gray.500">No loan releases recorded yet.</Text> : null}
+        {!filteredReleases.length ? <Text color="gray.500">{normalizedSearch ? "No release history matches the search." : "No loan releases recorded yet."}</Text> : null}
       </Box>
 
       <Modal isOpen={releaseModal.isOpen} onClose={releaseModal.onClose} isCentered>
@@ -9600,6 +9588,7 @@ function LoanReleases({ user }) {
 function LoanCollections({ user }) {
   const [loans, setLoans] = useState([]);
   const [collections, setCollections] = useState([]);
+  const [search, setSearch] = useState("");
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [form, setForm] = useState({
     collectionDate: new Date().toISOString().slice(0, 10),
@@ -9674,10 +9663,14 @@ function LoanCollections({ user }) {
     }
   }
 
+  const normalizedSearch = search.trim().toLowerCase();
+  const matchesLoanSearch = (item) => !normalizedSearch || [item.loanNo, item.memberNo, item.memberName]
+    .join(" ").toLowerCase().includes(normalizedSearch);
   const collectibleLoans = loans
     .filter((loan) => loan.status === "Posted")
     .map((loan) => ({ ...loan, nextInstallment: nextInstallment(loan) }))
-    .filter((loan) => loan.nextInstallment);
+    .filter((loan) => loan.nextInstallment && matchesLoanSearch(loan));
+  const filteredCollections = collections.filter(matchesLoanSearch);
   const selectedInstallment = selectedLoan ? nextInstallment(selectedLoan) : null;
   const selectedOutstandingBalance = selectedLoan
     ? selectedLoan.installments.reduce((total, installment) => addMoney(total, installment.totalRemaining), 0)
@@ -9702,6 +9695,12 @@ function LoanCollections({ user }) {
 
       {message ? <Text color="green.600">{message}</Text> : null}
       {error ? <Text color="red.500">{error}</Text> : null}
+
+      <FormControl maxW={{ base: "100%", md: "420px" }}>
+        <FormLabel>Find loan or member</FormLabel>
+        <Input value={search} onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search loan no., member name, or member no." />
+      </FormControl>
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Heading size="sm" mb={4}>Next Scheduled Installments</Heading>
@@ -9747,7 +9746,7 @@ function LoanCollections({ user }) {
               {!collectibleLoans.length ? (
                 <Tr>
                   <Td colSpan={canCreate ? 9 : 8} color="gray.500">
-                    No posted loan currently has an unpaid scheduled installment.
+                    {normalizedSearch ? "No collectible loans match the search." : "No posted loan currently has an unpaid scheduled installment."}
                   </Td>
                 </Tr>
               ) : null}
@@ -9776,7 +9775,7 @@ function LoanCollections({ user }) {
               </Tr>
             </Thead>
             <Tbody>
-              {collections.map((collection) => (
+              {filteredCollections.map((collection) => (
                 <Tr key={collection.collectionNo}>
                   <Td>{collection.collectionNo}</Td>
                   <Td>{collection.loanNo}</Td>
@@ -9798,7 +9797,7 @@ function LoanCollections({ user }) {
             </Tbody>
           </Table>
         </TableContainer>
-        {!collections.length ? <Text color="gray.500">No loan collections recorded yet.</Text> : null}
+        {!filteredCollections.length ? <Text color="gray.500">{normalizedSearch ? "No collection history matches the search." : "No loan collections recorded yet."}</Text> : null}
       </Box>
 
       <Modal isOpen={collectionModal.isOpen} onClose={collectionModal.onClose} isCentered>
