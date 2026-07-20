@@ -803,6 +803,26 @@ async function run() {
     );
     if (duplicateReversal.status !== 409) throw new Error("A cost-center charge should only be reversed once.");
 
+    const reconciliationQuery = new URLSearchParams({
+      dateFrom: skippedDay, dateTo: skippedDay, costCenterCode: "C2", status: "Finalized"
+    });
+    const managerChargeReview = await fetch(`${baseUrl}/api/member-charge-reconciliation?${reconciliationQuery}`, {
+      headers: { Cookie: managerCookie }
+    });
+    const managerChargeReviewBody = await managerChargeReview.json();
+    if (!managerChargeReview.ok || managerChargeReviewBody.summary.finalizedSourceAmount !== 150 ||
+      managerChargeReviewBody.summary.reversalAmount !== -150 || managerChargeReviewBody.summary.netPayableMovement !== 0 ||
+      managerChargeReviewBody.byCostCenter[0]?.costCenterCode !== "C2" || managerChargeReviewBody.byDate.length !== 1) {
+      throw new Error("Manager should receive filtered cost-center reconciliation totals and drill-down data.");
+    }
+
+    const forbiddenMembershipChargeReview = await fetch(`${baseUrl}/api/member-charge-reconciliation`, {
+      headers: { Cookie: cookie }
+    });
+    if (forbiddenMembershipChargeReview.status !== 403) {
+      throw new Error("Membership Officer should not receive cost-center reconciliation access.");
+    }
+
     const initialPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {
@@ -873,6 +893,13 @@ async function run() {
 
     if (!bookkeeperLogin.ok || !bookkeeperBody.user.permissions.includes("ledger:teller-batches:post")) {
       throw new Error("Bookkeeper should be allowed to post teller batches.");
+    }
+
+    const bookkeeperChargeReview = await fetch(`${baseUrl}/api/member-charge-reconciliation?${reconciliationQuery}`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    if (!bookkeeperChargeReview.ok) {
+      throw new Error("Bookkeeper should review cost-center reconciliation from the Ledger workspace.");
     }
 
     const bookkeeperOpeningBalanceLookup = await fetch(`${baseUrl}/api/ledger/member-lookup`, {

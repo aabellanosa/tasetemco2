@@ -2398,6 +2398,78 @@ function MemberChargeCapture({ members, user }) {
   </VStack>;
 }
 
+function MemberChargeReview() {
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const [centers, setCenters] = useState([]);
+  const [filters, setFilters] = useState({ dateFrom: monthStart, dateTo: today, costCenterCode: "", status: "" });
+  const [report, setReport] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const loadReport = useCallback(async (currentFilters = filters) => {
+    setBusy(true);
+    try {
+      const query = new URLSearchParams(Object.entries(currentFilters).filter(([, value]) => value)).toString();
+      const [centerRows, data] = await Promise.all([
+        api("/api/cost-centers"), api(`/api/member-charge-reconciliation${query ? `?${query}` : ""}`)
+      ]);
+      setCenters(centerRows); setReport(data); setDetails(null); setError("");
+    } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
+  }, [filters]);
+  useEffect(() => { loadReport(); }, []);
+  async function openDetails(batchNo) {
+    try { setDetails(await api(`/api/member-charge-batches/${batchNo}`)); setError(""); }
+    catch (requestError) { setError(requestError.message); }
+  }
+  const summary = report?.summary || {};
+  return <VStack align="stretch" spacing={5}>
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" gap={3} wrap="wrap" mb={4}><Box><Heading size="md">Cost Center Charge Review</Heading>
+        <Text color="gray.600">Read-only reconciliation of drafts, finalized sources, reversals, and net member payables.</Text></Box>
+        <Button onClick={() => loadReport()} isLoading={busy}>Refresh</Button></Flex>
+      {error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+      <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={3} alignItems="end">
+        <FormControl><FormLabel>From</FormLabel><Input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} /></FormControl>
+        <FormControl><FormLabel>To</FormLabel><Input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} /></FormControl>
+        <FormControl><FormLabel>Cost Center</FormLabel><Select value={filters.costCenterCode} onChange={(e) => setFilters({ ...filters, costCenterCode: e.target.value })}><option value="">All cost centers</option>{centers.map((center) => <option key={center.code} value={center.code}>{center.name}</option>)}</Select></FormControl>
+        <FormControl><FormLabel>Status</FormLabel><Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">All statuses</option><option>Draft</option><option>Finalized</option></Select></FormControl>
+        <Button colorScheme="green" onClick={() => loadReport()} isLoading={busy}>Apply Filters</Button>
+      </Grid>
+    </Box>
+    <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
+      <Box borderWidth="1px" borderRadius="md" p={4}><Text color="gray.500" fontSize="sm">Draft Amount</Text><Text fontWeight="bold">{formatMoney(summary.draftAmount || 0)}</Text><Text fontSize="xs">{summary.draftBatchCount || 0} batches—not payable yet</Text></Box>
+      <Box borderWidth="1px" borderRadius="md" p={4}><Text color="gray.500" fontSize="sm">Finalized Source</Text><Text fontWeight="bold">{formatMoney(summary.finalizedSourceAmount || 0)}</Text><Text fontSize="xs">{summary.finalizedBatchCount || 0} batches</Text></Box>
+      <Box borderWidth="1px" borderRadius="md" p={4}><Text color="gray.500" fontSize="sm">Reversals</Text><Text fontWeight="bold" color="red.600">{formatMoney(summary.reversalAmount || 0)}</Text></Box>
+      <Box borderWidth="1px" borderRadius="md" p={4}><Text color="gray.500" fontSize="sm">Net Member Payables</Text><Text fontWeight="bold" color="green.700">{formatMoney(summary.netPayableMovement || 0)}</Text></Box>
+    </Grid>
+    <Box borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Cost Center Summary</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Cost Center</Th><Th isNumeric>Draft Batches</Th><Th isNumeric>Draft Amount</Th><Th isNumeric>Finalized Batches</Th><Th isNumeric>Source Amount</Th><Th isNumeric>Net Payable</Th></Tr></Thead>
+        <Tbody>{(report?.byCostCenter || []).map((row) => <Tr key={row.costCenterCode}><Td>{row.costCenterName} ({row.costCenterCode})</Td><Td isNumeric>{row.draftBatchCount}</Td><Td isNumeric>{formatMoney(row.draftAmount)}</Td><Td isNumeric>{row.finalizedBatchCount}</Td><Td isNumeric>{formatMoney(row.finalizedSourceAmount)}</Td><Td isNumeric>{formatMoney(row.netPayableMovement)}</Td></Tr>)}</Tbody>
+      </Table></TableContainer>
+    </Box>
+    <Box borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Daily Payable Movements</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th isNumeric>Movements</Th><Th isNumeric>Charges</Th><Th isNumeric>Reversals</Th><Th isNumeric>Net Payable</Th></Tr></Thead>
+        <Tbody>{(report?.byDate || []).map((row) => <Tr key={row.transactionDate}><Td>{formatDate(row.transactionDate)}</Td><Td isNumeric>{row.movementCount}</Td><Td isNumeric>{formatMoney(row.chargeAmount)}</Td><Td isNumeric>{formatMoney(row.reversalAmount)}</Td><Td isNumeric>{formatMoney(row.netPayableMovement)}</Td></Tr>)}</Tbody>
+      </Table></TableContainer>
+    </Box>
+    <Box borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Batch Register</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Date</Th><Th>Cost Center</Th><Th>Status</Th><Th isNumeric>Rows</Th><Th isNumeric>Total</Th><Th>Encoder / Finalizer</Th><Th /></Tr></Thead>
+        <Tbody>{(report?.batches || []).map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{formatDate(batch.transactionDate)}</Td><Td>{batch.costCenterName}</Td><Td><Badge colorScheme={batch.status === "Finalized" ? "green" : "blue"}>{batch.status}</Badge></Td><Td isNumeric>{batch.entryCount}</Td><Td isNumeric>{formatMoney(batch.totalAmount)}</Td><Td>{batch.createdBy}<br />{batch.finalizedBy || "Not finalized"}</Td><Td><Button size="sm" onClick={() => openDetails(batch.batchNo)}>Drill Down</Button></Td></Tr>)}</Tbody>
+      </Table></TableContainer>
+    </Box>
+    <Box borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Member Movement Detail</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Member</Th><Th>Cost Center</Th><Th>Batch / Movement</Th><Th>Type</Th><Th isNumeric>Amount</Th><Th>Audit</Th></Tr></Thead>
+        <Tbody>{(report?.movements || []).map((row) => <Tr key={row.movementNo}><Td>{formatDate(row.transactionDate)}</Td><Td>{row.memberName}<br /><Text fontSize="xs">{row.memberNo}</Text></Td><Td>{row.costCenterName}</Td><Td>{row.batchNo}<br /><Text fontSize="xs">{row.movementNo}</Text></Td><Td><Badge colorScheme={row.movementType === "Reversal" ? "red" : "green"}>{row.movementType}</Badge></Td><Td isNumeric>{formatMoney(row.amount)}</Td><Td>{row.createdBy}<br />{row.reason || "-"}</Td></Tr>)}</Tbody>
+      </Table></TableContainer>
+    </Box>
+    {details ? <Box borderWidth="2px" borderColor="green.200" borderRadius="lg" p={5}><Flex justify="space-between" mb={3}><Heading size="sm">{details.batch.batchNo} Drill-down</Heading><Button size="sm" onClick={() => setDetails(null)}>Close</Button></Flex>
+      <Text mb={3}>{details.batch.costCenterName} · {formatDate(details.batch.transactionDate)} · {details.batch.status}</Text>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Source Amount</Th><Th>Reference</Th><Th>Remarks</Th></Tr></Thead><Tbody>{details.entries.map((row) => <Tr key={row.id}><Td>{row.memberName} ({row.memberNo})</Td><Td isNumeric>{formatMoney(row.amount)}</Td><Td>{row.referenceNo || "-"}</Td><Td>{row.remarks || "-"}</Td></Tr>)}</Tbody></Table></TableContainer>
+    </Box> : null}
+  </VStack>;
+}
+
 function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [memberDirectorySearch, setMemberDirectorySearch] = useState("");
@@ -2494,6 +2566,7 @@ function Members({ user }) {
   const canViewTellerCashCount = user.permissions.includes("teller-cash-counts:view");
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const canEncodeMemberCharges = user.permissions.includes("member-charges:encode");
+  const canViewMemberCharges = user.permissions.includes("member-charges:view");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
   const memberDirectoryQuery = memberDirectorySearch.trim().toLowerCase();
@@ -3053,7 +3126,7 @@ function Members({ user }) {
           {(canCreateApplication || canViewApplications) ? <Tab flexShrink={0}>Applications</Tab> : null}
           {canEditMemberProfile ? <Tab flexShrink={0}>Imports</Tab> : null}
           {canUseTellerWorkspace ? <Tab flexShrink={0}>Teller Transactions</Tab> : null}
-          {canEncodeMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
+          {canViewMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
           <Tab flexShrink={0}>Member Directory</Tab>
           {(canViewInitialPayments ||
             canViewShareCapitalContributions ||
@@ -3517,8 +3590,10 @@ function Members({ user }) {
             </TabPanel>
           ) : null}
 
-          {canEncodeMemberCharges ? (
-            <TabPanel px={0}><MemberChargeCapture members={members} user={user} /></TabPanel>
+          {canViewMemberCharges ? (
+            <TabPanel px={0}>{canEncodeMemberCharges
+              ? <MemberChargeCapture members={members} user={user} />
+              : <MemberChargeReview />}</TabPanel>
           ) : null}
 
           <TabPanel px={0}>
@@ -4297,6 +4372,7 @@ function Ledger({ user }) {
   const canManageTellerBatches = canReviewTellerBatch || canPostTellerBatch || canCloseTellerBatch;
   const canViewLedgerHistory = canManageTellerBatches || canPreviewOpeningBalances;
   const canViewPostedEntries = canPostTellerBatch || canReviewTellerBatch || user.role === "System Administrator";
+  const canViewMemberCharges = user.permissions.includes("member-charges:view");
   const needsVarianceNote = activeBatch?.status === "Submitted" && Number(activeBatch.variance || 0) !== 0;
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatch);
   const activeBatchHistory = activeBatch ? tellerBatches.find((batch) => batch.id === activeBatch.id) : null;
@@ -4441,6 +4517,7 @@ function Ledger({ user }) {
           {canViewCashFunding ? <Tab flexShrink={0}>Cash Funding</Tab> : null}
           {canPreviewOpeningBalances ? <Tab flexShrink={0}>Opening Balances</Tab> : null}
           {canViewLedgerHistory ? <Tab flexShrink={0}>Batch History</Tab> : null}
+          {canViewMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
           {canViewPostedEntries ? <Tab flexShrink={0}>Posted Entries</Tab> : null}
         </TabList>
 
@@ -4724,6 +4801,8 @@ function Ledger({ user }) {
               </Box>
             </TabPanel>
           ) : null}
+
+          {canViewMemberCharges ? <TabPanel px={0}><MemberChargeReview /></TabPanel> : null}
 
           {canViewPostedEntries ? (
             <TabPanel px={0}>

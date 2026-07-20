@@ -4108,6 +4108,60 @@ async function listMemberChargeMovements({ memberNo = "", batchNo = "" } = {}) {
   return rows.map(mapMemberChargeMovement);
 }
 
+async function getMemberChargeReconciliation(filters = {}) {
+  const dateFrom = normalizeOptionalDate(filters.dateFrom);
+  const dateTo = normalizeOptionalDate(filters.dateTo);
+  const costCenterCode = String(filters.costCenterCode || "").trim().toUpperCase();
+  const status = String(filters.status || "").trim();
+  if ((filters.dateFrom && !dateFrom) || (filters.dateTo && !dateTo) || (dateFrom && dateTo && dateFrom > dateTo)) {
+    return { error: "Provide a valid date range.", statusCode: 400 };
+  }
+  if (status && !["Draft", "Finalized"].includes(status)) return { error: "Batch status filter is invalid.", statusCode: 400 };
+  const allBatches = await listMemberChargeBatches();
+  const batches = allBatches.filter((batch) => (!dateFrom || batch.transactionDate >= dateFrom) &&
+    (!dateTo || batch.transactionDate <= dateTo) && (!costCenterCode || batch.costCenterCode === costCenterCode) &&
+    (!status || batch.status === status));
+  const includedBatchNos = new Set(batches.map((batch) => batch.batchNo));
+  const movements = (await listMemberChargeMovements()).filter((movement) => includedBatchNos.has(movement.batchNo));
+  const byCostCenterMap = new Map();
+  const byDateMap = new Map();
+  for (const batch of batches) {
+    const row = byCostCenterMap.get(batch.costCenterCode) || { costCenterCode: batch.costCenterCode,
+      costCenterName: batch.costCenterName, draftBatchCount: 0, finalizedBatchCount: 0,
+      draftAmount: 0, finalizedSourceAmount: 0, netPayableMovement: 0 };
+    if (batch.status === "Draft") { row.draftBatchCount += 1; row.draftAmount = addMoney(row.draftAmount, batch.totalAmount); }
+    else { row.finalizedBatchCount += 1; row.finalizedSourceAmount = addMoney(row.finalizedSourceAmount, batch.totalAmount); }
+    byCostCenterMap.set(batch.costCenterCode, row);
+  }
+  for (const movement of movements) {
+    const center = byCostCenterMap.get(movement.costCenterCode);
+    if (center) center.netPayableMovement = addMoney(center.netPayableMovement, movement.amount);
+    const day = byDateMap.get(movement.transactionDate) || { transactionDate: movement.transactionDate,
+      chargeAmount: 0, reversalAmount: 0, netPayableMovement: 0, movementCount: 0 };
+    if (movement.movementType === "Charge") day.chargeAmount = addMoney(day.chargeAmount, movement.amount);
+    else day.reversalAmount = addMoney(day.reversalAmount, movement.amount);
+    day.netPayableMovement = addMoney(day.netPayableMovement, movement.amount);
+    day.movementCount += 1;
+    byDateMap.set(movement.transactionDate, day);
+  }
+  return {
+    filters: { dateFrom: dateFrom || "", dateTo: dateTo || "", costCenterCode, status },
+    summary: {
+      batchCount: batches.length,
+      draftBatchCount: batches.filter((batch) => batch.status === "Draft").length,
+      finalizedBatchCount: batches.filter((batch) => batch.status === "Finalized").length,
+      draftAmount: batches.filter((batch) => batch.status === "Draft").reduce((sum, batch) => addMoney(sum, batch.totalAmount), 0),
+      finalizedSourceAmount: batches.filter((batch) => batch.status === "Finalized").reduce((sum, batch) => addMoney(sum, batch.totalAmount), 0),
+      reversalAmount: movements.filter((item) => item.movementType === "Reversal").reduce((sum, item) => addMoney(sum, item.amount), 0),
+      netPayableMovement: movements.reduce((sum, item) => addMoney(sum, item.amount), 0)
+    },
+    byCostCenter: Array.from(byCostCenterMap.values()).sort((a, b) => a.costCenterName.localeCompare(b.costCenterName)),
+    byDate: Array.from(byDateMap.values()).sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)),
+    batches,
+    movements
+  };
+}
+
 async function finalizeMemberChargeBatch(batchNo, user) {
   const db = await getPool();
   const now = new Date().toISOString();
@@ -10620,6 +10674,15 @@ app.get("/api/member-charge-batches", async (request, response) => {
   if (!user) { response.status(401).json({ error: "Login required" }); return; }
   if (!hasPermission(user, "member-charges:view")) { response.status(403).json({ error: "Access denied" }); return; }
   response.json(await listMemberChargeBatches());
+});
+
+app.get("/api/member-charge-reconciliation", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "member-charges:view")) { response.status(403).json({ error: "Access denied" }); return; }
+  const result = await getMemberChargeReconciliation(request.query);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.json(result);
 });
 
 app.get("/api/member-charge-batches/:batchNo", async (request, response) => {
