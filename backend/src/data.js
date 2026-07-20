@@ -194,7 +194,8 @@ export const rolePermissions = {
     "members:previous-loans:edit",
     "members:previous-loans:unlock-request",
     "members:applications:view",
-    "members:applications:create"
+    "members:applications:create",
+    "loans:products:view"
   ],
   "Auditor / Compliance Officer": [
     "members:view",

@@ -2066,12 +2066,23 @@ async function run() {
       throw new Error("Admin should update loan product rules and status.");
     }
 
-    const forbiddenMembershipLoanProducts = await fetch(`${baseUrl}/api/loan-products`, {
+    const membershipLoanProducts = await fetch(`${baseUrl}/api/loan-products`, {
       headers: { Cookie: cookie }
     });
+    const membershipLoanProductRows = await membershipLoanProducts.json();
 
-    if (forbiddenMembershipLoanProducts.status !== 403) {
-      throw new Error("Membership Officer should not receive loan product access.");
+    if (!membershipLoanProducts.ok || !membershipLoanProductRows.some((product) => product.status === "Active")) {
+      throw new Error("Membership Officer should see loan products for previous-loan selection.");
+    }
+
+    const forbiddenMembershipLoanProductCreate = await fetch(`${baseUrl}/api/loan-products`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ ...smokeLoanProductInput, code: "MEMBERSHIP-BLOCKED" })
+    });
+
+    if (forbiddenMembershipLoanProductCreate.status !== 403) {
+      throw new Error("Membership Officer loan product access should remain read-only.");
     }
 
     const forbiddenMembershipLoanApplications = await fetch(`${baseUrl}/api/loan-applications`, {

@@ -2181,6 +2181,7 @@ function Members({ user }) {
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [loanReleases, setLoanReleases] = useState([]);
   const [loanCollections, setLoanCollections] = useState([]);
+  const [previousLoanProducts, setPreviousLoanProducts] = useState([]);
   const [openingFunding, setOpeningFunding] = useState(0);
   const [activeBatch, setActiveBatch] = useState(null);
   const [latestCashCount, setLatestCashCount] = useState(null);
@@ -2260,6 +2261,7 @@ function Members({ user }) {
   const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
   const canViewLoanReleases = user.permissions.includes("loans:releases:view");
   const canViewLoanCollections = user.permissions.includes("loans:collections:view");
+  const canViewLoanProducts = user.permissions.includes("loans:products:view");
   const canViewTellerCashCount = user.permissions.includes("teller-cash-counts:view");
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
@@ -2368,6 +2370,7 @@ function Members({ user }) {
   const previousLoanUnlockRequests = statement?.previousLoanUnlockRequests || [];
   const pendingPreviousLoanUnlockRequest = previousLoanUnlockRequests.find((item) => item.status === "Pending");
   const canModifyPreviousLoans = canEditPreviousLoans && previousLoanControl.status !== "Locked";
+  const activePreviousLoanProducts = previousLoanProducts.filter((product) => product.status === "Active");
 
   const loadMembersWorkflow = useCallback(
     async ({ silent = false } = {}) => {
@@ -2383,6 +2386,7 @@ function Members({ user }) {
           withdrawalRows,
           loanReleaseRows,
           loanCollectionRows,
+          loanProductRows,
           cashCountData
         ] =
           await Promise.all([
@@ -2394,6 +2398,7 @@ function Members({ user }) {
           canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : [],
           canViewLoanReleases ? api("/api/loan-releases") : [],
           canViewLoanCollections ? api("/api/loan-collections") : [],
+          canViewLoanProducts ? api("/api/loan-products") : [],
           canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
@@ -2404,6 +2409,7 @@ function Members({ user }) {
         setSavingsWithdrawals(withdrawalRows);
         setLoanReleases(loanReleaseRows);
         setLoanCollections(loanCollectionRows);
+        setPreviousLoanProducts(loanProductRows);
         setActiveBatch(cashCountData.activeBatch);
         setOpeningFunding(Number(cashCountData.expected?.openingFunding || 0));
         setLatestCashCount(cashCountData.latestCashCount);
@@ -2428,6 +2434,7 @@ function Members({ user }) {
       canViewSavingsWithdrawals,
       canViewLoanReleases,
       canViewLoanCollections,
+      canViewLoanProducts,
       canViewTellerCashCount
     ]
   );
@@ -2716,7 +2723,7 @@ function Members({ user }) {
       ...current,
       {
         id: `new-${Date.now()}`,
-        loanLabel: "",
+        loanLabel: activePreviousLoanProducts[0]?.name || "",
         applicationDate: "",
         outstandingBalance: 0,
         notes: ""
@@ -3641,12 +3648,19 @@ function Members({ user }) {
                     <Tr key={row.id || index}>
                       <Td minW="180px">
                         {canModifyPreviousLoans ? (
-                          <Input
+                          <Select
                             size="sm"
                             value={row.loanLabel}
                             onChange={(event) => updatePreviousLoanRow(index, "loanLabel", event.target.value)}
-                            placeholder="Salary Loan"
-                          />
+                            placeholder={activePreviousLoanProducts.length ? "Select loan product" : "No active loan products"}
+                          >
+                            {row.loanLabel && !activePreviousLoanProducts.some((product) => product.name === row.loanLabel) ? (
+                              <option value={row.loanLabel}>{row.loanLabel} (historical / inactive)</option>
+                            ) : null}
+                            {activePreviousLoanProducts.map((product) => (
+                              <option key={product.code} value={product.name}>{product.name} ({product.code})</option>
+                            ))}
+                          </Select>
                         ) : (
                           row.loanLabel || "-"
                         )}
