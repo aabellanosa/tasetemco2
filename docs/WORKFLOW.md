@@ -325,7 +325,7 @@ Teller/Cashier can record regular savings deposits after onboarding. Bookkeeper 
 
 Teller/Cashier can record savings withdrawals within available savings. Bookkeeper posts those withdrawals to the ledger as debit Savings Deposits Payable and credit Cash on Hand.
 
-The Teller/Cashier UI uses a member-first transaction workspace: select the member, review balances, choose the transaction type, then complete only the selected form.
+The Teller/Cashier UI uses a member-first transaction workspace: search and select the member, review balances, choose the transaction type, then complete only the selected form. The shared Chakra member autocomplete supports name, member number, cluster, and contact-number matching. Up/Down changes the highlighted result, Enter selects, Tab selects and advances, and Escape closes without changing the selection. This keyboard path is also used for cost-center charge rows and loan applications.
 
 Teller and Bookkeeper screens show unposted teller batch cash position: cash in, cash out, net cash, transaction count, and clear transaction counts for initial payments, share capital contributions, savings deposits, and savings withdrawals.
 
@@ -349,7 +349,7 @@ The Reports screen includes a Trial Balance report that summarizes posted genera
 
 The Reports screen includes a Statement of Financial Condition report. It presents assets, liabilities, and equity from posted general ledger balances. Until formal closing entries are built, current-period income and expense balances are shown as Current Period Surplus or Deficit under equity.
 
-SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Bookkeeper downloads a standard XLSX template, imports report-only external movements as member-numbered line items, reviews validation, finalizes the import, and refreshes a draft. The system combines those rows with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. Locked exports contain Regular Capture, Loan Details, and Audit sheets. SUMMO imports do not create accounting journals because the external categories remain outside their future cost-center modules.
+SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Finalized C1 and C2 cost-center payables now supply Canteen amounts, and finalized WRS payables supply WRS amounts directly from everyday system transactions. Bookkeeper uses the XLSX template only for categories not yet captured in-system, reviews validation, finalizes the import, and refreshes a draft. The system combines both source types with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. Locked exports contain Regular Capture, Loan Details, and Audit sheets. SUMMO imports and cost-center payables do not yet create accounting journals.
 
 | SUMMO Access | View / Export | Prepare Imports and Drafts | Lock / Reopen |
 | --- | --- | --- | --- |
@@ -358,6 +358,20 @@ SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables
 | Accountant / Bookkeeper | Yes | Yes | No |
 | Auditor / Compliance Officer | Yes | No | No |
 | Board / Read-Only Executive | Yes | No | No |
+
+Daily Cost Center Payables v1 gives Teller/Cashier a multi-member Draft batch for C1, C2, WRS, and future configured centers. A transaction date may be backdated for a skipped input day. Drafts have no payable effect and only the creating Teller may edit them. Finalization creates immutable member payable movements and snapshots the cost center's SUMMO mapping so a later configuration change cannot rewrite historical reports. Correction is a linked negative reversal with a required reason, followed by a corrected row in a new Draft.
+
+General Manager, Accountant / Bookkeeper, and Auditor can reconcile cost-center activity by date, center, status, or member and drill down through batch, source entry, movement, actor, and reason. A member filter recalculates totals and row counts for only that member, including the member's portion of a mixed-member batch.
+
+Cost-center movements are routed by member cluster. The current SUMMO consumes only Active `REGULAR MEMBERS CAPTURE` members. Transactions for Non Capture, LGU, Retirees, Community A, and Community B remain recorded and reconcilable but await their respective cluster reports; their absence from Regular Capture SUMMO does not mean the transactions were lost.
+
+| Cost Center Access | Configure Centers | Encode / Finalize / Reverse | Reconcile / Drill Down |
+| --- | --- | --- | --- |
+| System Administrator | Yes | Yes | Yes |
+| Teller / Cashier | No | Yes, own Draft/finalized sources | Batch history and movement audit |
+| General Manager | No | No | Yes |
+| Accountant / Bookkeeper | No | No | Yes |
+| Auditor / Compliance Officer | No | No | Yes |
 
 ## 4. Core Workflow
 
@@ -580,6 +594,37 @@ Suggested status flow:
 7. Generate Statement of Operations.
 8. Lock closed period after approval.
 
+### 4.11 Daily Cost-Center Payable Capture
+
+1. Teller selects C1, C2, WRS, or another Active cost center.
+2. Teller selects the transaction date; skipped days may be entered later using the actual date.
+3. Teller searches and selects one or more Active members and records amount, source reference, and remarks.
+4. System saves a Draft batch without changing member payables.
+5. The creating Teller may revise their Draft.
+6. Teller or Admin finalizes the batch.
+7. System creates one immutable payable movement for every source row and stores the posting-time SUMMO mapping.
+8. If incorrect, the creating Teller or Admin enters a required reason and creates a linked reversal.
+9. Any replacement amount is entered through a new Draft instead of editing finalized evidence.
+10. Management reviewers reconcile totals and drill down to the member and movement evidence.
+
+Status and correction flow:
+
+- `Draft -> Finalized`
+- `Finalized Charge -> Linked Reversal`
+- A finalized source row is never edited or deleted.
+
+### 4.12 Regular Capture SUMMO Preparation and Locking
+
+1. Teller completes and finalizes relevant C1, C2, and WRS batches.
+2. Bookkeeper uses XLSX only for categories still outside system capture.
+3. System combines finalized cost-center movements, finalized Excel movements, loan installments, posted collections, and carried/opening balance.
+4. System blocks locking when a relevant cost-center Draft remains, when the same Canteen/WRS category appears in both system and Excel, or when mapping/period validation is unresolved.
+5. Bookkeeper refreshes the Draft and reconciles source totals plus batch/member/movement drill-down.
+6. General Manager or Admin locks the monthly version.
+7. A locked Regular Capture period blocks new, edited, finalized, or reversed cost-center activity for affected members and dates.
+8. General Manager or Admin may reopen with a required audit reason; every later locked SUMMO period is reopened as part of the forward chain.
+9. Screen filtering to one member does not change the complete stored snapshot or XLSX export.
+
 ## 5. Reporting Workflow
 
 Reports should be generated from posted ledger entries and supporting subsidiary ledgers.
@@ -601,6 +646,8 @@ Priority reports:
 - Teller Cash Position
 - Audit Trail
 - User Activity Report
+- Regular Members Capture SUMMO
+- Cost Center Charge Reconciliation
 
 ## 6. Access Control Principles
 
@@ -622,7 +669,7 @@ Recommended rules:
 
 Before anyone logs in, the system should show a public staff login screen. This screen should show the cooperative identity, system name, and login form only. Operational data such as member balances, loans, reports, teller activity, and user lists should not be visible before authentication.
 
-For this prototype, nine seeded users can sign in with the same temporary password: `p@55@LL`.
+For this prototype, eight seeded users can sign in with the same temporary password: `p@55@LL`. The former dedicated loan-approver login has been removed; System Administrator owns the explicit decision step in the current workflow.
 
 Best-practice production behavior:
 
@@ -764,6 +811,8 @@ Teller Cash Funding v1c adds nullable `posted_by`, `posted_entry_no`, and `poste
 Loan Collection v1a adds the `loan_collections` Postgres table. Run `npm run pg:migrate` before starting or deploying this build. Loan Collection v1 allows multiple receipts against the same installment so partial payments can be completed later; official receipt references remain unique across cash-in transactions. Recording plus installment status update is transactional. Existing organically created posted loans become collectible without rebuilding their schedules.
 
 Loan Collection v2 is UI-only and requires no migration. It makes the allocation discoverable before Teller confirms the receipt and in Bookkeeper review surfaces: interest applied, principal applied, amount received, payment type, and balance after receipt.
+
+Daily Cost Center Payables v1 adds `cost_centers`, `member_charge_batches`, `member_charge_entries`, and `member_charge_movements`. The SUMMO integration adds a posting-time `summo_column` snapshot to movements and backfills existing movements from their current cost-center configuration. Run `npm run pg:migrate` before deploying those builds to Postgres. The later searchable-selector and report-filter UI changes require no schema migration.
 
 ## 7. Audit Trail Requirements
 

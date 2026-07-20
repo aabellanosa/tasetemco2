@@ -28,6 +28,7 @@ function validateSite(directory) {
   assert(index.includes('id="roles"'), "Roles section is missing.");
   assert(index.includes('id="workflows"'), "Workflows section is missing.");
   assert(index.includes('id="reports"'), "Reports section is missing.");
+  assert(index.includes('id="find-flow"'), "Workflow navigation section is missing.");
   assert(index.includes("System Administrator"), "Role matrix is missing System Administrator.");
   assert(index.includes("Board / Read-Only Executive"), "Role matrix is missing Board / Read-Only Executive.");
   assert(index.includes("Loan Product Deductions"), "Loan product deductions section is missing.");
@@ -36,6 +37,10 @@ function validateSite(directory) {
   assert(index.includes("print a member loan breakdown"), "Printable loan breakdown workflow note is missing.");
   assert(index.includes("SUMMO Monthly Report"), "SUMMO workflow is missing.");
   assert(index.includes("SUMMO — Regular Members Capture"), "SUMMO report listing is missing.");
+  assert(index.includes("Daily Cost-Center Payables"), "Cost-center payable workflow is missing.");
+  assert(index.includes("C1/C2 movements automatically supply Canteen"), "System-to-SUMMO Canteen flow is missing.");
+  assert(index.includes("other cluster transactions remain recorded"), "SUMMO cluster-coverage boundary is missing.");
+  assert(index.includes("Tab to select and advance"), "Keyboard member-selection guidance is missing.");
   assert(index.includes("System Administrator records assessment notes and a loan decision"), "Current Admin loan decision flow is missing.");
   assert(index.includes("partial, full, or advance receipts"), "Flexible loan collection workflow is missing.");
   assert(!index.includes("Credit Committee / Approver"), "Retired loan Approver role is still shown in the published workflow.");
@@ -43,7 +48,8 @@ function validateSite(directory) {
 }
 
 const diagrams = readRequiredFile(join(root, "docs", "TASETEMCO_WORKFLOW_DIAGRAMS.md"));
-assert(diagrams.includes("SUMMO Monthly Report — Regular Members Capture"), "SUMMO diagram is missing.");
+assert(diagrams.includes("Cost Center and Other Sources into SUMMO"), "SUMMO diagram is missing.");
+assert(diagrams.includes("Daily Cost-Center Member Payables"), "Cost-center workflow diagram is missing.");
 assert(diagrams.includes("No Dedicated Loan Approver"), "Updated loan decision diagram is missing.");
 assert(diagrams.includes("Flexible Loan Collection"), "Updated collection diagram is missing.");
 

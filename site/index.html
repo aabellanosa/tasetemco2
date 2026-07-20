@@ -14,6 +14,7 @@
           <strong>TASETEMCO</strong>
         </div>
         <div class="navlinks">
+          <a href="#find-flow">Find a Flow</a>
           <a href="#roles">Roles</a>
           <a href="#workflows">Workflows</a>
           <a href="#reports">Reports</a>
@@ -86,7 +87,7 @@
                 <td>Review</td>
                 <td>Review</td>
                 <td>Post</td>
-                <td>Prepare</td>
+                <td>Prepare, Reconcile</td>
                 <td>None</td>
                 <td>View</td>
               </tr>
@@ -104,7 +105,7 @@
               <tr>
                 <td>Teller / Cashier</td>
                 <td>View</td>
-                <td>Process</td>
+                <td>Process, Cost Centers</td>
                 <td>Collect</td>
                 <td>Process</td>
                 <td>None</td>
@@ -196,6 +197,22 @@
         </div>
       </section>
 
+      <section class="section" id="find-flow">
+        <div class="section-heading">
+          <p class="eyebrow">Fast navigation</p>
+          <h2>Where Staff Find Each Workflow</h2>
+          <p>Use this map when a recorded transaction or approval is difficult to locate.</p>
+        </div>
+        <div class="capability-grid">
+          <article><h3>Teller Receipts</h3><p>Members -> Teller Transactions for initial payments, share capital, savings deposits, and savings withdrawals.</p></article>
+          <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily C1, C2, WRS, and future configured member payables.</p></article>
+          <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
+          <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
+          <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, and XLSX export.</p></article>
+          <article><h3>Keyboard Selection</h3><p>Type to filter, use Up/Down, press Enter to select or Tab to select and advance, and Escape to close.</p></article>
+        </div>
+      </section>
+
       <section class="section" id="workflows">
         <div class="section-heading">
           <p class="eyebrow">Operating flow</p>
@@ -227,7 +244,8 @@
           <article>
             <h3>Teller Transaction</h3>
             <ol>
-              <li>Teller selects active member account.</li>
+              <li>Teller searches and selects an active member account.</li>
+              <li>The member autocomplete matches name, number, cluster, or contact and supports Up/Down, Enter, Tab, and Escape.</li>
               <li>Member statement shows share capital, savings, and posting status.</li>
               <li>Teller chooses one transaction type in the workspace.</li>
               <li>Share capital contribution is available after onboarding.</li>
@@ -247,6 +265,21 @@
               <li>Reports summarize member subsidiary balances for share capital and savings.</li>
               <li>Reports compare subsidiary activity against GL control accounts.</li>
               <li>Transaction stays in teller batch until posting.</li>
+            </ol>
+          </article>
+
+          <article>
+            <h3>Daily Cost-Center Payables</h3>
+            <ol>
+              <li>System Administrator maintains cost centers and their SUMMO mapping: C1/C2 to Canteen and WRS to WRS.</li>
+              <li>Teller chooses a cost center and actual transaction date; skipped days may be entered later.</li>
+              <li>Teller searches members and enters amount, source reference, and optional remarks in a multi-member Draft.</li>
+              <li>Drafts have no payable effect and only the creating Teller may edit them.</li>
+              <li>Creating Teller or Admin finalizes the batch into immutable member payable movements.</li>
+              <li>Each movement snapshots its SUMMO mapping so later configuration changes cannot rewrite history.</li>
+              <li>An incorrect charge is corrected by a linked negative reversal with a mandatory reason, then a new Draft.</li>
+              <li>Manager, Bookkeeper, and Auditor reconcile by date, center, status, or member and drill down to source and audit evidence.</li>
+              <li>A member filter recalculates only that member's portion of a mixed-member batch.</li>
             </ol>
           </article>
 
@@ -314,16 +347,20 @@
           <article>
             <h3>SUMMO Monthly Report</h3>
             <ol>
-              <li>Bookkeeper downloads the standard monthly XLSX template and active-member reference sheet.</li>
-              <li>External payables and deductions are entered as member-numbered line items.</li>
+              <li>Finalized C1/C2 movements automatically supply Canteen; finalized WRS movements automatically supply WRS.</li>
+              <li>Bookkeeper uses the standard XLSX only for categories not yet captured by system transactions.</li>
               <li>System validates reporting month, member, category, amount, reference, and reversals.</li>
               <li>Bookkeeper reviews and finalizes a valid import batch; it does not post journals.</li>
-              <li>System combines imported movements with scheduled loan dues, posted cash collections, and carried balances.</li>
+              <li>System combines finalized system and imported movements with scheduled loan dues, posted cash collections, and carried balances.</li>
+              <li>Pending cost-center Drafts, unsupported mappings, or overlapping system/Excel Canteen or WRS sources block locking.</li>
               <li>System applies effective-dated interest rules, rounds components to cents, and flags unmapped loans.</li>
-              <li>Bookkeeper refreshes and reconciles the Regular Members Capture draft.</li>
+              <li>Bookkeeper refreshes and reconciles source totals plus movement, batch, and member drill-down.</li>
+              <li>The screen may be filtered to one member without changing the complete snapshot or XLSX export.</li>
               <li>General Manager locks the month; Auditor and Board retain read-only access.</li>
               <li>Export produces printable Regular Capture, Loan Details, and Audit sheets.</li>
+              <li>A locked month blocks affected new, edited, finalized, and reversed cost-center activity.</li>
               <li>Reopening a locked month also unlocks every later locked SUMMO month for chronological regeneration.</li>
+              <li>Only REGULAR MEMBERS CAPTURE SUMMO is implemented; other cluster transactions remain recorded for future cluster reports.</li>
             </ol>
           </article>
         </div>
@@ -370,8 +407,9 @@
           <h2>Financial and Operational Reports</h2>
           <p>
             TASETEMCO treats the general ledger as the source of financial statements.
-            SUMMO is a separate operational monthly receivables report that temporarily
-            combines system records with validated report-only Excel inputs.
+            SUMMO is a separate operational monthly receivables report. It combines
+            finalized system transactions with validated Excel inputs for categories
+            not yet captured in the application.
           </p>
         </div>
 
@@ -379,6 +417,7 @@
           <span>Daily Cash Position</span>
           <span>Member Subsidiary Ledger</span>
           <span>SUMMO — Regular Members Capture</span>
+          <span>Cost Center Charge Reconciliation</span>
           <span>Control Account Reconciliation</span>
           <span>Trial Balance</span>
           <span>Statement of Financial Condition</span>

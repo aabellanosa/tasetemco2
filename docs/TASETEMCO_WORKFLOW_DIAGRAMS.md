@@ -1,8 +1,23 @@
 # TASETEMCO Current-System Workflow Diagrams
 
-Updated: 20 July 2026
+Updated: 21 July 2026
 
 These diagrams describe the implemented React, Node/Express, and Postgres prototype. They distinguish operational records, teller-batch posting, report-only SUMMO imports, and role handoffs.
+
+## Find a Workflow in the UI
+
+| Work | Primary role | UI location |
+| --- | --- | --- |
+| Receive initial/share/savings payments or release savings | Teller / Cashier | Members -> Teller Transactions |
+| Encode C1, C2, or WRS member payables | Teller / Cashier | Members -> Cost Center Charges |
+| Review cost-center totals or one member | General Manager / Bookkeeper / Auditor | Ledger or Members -> Cost Center Charges |
+| Create and submit a loan application | Loan Officer | Loans -> Applications |
+| Decide a submitted loan | System Administrator | Loans -> Applications |
+| Release or collect a loan | Teller / Cashier | Loans -> Releases / Collections |
+| Prepare Regular Capture SUMMO | Bookkeeper / Admin | Reports -> Regular Members Capture SUMMO |
+| Lock or reopen SUMMO | General Manager / Admin | Reports -> Regular Members Capture SUMMO |
+
+Searchable member fields support mouse-free use: type a name, member number, cluster, or contact number; use Up/Down to highlight; use Enter to select or Tab to select and continue to the next field. Loan release and collection queues can be filtered by loan number, member name, or member number.
 
 Legend:
 
@@ -130,7 +145,7 @@ Member setup additions:
 
 ```text
 [Teller]
-  Select active member
+  Search and select active member
   Record initial payment, share contribution,
   savings deposit, or savings withdrawal
         |
@@ -160,6 +175,8 @@ Member setup additions:
         v
 (System) Lock history and open the next batch
 ```
+
+Keyboard path: type to filter, use Up/Down, then press Tab to select and advance. The same member autocomplete is used in Teller transactions, loan applications, and cost-center charge rows.
 
 ## 5. Loan Application and Decision — No Dedicated Loan Approver
 
@@ -301,17 +318,78 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
 [Manager / Board / Auditor] Read-only review and oversight
 ```
 
-## 10. SUMMO Monthly Report — Regular Members Capture
+## 10. Daily Cost-Center Member Payables
 
 ```text
-(System)
-  Provide standard XLSX template plus active-member reference sheet
+[System Administrator]
+  Maintain cost centers and future SUMMO mapping
+  Seeded mappings: C1 -> Canteen, C2 -> Canteen, WRS -> WRS
         |
         v
-[Bookkeeper]
-  Enter unsupported external movements as line items:
-  LBP, G-mar, canteen, WRS, TFEA, CBU, provident,
-  secured savings, honorarium, payroll deduction, and adjustments
+[Teller / Cashier]
+  Choose cost center and transaction date
+  Search/select one or more Active members
+  Enter amount, source reference, and optional remarks
+        |
+        v
+(System) Save Draft batch; no member payable effect yet
+        |
+        +---- Teller edits own Draft or adds skipped-day input
+        |
+        v
+[Creating Teller or Admin] Finalize batch
+        |
+        v
+(System)
+  Create immutable member payable movement per source row
+  Snapshot cost-center-to-SUMMO mapping at finalization
+  Show movement on member statement and reconciliation
+        |
+        +---- Incorrect charge ----> [Creating Teller or Admin]
+        |                              Enter required reversal reason
+        |                                    |
+        |                                    v
+        |                           (System) Create linked negative movement
+        |                                    |
+        |                                    v
+        |                           Enter correction in a new Draft batch
+        v
+[Manager / Bookkeeper / Auditor]
+  Reconcile by date, center, status, or member
+  Drill down to batch, source entry, movement, actor, and reason
+```
+
+Cost-center controls:
+
+```text
+Draft                         editable only by its creating Teller
+Finalized source rows         immutable
+Correction                    linked reversal with mandatory reason
+Duplicate center/date/ref     rejected
+Skipped transaction day       allowed through backdated Draft date
+Locked Regular Capture month  blocks new/edit/finalize/reverse activity
+Reopened month                permits correction and retains reopen audit
+```
+
+Member-filtered reconciliation recalculates row counts and amounts for only the selected member, including that member's portion of a mixed-member batch. Clearing the member filter restores full-batch totals.
+
+## 11. Cost Center and Other Sources into SUMMO — Regular Members Capture
+
+```text
+(System sources)
+  Finalized C1/C2 payable movements -> Canteen
+  Finalized WRS payable movements   -> WRS
+  Posted loan installments and collections
+        |
+        +-------------------------+
+                                  |
+[Bookkeeper]                      |
+  Use XLSX only for categories    |
+  not yet captured in-system:     |
+  LBP, G-mar, TFEA, CBU,          |
+  provident, secured savings,     |
+  honorarium, payroll deduction,  |
+  opening balance, and adjustments|
         |
         v
 [Bookkeeper] Upload XLSX and review Ready / Issue rows
@@ -326,7 +404,7 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
         |
         v
 (System)
-  Combine finalized external movements with:
+  Combine finalized system and external movements with:
     active Regular Capture roster
     scheduled system loan installments due in the month
     posted system cash collections
@@ -334,10 +412,16 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
 
   Calculate configurable interest and two-decimal totals
   Carry member credit when ending balance is negative
-  Block locking for unmapped loan products or period-chain issues
+  Block locking when:
+    relevant cost-center Draft batches remain
+    the same Canteen/WRS category exists in Excel and system inputs
+    a finalized cost center has no supported SUMMO mapping
+    loan products or period-chain rules are unresolved
         |
         v
 [Bookkeeper] Refresh and reconcile Draft
+  Review source totals and movement/batch/member drill-down
+  Optionally filter the screen to one member (export remains complete)
         |
         v
 [General Manager] Lock monthly version
@@ -359,9 +443,23 @@ Excel supplies only temporary external/report-supporting movements.
 SUMMO Excel imports do not post accounting journals.
 Finalized imports are immutable; corrections use a superseding batch or reversal.
 Reopening a locked month also unlocks every later locked SUMMO month.
+Finalized cost-center movements retain their posting-time SUMMO mapping.
 ```
 
-## 11. Administration and Audit
+Cluster routing and current coverage:
+
+| Member cluster | Cost-center transaction status | Monthly SUMMO status |
+| --- | --- | --- |
+| REGULAR MEMBERS CAPTURE | Recorded and reconciled | Implemented |
+| REGULAR MEMBERS NON CAPTURE | Recorded and retained | Future cluster report |
+| REGULAR MEMBERS LGU | Recorded and retained | Future cluster report |
+| RETIREES | Recorded and retained | Future cluster report |
+| COMMUNITY A MEMBERS | Recorded and retained | Future cluster report |
+| COMMUNITY B MEMBERS | Recorded and retained | Future cluster report |
+
+A transaction outside `REGULAR MEMBERS CAPTURE` is not lost when absent from the current SUMMO. It remains in cost-center history and reconciliation until its own cluster report is implemented.
+
+## 12. Administration and Audit
 
 ```text
 [System Administrator]
@@ -376,14 +474,14 @@ Reopening a locked month also unlocks every later locked SUMMO month.
 [Auditor] Review users, transactions, batches, journals, and reports read-only
 ```
 
-## 12. Current Role Separation Summary
+## 13. Current Role Separation Summary
 
 ```text
 Membership Officer  prepares member records and requests previous-loan unlocks
 System Administrator approves membership and decides submitted loans
 Loan Officer         prepares loans and decides previous-loan unlock requests
-Bookkeeper           reviews/posts batches, prepares funding, and prepares SUMMO
+Bookkeeper           reviews/posts batches, reconciles cost centers, and prepares SUMMO
 General Manager      approves teller funding and locks/reopens SUMMO periods
-Teller               receives/releases cash and acknowledges assigned funding
+Teller               receives/releases cash, encodes cost-center payables, and acknowledges funding
 Auditor / Board      review authorized evidence and reports without posting
 ```
