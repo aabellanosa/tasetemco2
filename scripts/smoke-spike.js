@@ -751,6 +751,58 @@ async function run() {
       throw new Error("Creating Teller should be able to revise their Draft payable batch.");
     }
 
+    const finalizedChargeResponse = await fetch(
+      `${baseUrl}/api/member-charge-batches/${draftChargeBody.batch.batchNo}/finalize`,
+      { method: "POST", headers: { Cookie: tellerCookie } }
+    );
+    const finalizedChargeBody = await finalizedChargeResponse.json();
+    const originalChargeMovement = finalizedChargeBody.movements?.find((item) => item.movementType === "Charge");
+    if (!finalizedChargeResponse.ok || finalizedChargeBody.batch.status !== "Finalized" ||
+      finalizedChargeBody.batch.finalizedBy !== "teller01" || !originalChargeMovement || originalChargeMovement.amount !== 150) {
+      throw new Error("Teller finalization should lock the batch and create immutable member payable movements.");
+    }
+
+    const editFinalizedCharge = await fetch(`${baseUrl}/api/member-charge-batches/${draftChargeBody.batch.batchNo}`, {
+      method: "PUT", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ costCenterCode: "C2", transactionDate: skippedDay, entries: [
+        { memberNo: approvalBody.member.id, amount: 1, referenceNo: "C2-EDIT-LOCKED", remarks: "" }
+      ] })
+    });
+    if (editFinalizedCharge.status !== 403) throw new Error("Finalized charge source entries should be immutable.");
+
+    const chargeStatementResponse = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const chargeStatementBody = await chargeStatementResponse.json();
+    if (!chargeStatementResponse.ok || chargeStatementBody.memberChargePayableBalance !== 150 ||
+      !chargeStatementBody.memberCharges.some((item) => item.movementNo === originalChargeMovement.movementNo)) {
+      throw new Error("Finalized cost-center payables should appear on the member statement.");
+    }
+
+    const reversalWithoutReason = await fetch(
+      `${baseUrl}/api/member-charge-movements/${originalChargeMovement.movementNo}/reverse`,
+      { method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie }, body: JSON.stringify({ reason: "" }) }
+    );
+    if (reversalWithoutReason.status !== 400) throw new Error("A payable reversal should require a reason.");
+
+    const reversalResponse = await fetch(
+      `${baseUrl}/api/member-charge-movements/${originalChargeMovement.movementNo}/reverse`,
+      { method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+        body: JSON.stringify({ reason: "Incorrect member charge slip" }) }
+    );
+    const reversalBody = await reversalResponse.json();
+    if (!reversalResponse.ok || !reversalBody.movements.some((item) => item.movementType === "Reversal" &&
+      item.amount === -150 && item.reversesMovementNo === originalChargeMovement.movementNo)) {
+      throw new Error("Reasoned reversal should create a linked negative payable movement.");
+    }
+
+    const duplicateReversal = await fetch(
+      `${baseUrl}/api/member-charge-movements/${originalChargeMovement.movementNo}/reverse`,
+      { method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+        body: JSON.stringify({ reason: "Try twice" }) }
+    );
+    if (duplicateReversal.status !== 409) throw new Error("A cost-center charge should only be reversed once.");
+
     const initialPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

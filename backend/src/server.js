@@ -28,6 +28,7 @@ import {
   memberPreviousLoanUnlockRequests,
   memberChargeBatches,
   memberChargeEntries,
+  memberChargeMovements,
   members,
   openingBalanceImportBatches,
   openingBalanceImportRows,
@@ -136,6 +137,7 @@ const sessions = new Map();
 let pool = null;
 
 const persistedTables = [
+  "member_charge_movements",
   "member_charge_entries",
   "member_charge_batches",
   "cost_centers",
@@ -173,8 +175,9 @@ const persistedTables = [
 
 const requiredSchemaColumns = {
   cost_centers: ["code", "name", "cost_center_type", "summo_column", "status"],
-  member_charge_batches: ["batch_no", "cost_center_code", "transaction_date", "status", "created_by"],
+  member_charge_batches: ["batch_no", "cost_center_code", "transaction_date", "status", "created_by", "finalized_by", "finalized_at"],
   member_charge_entries: ["batch_no", "member_no", "amount", "reference_no", "remarks"],
+  member_charge_movements: ["movement_no", "batch_no", "member_no", "cost_center_code", "amount", "movement_type"],
   summo_import_batches: ["import_no", "report_period", "status", "created_by"],
   summo_import_rows: ["import_no", "member_no", "movement_type", "amount", "row_status"],
   summo_periods: ["report_period", "cluster_name", "status", "snapshot"],
@@ -3909,6 +3912,7 @@ function mapMemberChargeBatch(row) {
     transactionDate: formatDateOnly(row.transactionDate), status: row.status || "Draft",
     entryCount: Number(row.entryCount || 0), totalAmount: Number(row.totalAmount || 0),
     createdBy: row.createdBy || "", updatedBy: row.updatedBy || "",
+    finalizedBy: row.finalizedBy || "", finalizedAt: row.finalizedAt || "",
     createdAt: row.createdAt || "", updatedAt: row.updatedAt || "" };
 }
 
@@ -3923,7 +3927,8 @@ async function listMemberChargeBatches() {
   const [rows] = await db.execute(
     `SELECT b.batch_no AS batchNo, b.cost_center_code AS costCenterCode, c.name AS costCenterName,
             b.transaction_date AS transactionDate, b.status, b.created_by AS createdBy,
-            b.updated_by AS updatedBy, b.created_at AS createdAt, b.updated_at AS updatedAt,
+            b.updated_by AS updatedBy, b.finalized_by AS finalizedBy, b.finalized_at AS finalizedAt,
+            b.created_at AS createdAt, b.updated_at AS updatedAt,
             COUNT(e.id) AS entryCount, COALESCE(SUM(e.amount), 0) AS totalAmount
      FROM member_charge_batches b JOIN cost_centers c ON c.code = b.cost_center_code
      LEFT JOIN member_charge_entries e ON e.batch_no = b.batch_no
@@ -3939,7 +3944,8 @@ async function getMemberChargeBatch(batchNo) {
   const db = await getPool();
   if (!db) {
     return { batch, entries: memberChargeEntries.filter((item) => item.batchNo === batchNo)
-      .map((entry) => mapMemberChargeEntry({ ...entry, memberName: members.find((m) => m.id === entry.memberNo)?.name })) };
+      .map((entry) => mapMemberChargeEntry({ ...entry, memberName: members.find((m) => m.id === entry.memberNo)?.name })),
+      movements: await listMemberChargeMovements({ batchNo }) };
   }
   const [rows] = await db.execute(
     `SELECT e.id, e.batch_no AS batchNo, e.member_no AS memberNo, m.full_name AS memberName,
@@ -3947,7 +3953,7 @@ async function getMemberChargeBatch(batchNo) {
      FROM member_charge_entries e JOIN members m ON m.member_no = e.member_no
      WHERE e.batch_no = ? ORDER BY e.id`, [batchNo]
   );
-  return { batch, entries: rows.map(mapMemberChargeEntry) };
+  return { batch, entries: rows.map(mapMemberChargeEntry), movements: await listMemberChargeMovements({ batchNo }) };
 }
 
 async function validateMemberChargeDraft(body) {
@@ -4056,6 +4062,157 @@ async function saveMemberChargeDraft(body, user, batchNo = "") {
     await connection.commit();
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
   return getMemberChargeBatch(nextBatchNo);
+}
+
+function mapMemberChargeMovement(row) {
+  return {
+    movementNo: row.movementNo, batchNo: row.batchNo, sourceEntryId: Number(row.sourceEntryId || 0),
+    memberNo: row.memberNo, memberName: row.memberName || "", costCenterCode: row.costCenterCode,
+    costCenterName: row.costCenterName || "", summoColumn: row.summoColumn || "",
+    transactionDate: formatDateOnly(row.transactionDate), amount: Number(row.amount || 0),
+    movementType: row.movementType || "Charge", reversesMovementNo: row.reversesMovementNo || "",
+    reason: row.reason || "", createdBy: row.createdBy || "", createdAt: row.createdAt || "",
+    isReversed: Boolean(row.isReversed)
+  };
+}
+
+async function listMemberChargeMovements({ memberNo = "", batchNo = "" } = {}) {
+  const db = await getPool();
+  if (!db) {
+    return memberChargeMovements.filter((item) => (!memberNo || item.memberNo === memberNo) &&
+      (!batchNo || item.batchNo === batchNo)).map((item) => {
+      const member = members.find((row) => row.id === item.memberNo);
+      const center = costCenters.find((row) => row.code === item.costCenterCode);
+      return mapMemberChargeMovement({ ...item, memberName: member?.name, costCenterName: center?.name,
+        summoColumn: center?.summoColumn,
+        isReversed: item.movementType === "Charge" && memberChargeMovements.some((row) => row.reversesMovementNo === item.movementNo) });
+    }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  }
+  const conditions = [];
+  const params = [];
+  if (memberNo) { conditions.push("mv.member_no = ?"); params.push(memberNo); }
+  if (batchNo) { conditions.push("mv.batch_no = ?"); params.push(batchNo); }
+  const [rows] = await db.execute(
+    `SELECT mv.movement_no AS movementNo, mv.batch_no AS batchNo, mv.source_entry_id AS sourceEntryId,
+            mv.member_no AS memberNo, m.full_name AS memberName, mv.cost_center_code AS costCenterCode,
+            c.name AS costCenterName, c.summo_column AS summoColumn, mv.transaction_date AS transactionDate,
+            mv.amount, mv.movement_type AS movementType, mv.reverses_movement_no AS reversesMovementNo,
+            mv.reason, mv.created_by AS createdBy, mv.created_at AS createdAt,
+            EXISTS (SELECT 1 FROM member_charge_movements reversal
+                    WHERE reversal.reverses_movement_no = mv.movement_no) AS isReversed
+     FROM member_charge_movements mv JOIN members m ON m.member_no = mv.member_no
+     JOIN cost_centers c ON c.code = mv.cost_center_code
+     ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+     ORDER BY mv.created_at DESC, mv.id DESC`, params
+  );
+  return rows.map(mapMemberChargeMovement);
+}
+
+async function finalizeMemberChargeBatch(batchNo, user) {
+  const db = await getPool();
+  const now = new Date().toISOString();
+  if (!db) {
+    const batch = memberChargeBatches.find((item) => item.batchNo === batchNo);
+    if (!batch) return { error: "Member charge batch was not found.", statusCode: 404 };
+    if (batch.status !== "Draft") return { error: "Only Draft batches can be finalized.", statusCode: 409 };
+    if (batch.createdBy !== user.username && !isAdminUser(user)) return { error: "Only the creating Teller may finalize this batch.", statusCode: 403 };
+    const entries = memberChargeEntries.filter((item) => item.batchNo === batchNo);
+    if (!entries.length) return { error: "A batch needs entries before finalization.", statusCode: 409 };
+    entries.forEach((entry) => memberChargeMovements.push({
+      movementNo: `MCM-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo,
+      sourceEntryId: entry.id, memberNo: entry.memberNo, costCenterCode: batch.costCenterCode,
+      transactionDate: batch.transactionDate, amount: entry.amount, movementType: "Charge",
+      reversesMovementNo: "", reason: "", createdBy: user.username, createdAt: now
+    }));
+    Object.assign(batch, { status: "Finalized", finalizedBy: user.username, finalizedAt: now,
+      updatedBy: user.username, updatedAt: now });
+    return { ...(await getMemberChargeBatch(batchNo)), movements: await listMemberChargeMovements({ batchNo }) };
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [batchRows] = await connection.execute(
+      `SELECT status, created_by AS createdBy, cost_center_code AS costCenterCode,
+              transaction_date AS transactionDate FROM member_charge_batches
+       WHERE batch_no = ? FOR UPDATE`, [batchNo]
+    );
+    const batch = batchRows[0];
+    if (!batch) { await connection.rollback(); return { error: "Member charge batch was not found.", statusCode: 404 }; }
+    if (batch.status !== "Draft") { await connection.rollback(); return { error: "Only Draft batches can be finalized.", statusCode: 409 }; }
+    if (batch.createdBy !== user.username && !isAdminUser(user)) {
+      await connection.rollback(); return { error: "Only the creating Teller may finalize this batch.", statusCode: 403 };
+    }
+    const [entries] = await connection.execute(
+      `SELECT id, member_no AS memberNo, amount FROM member_charge_entries WHERE batch_no = ? ORDER BY id FOR UPDATE`, [batchNo]
+    );
+    if (!entries.length) { await connection.rollback(); return { error: "A batch needs entries before finalization.", statusCode: 409 }; }
+    for (const entry of entries) {
+      await connection.execute(
+        `INSERT INTO member_charge_movements
+         (movement_no, batch_no, source_entry_id, member_no, cost_center_code, transaction_date,
+          amount, movement_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'Charge', ?)`,
+        [`MCM-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, entry.id, entry.memberNo,
+          batch.costCenterCode, formatDateOnly(batch.transactionDate), Number(entry.amount), user.username]
+      );
+    }
+    await connection.execute(
+      `UPDATE member_charge_batches SET status = 'Finalized', finalized_by = ?, finalized_at = CURRENT_TIMESTAMP,
+       updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE batch_no = ?`, [user.username, user.username, batchNo]
+    );
+    await connection.commit();
+  } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
+  return { ...(await getMemberChargeBatch(batchNo)), movements: await listMemberChargeMovements({ batchNo }) };
+}
+
+async function reverseMemberChargeMovement(movementNo, reason, user) {
+  const cleanedReason = String(reason || "").trim();
+  if (!cleanedReason) return { error: "A reversal reason is required.", statusCode: 400 };
+  const db = await getPool();
+  const now = new Date().toISOString();
+  if (!db) {
+    const original = memberChargeMovements.find((item) => item.movementNo === movementNo);
+    if (!original || original.movementType !== "Charge") return { error: "Original charge movement was not found.", statusCode: 404 };
+    const batch = memberChargeBatches.find((item) => item.batchNo === original.batchNo);
+    if (batch?.createdBy !== user.username && !isAdminUser(user)) return { error: "Only the creating Teller may reverse this charge.", statusCode: 403 };
+    if (memberChargeMovements.some((item) => item.reversesMovementNo === movementNo)) return { error: "Charge was already reversed.", statusCode: 409 };
+    memberChargeMovements.push({ ...original, movementNo: `MCR-${crypto.randomUUID().slice(0, 12).toUpperCase()}`,
+      amount: moneyValue(-original.amount), movementType: "Reversal", reversesMovementNo: movementNo,
+      reason: cleanedReason, createdBy: user.username, createdAt: now });
+    return { movements: await listMemberChargeMovements({ batchNo: original.batchNo }) };
+  }
+  const connection = await db.getConnection();
+  let originalBatchNo = "";
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT mv.batch_no AS batchNo, mv.source_entry_id AS sourceEntryId, mv.member_no AS memberNo,
+              mv.cost_center_code AS costCenterCode, mv.transaction_date AS transactionDate,
+              mv.amount, mv.movement_type AS movementType, b.created_by AS batchCreatedBy
+       FROM member_charge_movements mv JOIN member_charge_batches b ON b.batch_no = mv.batch_no
+       WHERE mv.movement_no = ? FOR UPDATE`, [movementNo]
+    );
+    const original = rows[0];
+    if (!original || original.movementType !== "Charge") { await connection.rollback(); return { error: "Original charge movement was not found.", statusCode: 404 }; }
+    if (original.batchCreatedBy !== user.username && !isAdminUser(user)) {
+      await connection.rollback(); return { error: "Only the creating Teller may reverse this charge.", statusCode: 403 };
+    }
+    const [reversals] = await connection.execute(
+      `SELECT movement_no FROM member_charge_movements WHERE reverses_movement_no = ? FOR UPDATE`, [movementNo]
+    );
+    if (reversals[0]) { await connection.rollback(); return { error: "Charge was already reversed.", statusCode: 409 }; }
+    originalBatchNo = original.batchNo;
+    await connection.execute(
+      `INSERT INTO member_charge_movements
+       (movement_no, batch_no, source_entry_id, member_no, cost_center_code, transaction_date,
+        amount, movement_type, reverses_movement_no, reason, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Reversal', ?, ?, ?)`,
+      [`MCR-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, original.batchNo, original.sourceEntryId,
+        original.memberNo, original.costCenterCode, formatDateOnly(original.transactionDate),
+        moneyValue(-Number(original.amount)), movementNo, cleanedReason, user.username]
+    );
+    await connection.commit();
+  } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
+  return { movements: await listMemberChargeMovements({ batchNo: originalBatchNo }) };
 }
 
 function sanitizeMemberImportRow(row) {
@@ -7339,8 +7496,10 @@ async function getMemberStatement(memberId) {
 
     const previousLoans = await listMemberPreviousLoans(member.id);
     const previousLoanState = await getMemberPreviousLoanState(member.id);
+    const memberCharges = await listMemberChargeMovements({ memberNo: member.id });
     return { member, previousLoans, previousLoanControl: previousLoanState.control,
-      previousLoanUnlockRequests: previousLoanState.unlockRequests, transactions };
+      previousLoanUnlockRequests: previousLoanState.unlockRequests, memberCharges,
+      memberChargePayableBalance: memberCharges.reduce((sum, item) => addMoney(sum, item.amount), 0), transactions };
   }
 
   const [memberRows] = await db.execute(
@@ -7429,11 +7588,14 @@ async function getMemberStatement(memberId) {
     }));
 
   const previousLoanState = await getMemberPreviousLoanState(memberId);
+  const memberCharges = await listMemberChargeMovements({ memberNo: memberId });
   return {
     member,
     previousLoans: await listMemberPreviousLoans(memberId),
     previousLoanControl: previousLoanState.control,
     previousLoanUnlockRequests: previousLoanState.unlockRequests,
+    memberCharges,
+    memberChargePayableBalance: memberCharges.reduce((sum, item) => addMoney(sum, item.amount), 0),
     transactions: [
       ...openingBalanceRows,
       ...initialPaymentRows,
@@ -10483,6 +10645,24 @@ app.put("/api/member-charge-batches/:batchNo", async (request, response) => {
   if (!user) { response.status(401).json({ error: "Login required" }); return; }
   if (!hasPermission(user, "member-charges:encode")) { response.status(403).json({ error: "Teller / Cashier access required" }); return; }
   const result = await saveMemberChargeDraft(request.body, user, request.params.batchNo);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.json(result);
+});
+
+app.post("/api/member-charge-batches/:batchNo/finalize", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "member-charges:finalize")) { response.status(403).json({ error: "Teller / Cashier access required" }); return; }
+  const result = await finalizeMemberChargeBatch(request.params.batchNo, user);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.json(result);
+});
+
+app.post("/api/member-charge-movements/:movementNo/reverse", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "member-charges:reverse")) { response.status(403).json({ error: "Teller / Cashier access required" }); return; }
+  const result = await reverseMemberChargeMovement(request.params.movementNo, request.body.reason, user);
   if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
   response.json(result);
 });

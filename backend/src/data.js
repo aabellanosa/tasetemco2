@@ -121,7 +121,9 @@ export const rolePermissions = {
     "cost-centers:view",
     "cost-centers:manage",
     "member-charges:view",
-    "member-charges:encode"
+    "member-charges:encode",
+    "member-charges:finalize",
+    "member-charges:reverse"
   ],
   "General Manager": [
     "members:view",
@@ -197,7 +199,9 @@ export const rolePermissions = {
     "teller-fundings:acknowledge",
     "cost-centers:view",
     "member-charges:view",
-    "member-charges:encode"
+    "member-charges:encode",
+    "member-charges:finalize",
+    "member-charges:reverse"
   ],
   "Membership Officer": [
     "members:view",
@@ -580,6 +584,7 @@ export const costCenters = [
 ];
 export const memberChargeBatches = [];
 export const memberChargeEntries = [];
+export const memberChargeMovements = [];
 
 export const loans = [
   {

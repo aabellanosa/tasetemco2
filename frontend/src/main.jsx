@@ -2295,14 +2295,19 @@ function MemberChargeCapture({ members, user }) {
   const [centers, setCenters] = useState([]);
   const [batches, setBatches] = useState([]);
   const [batchNo, setBatchNo] = useState("");
+  const [batchStatus, setBatchStatus] = useState("Draft");
+  const [batchCreatedBy, setBatchCreatedBy] = useState(user.username);
   const [costCenterCode, setCostCenterCode] = useState("");
   const [transactionDate, setTransactionDate] = useState(today);
   const [entries, setEntries] = useState([emptyEntry()]);
+  const [movements, setMovements] = useState([]);
+  const [reversalReasons, setReversalReasons] = useState({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const activeMembers = members.filter((member) => member.status === "Active");
   const activeCenters = centers.filter((center) => center.status === "Active");
   const total = entries.reduce((sum, row) => addMoney(sum, row.amount), 0);
+  const canEditDraft = batchStatus === "Draft" && batchCreatedBy === user.username;
   const load = useCallback(async () => {
     try {
       const [centerRows, batchRows] = await Promise.all([api("/api/cost-centers"), api("/api/member-charge-batches")]);
@@ -2313,12 +2318,14 @@ function MemberChargeCapture({ members, user }) {
   }, []);
   useEffect(() => { load(); }, [load]);
   function updateEntry(index, field, value) { setEntries((current) => current.map((row, i) => i === index ? { ...row, [field]: value } : row)); }
-  function reset() { setBatchNo(""); setTransactionDate(today); setEntries([emptyEntry()]); setMessage(""); setError(""); }
+  function reset() { setBatchNo(""); setBatchStatus("Draft"); setBatchCreatedBy(user.username); setTransactionDate(today); setEntries([emptyEntry()]);
+    setMovements([]); setReversalReasons({}); setMessage(""); setError(""); }
   async function openBatch(selectedBatchNo) {
     try {
       const data = await api(`/api/member-charge-batches/${selectedBatchNo}`);
-      setBatchNo(data.batch.batchNo); setCostCenterCode(data.batch.costCenterCode);
-      setTransactionDate(data.batch.transactionDate); setEntries(data.entries); setMessage(""); setError("");
+      setBatchNo(data.batch.batchNo); setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy); setCostCenterCode(data.batch.costCenterCode);
+      setTransactionDate(data.batch.transactionDate); setEntries(data.entries); setMovements(data.movements || []);
+      setReversalReasons({}); setMessage(""); setError("");
     } catch (requestError) { setError(requestError.message); }
   }
   async function saveDraft(event) {
@@ -2327,32 +2334,65 @@ function MemberChargeCapture({ members, user }) {
       const data = await api(batchNo ? `/api/member-charge-batches/${batchNo}` : "/api/member-charge-batches", {
         method: batchNo ? "PUT" : "POST", body: JSON.stringify({ costCenterCode, transactionDate, entries })
       });
-      setBatchNo(data.batch.batchNo); setEntries(data.entries); setMessage(`${data.batch.batchNo} saved as Draft.`); await load();
+      setBatchNo(data.batch.batchNo); setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy); setEntries(data.entries);
+      setMovements(data.movements || []); setMessage(`${data.batch.batchNo} saved as Draft.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function finalizeBatch() {
+    if (!batchNo || !window.confirm(`Finalize ${batchNo}? Its source entries will become immutable member payables.`)) return;
+    setError(""); setMessage("");
+    try {
+      const data = await api(`/api/member-charge-batches/${batchNo}/finalize`, { method: "POST" });
+      setBatchStatus(data.batch.status); setMovements(data.movements || []);
+      setMessage(`${batchNo} finalized. ${data.movements.length} payable movement(s) created.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function reverseMovement(movementNo) {
+    setError(""); setMessage("");
+    try {
+      const data = await api(`/api/member-charge-movements/${movementNo}/reverse`, {
+        method: "POST", body: JSON.stringify({ reason: reversalReasons[movementNo] || "" })
+      });
+      setMovements(data.movements); setReversalReasons((current) => ({ ...current, [movementNo]: "" }));
+      setMessage("Charge reversed. Enter any corrected amount in a new Draft batch.");
     } catch (requestError) { setError(requestError.message); }
   }
   return <VStack align="stretch" spacing={5}>
     <Box as="form" onSubmit={saveDraft} borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Daily Member Payables</Heading>
-        <Text color="gray.600">Capture skipped days when needed. Drafts do not yet affect balances or SUMMO.</Text></Box>
-        <HStack><Badge colorScheme="blue">{batchNo || "New Draft"}</Badge><Button type="button" variant="outline" onClick={reset}>New</Button><Button type="submit" colorScheme="green">Save Draft</Button></HStack></Flex>
+        <Text color="gray.600">Drafts have no payable effect. Finalization creates immutable member payable movements.</Text></Box>
+        <HStack><Badge colorScheme={batchStatus === "Finalized" ? "green" : "blue"}>{batchNo || "New Draft"} · {batchStatus}</Badge>
+          <Button type="button" variant="outline" onClick={reset}>New</Button>
+          {canEditDraft ? <Button type="submit" colorScheme="green">Save Draft</Button> : null}
+          {batchNo && batchStatus === "Draft" ? <Button type="button" colorScheme="orange" onClick={finalizeBatch}>Finalize</Button> : null}</HStack></Flex>
       {message ? <Text color="green.700" mb={3}>{message}</Text> : null}{error ? <Text color="red.700" mb={3}>{error}</Text> : null}
       <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1fr" }} gap={4} mb={4}>
-        <FormControl isRequired><FormLabel>Cost Center</FormLabel><Select value={costCenterCode} onChange={(e) => setCostCenterCode(e.target.value)}>{activeCenters.map((center) => <option key={center.code} value={center.code}>{center.name} ({center.code})</option>)}</Select></FormControl>
-        <FormControl isRequired><FormLabel>Transaction Date</FormLabel><Input type="date" max={today} value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} /></FormControl>
+        <FormControl isRequired><FormLabel>Cost Center</FormLabel><Select isDisabled={!canEditDraft} value={costCenterCode} onChange={(e) => setCostCenterCode(e.target.value)}>{activeCenters.map((center) => <option key={center.code} value={center.code}>{center.name} ({center.code})</option>)}</Select></FormControl>
+        <FormControl isRequired><FormLabel>Transaction Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={today} value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} /></FormControl>
         <Box alignSelf="end"><Text fontSize="sm" color="gray.500">Running total</Text><Heading size="md">{formatMoney(total)}</Heading><Text fontSize="sm">{entries.length} row(s)</Text></Box>
       </Grid>
       <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Amount</Th><Th>Reference</Th><Th>Remarks</Th><Th /></Tr></Thead>
-        <Tbody>{entries.map((row, index) => <Tr key={row.id || index}><Td minW="300px"><MemberCombobox members={activeMembers} value={row.memberNo} onChange={(memberNo) => updateEntry(index, "memberNo", memberNo)} /></Td>
-          <Td minW="140px"><NumberInput min={0.01} precision={2} value={row.amount} onChange={(value) => updateEntry(index, "amount", Number(value || 0))}><NumberInputField textAlign="right" /></NumberInput></Td>
-          <Td><Input size="sm" value={row.referenceNo} onChange={(e) => updateEntry(index, "referenceNo", e.target.value)} /></Td>
-          <Td><Input size="sm" value={row.remarks} onChange={(e) => updateEntry(index, "remarks", e.target.value)} /></Td>
-          <Td><Button size="sm" variant="outline" isDisabled={entries.length === 1} onClick={() => setEntries(entries.filter((_, i) => i !== index))}>Remove</Button></Td></Tr>)}</Tbody>
+        <Tbody>{entries.map((row, index) => <Tr key={row.id || index}><Td minW="300px">{canEditDraft ? <MemberCombobox members={activeMembers} value={row.memberNo} onChange={(memberNo) => updateEntry(index, "memberNo", memberNo)} /> : `${row.memberName} (${row.memberNo})`}</Td>
+          <Td minW="140px">{canEditDraft ? <NumberInput min={0.01} precision={2} value={row.amount} onChange={(value) => updateEntry(index, "amount", Number(value || 0))}><NumberInputField textAlign="right" /></NumberInput> : formatMoney(row.amount)}</Td>
+          <Td>{canEditDraft ? <Input size="sm" value={row.referenceNo} onChange={(e) => updateEntry(index, "referenceNo", e.target.value)} /> : row.referenceNo || "-"}</Td>
+          <Td>{canEditDraft ? <Input size="sm" value={row.remarks} onChange={(e) => updateEntry(index, "remarks", e.target.value)} /> : row.remarks || "-"}</Td>
+          <Td>{canEditDraft ? <Button size="sm" variant="outline" isDisabled={entries.length === 1} onClick={() => setEntries(entries.filter((_, i) => i !== index))}>Remove</Button> : <Badge colorScheme={batchStatus === "Finalized" ? "green" : "gray"}>{batchStatus === "Finalized" ? "Locked" : "Read only"}</Badge>}</Td></Tr>)}</Tbody>
       </Table></TableContainer>
-      <Button mt={3} type="button" variant="outline" onClick={() => setEntries([...entries, emptyEntry()])}>Add Row</Button>
+      {canEditDraft ? <Button mt={3} type="button" variant="outline" onClick={() => setEntries([...entries, emptyEntry()])}>Add Row</Button> : null}
+      {batchStatus === "Finalized" && movements.length ? <Box mt={5}><Heading size="sm" mb={2}>Payable Movement Audit</Heading>
+        <TableContainer><Table size="sm"><Thead><Tr><Th>Movement</Th><Th>Member</Th><Th>Type</Th><Th isNumeric>Amount</Th><Th>Actor / Reason</Th><Th>Correction</Th></Tr></Thead>
+          <Tbody>{movements.map((movement) => <Tr key={movement.movementNo}><Td>{movement.movementNo}</Td><Td>{movement.memberName}</Td>
+            <Td><Badge colorScheme={movement.movementType === "Reversal" ? "red" : "green"}>{movement.movementType}</Badge></Td><Td isNumeric>{formatMoney(movement.amount)}</Td>
+            <Td>{movement.createdBy}<br />{formatDateTime(movement.createdAt)}<br />{movement.reason || "-"}</Td><Td minW="280px">
+              {movement.movementType === "Charge" && !movement.isReversed ? <HStack><Input size="sm" placeholder="Required reversal reason" value={reversalReasons[movement.movementNo] || ""}
+                onChange={(e) => setReversalReasons({ ...reversalReasons, [movement.movementNo]: e.target.value })} />
+                <Button type="button" size="sm" colorScheme="red" variant="outline" onClick={() => reverseMovement(movement.movementNo)}>Reverse</Button></HStack>
+                : movement.isReversed ? <Badge colorScheme="red">Reversed</Badge> : "Links to original charge"}</Td></Tr>)}</Tbody>
+        </Table></TableContainer></Box> : null}
     </Box>
-    <Box borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Draft Batch History</Heading>
+    <Box borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Batch History</Heading>
       <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Date</Th><Th>Cost Center</Th><Th isNumeric>Rows</Th><Th isNumeric>Total</Th><Th>Encoder</Th><Th /></Tr></Thead>
-        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{formatDate(batch.transactionDate)}</Td><Td>{batch.costCenterName}</Td><Td isNumeric>{batch.entryCount}</Td><Td isNumeric>{formatMoney(batch.totalAmount)}</Td><Td>{batch.createdBy}</Td><Td>{batch.status === "Draft" && batch.createdBy === user.username ? <Button size="sm" onClick={() => openBatch(batch.batchNo)}>Edit</Button> : <Badge>{batch.status}</Badge>}</Td></Tr>)}</Tbody>
+        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{formatDate(batch.transactionDate)}</Td><Td>{batch.costCenterName}</Td><Td isNumeric>{batch.entryCount}</Td><Td isNumeric>{formatMoney(batch.totalAmount)}</Td><Td>{batch.createdBy}</Td><Td><Button size="sm" onClick={() => openBatch(batch.batchNo)}>{batch.status === "Draft" && batch.createdBy === user.username ? "Edit" : "View"}</Button></Td></Tr>)}</Tbody>
       </Table></TableContainer>
     </Box>
   </VStack>;
@@ -3644,6 +3684,10 @@ function Members({ user }) {
               </Text>
               <Text fontWeight="bold">{formatMoney(statementPreviousLoanTotal)}</Text>
             </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Cost Center Payables</Text>
+              <Text fontWeight="bold">{formatMoney(statement.memberChargePayableBalance || 0)}</Text>
+            </Box>
           </Grid>
 
           <Box as={canEditMemberProfile ? "form" : "div"} onSubmit={canEditMemberProfile ? submitMemberProfile : undefined} borderWidth="1px" borderRadius="md" p={4} mb={5}>
@@ -3937,6 +3981,20 @@ function Members({ user }) {
                 </TableContainer>
               </Box>
             ) : null}
+          </Box>
+
+          <Box borderWidth="1px" borderRadius="md" p={4} mb={5}>
+            <Heading size="sm" mb={1}>Cost Center Payable Movements</Heading>
+            <Text color="gray.600" fontSize="sm" mb={3}>Finalized charges and immutable reversing movements.</Text>
+            <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Cost Center</Th><Th>Batch / Movement</Th><Th>Type</Th><Th isNumeric>Amount</Th><Th>Audit</Th></Tr></Thead>
+              <Tbody>{(statement.memberCharges || []).map((movement) => <Tr key={movement.movementNo}>
+                <Td>{formatDate(movement.transactionDate)}</Td><Td>{movement.costCenterName}</Td>
+                <Td>{movement.batchNo}<br /><Text color="gray.500" fontSize="xs">{movement.movementNo}</Text></Td>
+                <Td><Badge colorScheme={movement.movementType === "Reversal" ? "red" : "green"}>{movement.movementType}</Badge></Td>
+                <Td isNumeric>{formatMoney(movement.amount)}</Td>
+                <Td>{movement.createdBy}<br />{movement.reason || "-"}<br />{formatDateTime(movement.createdAt)}</Td>
+              </Tr>)}{!(statement.memberCharges || []).length ? <Tr><Td colSpan={6} color="gray.500">No finalized cost-center payables.</Td></Tr> : null}</Tbody>
+            </Table></TableContainer>
           </Box>
 
           <TableContainer>
