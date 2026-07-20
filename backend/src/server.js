@@ -56,6 +56,7 @@ import {
   calculateSummo,
   normalizePeriod,
   parseMovementWorkbook,
+  periodBounds,
   previousPeriod,
   validateImportedMovements
 } from "./summo.js";
@@ -177,7 +178,7 @@ const requiredSchemaColumns = {
   cost_centers: ["code", "name", "cost_center_type", "summo_column", "status"],
   member_charge_batches: ["batch_no", "cost_center_code", "transaction_date", "status", "created_by", "finalized_by", "finalized_at"],
   member_charge_entries: ["batch_no", "member_no", "amount", "reference_no", "remarks"],
-  member_charge_movements: ["movement_no", "batch_no", "member_no", "cost_center_code", "amount", "movement_type"],
+  member_charge_movements: ["movement_no", "batch_no", "member_no", "cost_center_code", "summo_column", "amount", "movement_type"],
   summo_import_batches: ["import_no", "report_period", "status", "created_by"],
   summo_import_rows: ["import_no", "member_no", "movement_type", "amount", "row_status"],
   summo_periods: ["report_period", "cluster_name", "status", "snapshot"],
@@ -3987,6 +3988,10 @@ async function saveMemberChargeDraft(body, user, batchNo = "") {
   const validation = await validateMemberChargeDraft(body);
   if (validation.error) return { error: validation.error, statusCode: 400 };
   const input = validation.value;
+  const periodControl = await ensureMemberChargePeriodOpen(
+    input.transactionDate, input.entries.map((entry) => entry.memberNo)
+  );
+  if (periodControl.error) return periodControl;
   const db = await getPool();
   const now = new Date().toISOString();
   const nextBatchNo = batchNo || `MCB-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
@@ -4084,7 +4089,7 @@ async function listMemberChargeMovements({ memberNo = "", batchNo = "" } = {}) {
       const member = members.find((row) => row.id === item.memberNo);
       const center = costCenters.find((row) => row.code === item.costCenterCode);
       return mapMemberChargeMovement({ ...item, memberName: member?.name, costCenterName: center?.name,
-        summoColumn: center?.summoColumn,
+        summoColumn: item.summoColumn || center?.summoColumn,
         isReversed: item.movementType === "Charge" && memberChargeMovements.some((row) => row.reversesMovementNo === item.movementNo) });
     }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   }
@@ -4095,7 +4100,7 @@ async function listMemberChargeMovements({ memberNo = "", batchNo = "" } = {}) {
   const [rows] = await db.execute(
     `SELECT mv.movement_no AS movementNo, mv.batch_no AS batchNo, mv.source_entry_id AS sourceEntryId,
             mv.member_no AS memberNo, m.full_name AS memberName, mv.cost_center_code AS costCenterCode,
-            c.name AS costCenterName, c.summo_column AS summoColumn, mv.transaction_date AS transactionDate,
+            c.name AS costCenterName, mv.summo_column AS summoColumn, mv.transaction_date AS transactionDate,
             mv.amount, mv.movement_type AS movementType, mv.reverses_movement_no AS reversesMovementNo,
             mv.reason, mv.created_by AS createdBy, mv.created_at AS createdAt,
             EXISTS (SELECT 1 FROM member_charge_movements reversal
@@ -4163,6 +4168,12 @@ async function getMemberChargeReconciliation(filters = {}) {
 }
 
 async function finalizeMemberChargeBatch(batchNo, user) {
+  const source = await getMemberChargeBatch(batchNo);
+  if (source.error) return source;
+  const periodControl = await ensureMemberChargePeriodOpen(
+    source.batch.transactionDate, source.entries.map((entry) => entry.memberNo)
+  );
+  if (periodControl.error) return periodControl;
   const db = await getPool();
   const now = new Date().toISOString();
   if (!db) {
@@ -4172,9 +4183,11 @@ async function finalizeMemberChargeBatch(batchNo, user) {
     if (batch.createdBy !== user.username && !isAdminUser(user)) return { error: "Only the creating Teller may finalize this batch.", statusCode: 403 };
     const entries = memberChargeEntries.filter((item) => item.batchNo === batchNo);
     if (!entries.length) return { error: "A batch needs entries before finalization.", statusCode: 409 };
+    const center = costCenters.find((item) => item.code === batch.costCenterCode);
     entries.forEach((entry) => memberChargeMovements.push({
       movementNo: `MCM-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo,
       sourceEntryId: entry.id, memberNo: entry.memberNo, costCenterCode: batch.costCenterCode,
+      summoColumn: center?.summoColumn || "",
       transactionDate: batch.transactionDate, amount: entry.amount, movementType: "Charge",
       reversesMovementNo: "", reason: "", createdBy: user.username, createdAt: now
     }));
@@ -4186,9 +4199,10 @@ async function finalizeMemberChargeBatch(batchNo, user) {
   try {
     await connection.beginTransaction();
     const [batchRows] = await connection.execute(
-      `SELECT status, created_by AS createdBy, cost_center_code AS costCenterCode,
-              transaction_date AS transactionDate FROM member_charge_batches
-       WHERE batch_no = ? FOR UPDATE`, [batchNo]
+      `SELECT batch.status, batch.created_by AS createdBy, batch.cost_center_code AS costCenterCode,
+              center.summo_column AS summoColumn, batch.transaction_date AS transactionDate
+       FROM member_charge_batches batch JOIN cost_centers center ON center.code = batch.cost_center_code
+       WHERE batch.batch_no = ? FOR UPDATE`, [batchNo]
     );
     const batch = batchRows[0];
     if (!batch) { await connection.rollback(); return { error: "Member charge batch was not found.", statusCode: 404 }; }
@@ -4204,9 +4218,10 @@ async function finalizeMemberChargeBatch(batchNo, user) {
       await connection.execute(
         `INSERT INTO member_charge_movements
          (movement_no, batch_no, source_entry_id, member_no, cost_center_code, transaction_date,
-          amount, movement_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'Charge', ?)`,
+          summo_column, amount, movement_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Charge', ?)`,
         [`MCM-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, entry.id, entry.memberNo,
-          batch.costCenterCode, formatDateOnly(batch.transactionDate), Number(entry.amount), user.username]
+          batch.costCenterCode, formatDateOnly(batch.transactionDate), batch.summoColumn,
+          Number(entry.amount), user.username]
       );
     }
     await connection.execute(
@@ -4221,6 +4236,11 @@ async function finalizeMemberChargeBatch(batchNo, user) {
 async function reverseMemberChargeMovement(movementNo, reason, user) {
   const cleanedReason = String(reason || "").trim();
   if (!cleanedReason) return { error: "A reversal reason is required.", statusCode: 400 };
+  const sourceMovement = (await listMemberChargeMovements()).find((item) => item.movementNo === movementNo);
+  if (sourceMovement) {
+    const periodControl = await ensureMemberChargePeriodOpen(sourceMovement.transactionDate, [sourceMovement.memberNo]);
+    if (periodControl.error) return periodControl;
+  }
   const db = await getPool();
   const now = new Date().toISOString();
   if (!db) {
@@ -4240,7 +4260,7 @@ async function reverseMemberChargeMovement(movementNo, reason, user) {
     await connection.beginTransaction();
     const [rows] = await connection.execute(
       `SELECT mv.batch_no AS batchNo, mv.source_entry_id AS sourceEntryId, mv.member_no AS memberNo,
-              mv.cost_center_code AS costCenterCode, mv.transaction_date AS transactionDate,
+              mv.cost_center_code AS costCenterCode, mv.summo_column AS summoColumn, mv.transaction_date AS transactionDate,
               mv.amount, mv.movement_type AS movementType, b.created_by AS batchCreatedBy
        FROM member_charge_movements mv JOIN member_charge_batches b ON b.batch_no = mv.batch_no
        WHERE mv.movement_no = ? FOR UPDATE`, [movementNo]
@@ -4258,11 +4278,11 @@ async function reverseMemberChargeMovement(movementNo, reason, user) {
     await connection.execute(
       `INSERT INTO member_charge_movements
        (movement_no, batch_no, source_entry_id, member_no, cost_center_code, transaction_date,
-        amount, movement_type, reverses_movement_no, reason, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Reversal', ?, ?, ?)`,
+        summo_column, amount, movement_type, reverses_movement_no, reason, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Reversal', ?, ?, ?)`,
       [`MCR-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, original.batchNo, original.sourceEntryId,
         original.memberNo, original.costCenterCode, formatDateOnly(original.transactionDate),
-        moneyValue(-Number(original.amount)), movementNo, cleanedReason, user.username]
+        original.summoColumn, moneyValue(-Number(original.amount)), movementNo, cleanedReason, user.username]
     );
     await connection.commit();
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
@@ -7171,6 +7191,69 @@ async function getSummoPeriod(period) {
   return (await listSummoPeriods()).find((item) => item.period === period) || null;
 }
 
+async function ensureMemberChargePeriodOpen(transactionDate, memberNos) {
+  const period = String(transactionDate || "").slice(0, 7);
+  const memberNoSet = new Set(memberNos);
+  const affectsRegularCapture = (await listMembers()).some(
+    (member) => memberNoSet.has(member.id) && member.group === SUMMO_CLUSTER
+  );
+  if (!affectsRegularCapture) return { ok: true };
+  const summoPeriod = await getSummoPeriod(period);
+  if (summoPeriod?.status === "Locked") {
+    return { error: `${period} SUMMO is locked. Reopen the period before changing cost-center payables.`, statusCode: 409 };
+  }
+  return { ok: true };
+}
+
+async function listSystemSummoMovements(period) {
+  const bounds = periodBounds(period);
+  if (!bounds) return [];
+  const memberMap = new Map((await listMembers())
+    .filter((member) => member.group === SUMMO_CLUSTER && member.status === "Active")
+    .map((member) => [member.id, member]));
+  const movements = (await listMemberChargeMovements()).filter((movement) =>
+    memberMap.has(movement.memberNo) && movement.transactionDate >= bounds.start && movement.transactionDate <= bounds.end
+  );
+  return movements.map((movement) => {
+    const mappedType = String(movement.summoColumn || "").trim().toUpperCase().replace(/[ /-]+/g, "_");
+    return {
+      id: movement.movementNo,
+      importNo: "SYSTEM-COST-CENTER",
+      rowNumber: 0,
+      memberNo: movement.memberNo,
+      memberName: movement.memberName,
+      movementDate: movement.transactionDate,
+      movementType: movement.movementType === "Reversal" ? "REVERSAL" : mappedType,
+      sourceUnit: movement.costCenterName,
+      referenceNo: movement.movementNo,
+      amount: Math.abs(Number(movement.amount || 0)),
+      remarks: movement.reason || `Finalized ${movement.costCenterName} payable`,
+      reversesReference: movement.reversesMovementNo || "",
+      uniqueKey: `SYSTEM:${movement.movementNo}`,
+      rowStatus: "Finalized",
+      issues: [],
+      systemSource: true,
+      batchNo: movement.batchNo,
+      costCenterCode: movement.costCenterCode,
+      costCenterName: movement.costCenterName,
+      originalMovementType: movement.movementType
+    };
+  });
+}
+
+async function listPendingSummoCostCenterBatches(period) {
+  const bounds = periodBounds(period);
+  if (!bounds) return [];
+  const memberMap = new Map((await listMembers()).map((member) => [member.id, member]));
+  const pending = [];
+  for (const batch of (await listMemberChargeBatches()).filter((item) =>
+    item.status === "Draft" && item.transactionDate >= bounds.start && item.transactionDate <= bounds.end)) {
+    const details = await getMemberChargeBatch(batch.batchNo);
+    if (details.entries.some((entry) => memberMap.get(entry.memberNo)?.group === SUMMO_CLUSTER)) pending.push(batch);
+  }
+  return pending;
+}
+
 async function getEffectiveSummoRules(period) {
   const rates = { ...SUMMO_DEFAULT_RATES };
   const productColumns = { ...SUMMO_PRODUCT_COLUMNS };
@@ -7198,12 +7281,32 @@ async function calculateSummoDraft(period) {
   const normalizedPeriod = normalizePeriod(period);
   if (!normalizedPeriod) return { error: "Reporting period must be YYYY-MM.", statusCode: 400 };
   const previous = await getSummoPeriod(previousPeriod(normalizedPeriod));
-  const movements = await listFinalizedSummoMovements(normalizedPeriod);
+  const importedMovements = await listFinalizedSummoMovements(normalizedPeriod);
+  const systemMovements = await listSystemSummoMovements(normalizedPeriod);
+  const movements = [...importedMovements, ...systemMovements];
   const openingRows = movements.filter((row) => row.movementType === "OPENING_BALANCE");
   const predecessorIssues = [];
   if (previous && previous.status !== "Locked") predecessorIssues.push("The preceding SUMMO period must be locked first.");
   if (previous && openingRows.length > 0) predecessorIssues.push("Opening balances are allowed only when no preceding SUMMO period exists.");
   if (!previous && openingRows.length === 0) predecessorIssues.push("An opening SUMMO balance import is required for the first period.");
+  const pendingCostCenterBatches = await listPendingSummoCostCenterBatches(normalizedPeriod);
+  if (pendingCostCenterBatches.length) {
+    predecessorIssues.push(`${pendingCostCenterBatches.length} cost-center batch(es) remain Draft for this period.`);
+  }
+  const supportedCostCenterTypes = new Set(["CANTEEN", "WRS"]);
+  const unmappedSystemMovements = systemMovements.filter(
+    (movement) => movement.movementType !== "REVERSAL" && !supportedCostCenterTypes.has(movement.movementType)
+  );
+  if (unmappedSystemMovements.length) {
+    predecessorIssues.push(`${unmappedSystemMovements.length} finalized cost-center movement(s) have no supported SUMMO mapping.`);
+  }
+  const importedSystemTypes = new Set(importedMovements
+    .filter((movement) => ["CANTEEN", "WRS"].includes(movement.movementType))
+    .map((movement) => movement.movementType));
+  const importedSystemOverlap = systemMovements.some((movement) => importedSystemTypes.has(movement.movementType));
+  if (importedSystemOverlap) {
+    predecessorIssues.push("Canteen/WRS inputs exist in both finalized Excel imports and system transactions; remove the duplicate source before locking.");
+  }
   const rules = await getEffectiveSummoRules(normalizedPeriod);
   const report = calculateSummo({
     period: normalizedPeriod,
@@ -7217,6 +7320,18 @@ async function calculateSummoDraft(period) {
   });
   if (report.error) return { error: report.error, statusCode: 400 };
   report.issues = [...predecessorIssues, ...report.issues];
+  report.sourceSummary = {
+    importedMovementCount: importedMovements.length,
+    systemMovementCount: systemMovements.length,
+    pendingCostCenterBatchCount: pendingCostCenterBatches.length,
+    systemCanteenAmount: systemMovements.filter((item) => item.movementType === "CANTEEN")
+      .reduce((sum, item) => addMoney(sum, item.amount), 0),
+    systemWrsAmount: systemMovements.filter((item) => item.movementType === "WRS")
+      .reduce((sum, item) => addMoney(sum, item.amount), 0),
+    systemReversalAmount: systemMovements.filter((item) => item.movementType === "REVERSAL")
+      .reduce((sum, item) => addMoney(sum, item.amount), 0)
+  };
+  report.systemMovementDetails = systemMovements;
   return report;
 }
 

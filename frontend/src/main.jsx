@@ -5258,7 +5258,7 @@ function SummoReport({ user }) {
         <Flex justify="space-between" gap={4} wrap="wrap" align="end">
           <Box>
             <Heading size="md">Regular Members Capture SUMMO</Heading>
-            <Text color="gray.600" mt={1}>Monthly payables, settlements, carried balances, and external worksheet inputs.</Text>
+            <Text color="gray.600" mt={1}>Monthly payables assembled from finalized system transactions and remaining worksheet inputs.</Text>
           </Box>
           <FormControl maxW="220px">
             <FormLabel>Reporting month</FormLabel>
@@ -5280,7 +5280,7 @@ function SummoReport({ user }) {
           <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
             <Box>
               <Heading size="sm">External Movement Import</Heading>
-              <Text color="gray.600" fontSize="sm">Use the generated template; imports support SUMMO only and do not post journals.</Text>
+              <Text color="gray.600" fontSize="sm">Use Excel only for categories not yet captured in the system. Finalized Canteen and WRS transactions are included automatically; importing the same category for the month blocks locking to prevent duplicate reporting.</Text>
             </Box>
             <Button size="sm" variant="outline" as="a" href={`${apiBase}/api/reports/summo/template?period=${period}`}>
               Download Template
@@ -5337,11 +5337,21 @@ function SummoReport({ user }) {
           </HStack>
         </Flex>
         {periodData?.validationIssues?.length ? <Box bg="orange.50" p={3} borderRadius="md" mb={4}>{periodData.validationIssues.map((issue) => <Text key={issue} color="orange.700">• {issue}</Text>)}</Box> : null}
+        {report?.sourceSummary ? <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={4}>
+          <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Movements</Text><Text fontWeight="bold">{report.sourceSummary.systemMovementCount}</Text><Text fontSize="xs">{report.sourceSummary.pendingCostCenterBatchCount} draft batches pending</Text></Box>
+          <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Canteen</Text><Text fontWeight="bold">{formatMoney(report.sourceSummary.systemCanteenAmount)}</Text></Box>
+          <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System WRS</Text><Text fontWeight="bold">{formatMoney(report.sourceSummary.systemWrsAmount)}</Text></Box>
+          <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Reversals</Text><Text fontWeight="bold" color="red.600">-{formatMoney(report.sourceSummary.systemReversalAmount)}</Text></Box>
+        </Grid> : null}
         {report?.rows ? (
-          <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Current Charges</Th><Th isNumeric>Previous Total</Th><Th isNumeric>Gross Payable</Th><Th isNumeric>Settlements</Th><Th isNumeric>Balance</Th></Tr></Thead>
-            <Tbody>{report.rows.map((row) => <Tr key={row.memberNo}><Td>{row.memberNo}<br />{row.memberName}</Td><Td isNumeric>{formatMoney(row.currentCharges)}</Td><Td isNumeric>{formatMoney(row.previousBalanceTotal)}</Td><Td isNumeric>{formatMoney(row.grossPayable)}</Td><Td isNumeric>{formatMoney(row.settlements)}</Td><Td isNumeric fontWeight="bold">{formatMoney(row.endingBalance)}</Td></Tr>)}</Tbody>
+          <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Canteen</Th><Th isNumeric>WRS</Th><Th isNumeric>Current Charges</Th><Th isNumeric>Previous Total</Th><Th isNumeric>Gross Payable</Th><Th isNumeric>Settlements</Th><Th isNumeric>Balance</Th></Tr></Thead>
+            <Tbody>{report.rows.map((row) => <Tr key={row.memberNo}><Td>{row.memberNo}<br />{row.memberName}</Td><Td isNumeric>{formatMoney(row.canteen)}</Td><Td isNumeric>{formatMoney(row.wrs)}</Td><Td isNumeric>{formatMoney(row.currentCharges)}</Td><Td isNumeric>{formatMoney(row.previousBalanceTotal)}</Td><Td isNumeric>{formatMoney(row.grossPayable)}</Td><Td isNumeric>{formatMoney(row.settlements)}</Td><Td isNumeric fontWeight="bold">{formatMoney(row.endingBalance)}</Td></Tr>)}</Tbody>
           </Table></TableContainer>
         ) : <Text color="gray.500">Prepare the draft after finalizing the required movement imports.</Text>}
+        {report?.systemMovementDetails?.length ? <Box mt={5}><Heading size="sm" mb={2}>System Cost Center Drill-down</Heading>
+          <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Member</Th><Th>Cost Center</Th><Th>Batch / Movement</Th><Th>SUMMO Column</Th><Th isNumeric>Amount</Th><Th>Correction Link</Th></Tr></Thead>
+            <Tbody>{report.systemMovementDetails.map((movement) => <Tr key={movement.referenceNo}><Td>{formatDate(movement.movementDate)}</Td><Td>{movement.memberName}<br /><Text fontSize="xs">{movement.memberNo}</Text></Td><Td>{movement.costCenterName}</Td><Td>{movement.batchNo}<br /><Text fontSize="xs">{movement.referenceNo}</Text></Td><Td><Badge colorScheme={movement.movementType === "REVERSAL" ? "red" : "green"}>{movement.movementType}</Badge></Td><Td isNumeric>{formatMoney(movement.amount)}</Td><Td>{movement.reversesReference || "-"}</Td></Tr>)}</Tbody>
+          </Table></TableContainer></Box> : null}
       </Box>
 
       {canLock && periodData?.status === "Locked" ? (

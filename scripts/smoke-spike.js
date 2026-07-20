@@ -2,6 +2,7 @@ const { spawn } = require("node:child_process");
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const dotenv = require("dotenv");
+const ExcelJS = require("exceljs");
 
 const port = String(4300 + Math.floor(Math.random() * 500));
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -706,6 +707,98 @@ async function run() {
       body: JSON.stringify({ code: "TEST-CC", name: "Test Cost Center", type: "Other", summoColumn: "Other", status: "Active" })
     });
     if (!adminCostCenterCreate.ok) throw new Error("Admin should maintain cost-center definitions.");
+
+    const summoPeriod = new Date().toISOString().slice(0, 7);
+    const summoDate = new Date().toISOString().slice(0, 10);
+    const createAndFinalizeSystemCharge = async (costCenterCode, amount, referenceNo) => {
+      const draftResponse = await fetch(`${baseUrl}/api/member-charge-batches`, {
+        method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+        body: JSON.stringify({ costCenterCode, transactionDate: summoDate, entries: [
+          { memberNo: "M-000482", amount, referenceNo, remarks: "SUMMO system-source smoke check" }
+        ] })
+      });
+      const draftBody = await draftResponse.json();
+      if (!draftResponse.ok) throw new Error(`Could not create ${costCenterCode} SUMMO source batch: ${draftBody.error}`);
+      const finalizeResponse = await fetch(`${baseUrl}/api/member-charge-batches/${draftBody.batch.batchNo}/finalize`, {
+        method: "POST", headers: { Cookie: tellerCookie }
+      });
+      const finalizeBody = await finalizeResponse.json();
+      if (!finalizeResponse.ok) throw new Error(`Could not finalize ${costCenterCode} SUMMO source batch: ${finalizeBody.error}`);
+      return finalizeBody.movements.find((movement) => movement.movementType === "Charge");
+    };
+    const canteenSummoMovement = await createAndFinalizeSystemCharge("C1", 120, "SUMMO-C1-SMOKE");
+    const wrsSummoMovement = await createAndFinalizeSystemCharge("WRS", 80, "SUMMO-WRS-SMOKE");
+    if (canteenSummoMovement?.summoColumn !== "Canteen" || wrsSummoMovement?.summoColumn !== "WRS") {
+      throw new Error("Finalized cost-center movements should snapshot their SUMMO column mapping.");
+    }
+
+    const templateResponse = await fetch(`${baseUrl}/api/reports/summo/template?period=${summoPeriod}`, {
+      headers: { Cookie: adminCookie }
+    });
+    const openingWorkbook = new ExcelJS.Workbook();
+    await openingWorkbook.xlsx.load(await templateResponse.arrayBuffer());
+    const openingSheet = openingWorkbook.getWorksheet("Movements");
+    openingSheet.getCell("B2").value = "Maria L. Santos";
+    openingSheet.getCell("C2").value = "M-000482";
+    openingSheet.getCell("D2").value = summoDate;
+    openingSheet.getCell("E2").value = "Opening Previous Balance";
+    openingSheet.getCell("H2").value = `SUMMO-OPEN-${summoPeriod}`;
+    openingSheet.getCell("I2").value = 10;
+    const openingForm = new FormData();
+    openingForm.set("period", summoPeriod);
+    openingForm.set("sourceLabel", "SUMMO system integration smoke opening");
+    openingForm.set("workbook", new Blob([await openingWorkbook.xlsx.writeBuffer()]), "summo-opening.xlsx");
+    const importResponse = await fetch(`${baseUrl}/api/reports/summo/imports`, {
+      method: "POST", headers: { Cookie: adminCookie }, body: openingForm
+    });
+    const importBody = await importResponse.json();
+    if (!importResponse.ok || importBody.batch.issueRows) {
+      throw new Error(`SUMMO opening import should stage cleanly: ${importBody.error || JSON.stringify(importBody.batch)}`);
+    }
+    const finalizeImportResponse = await fetch(`${baseUrl}/api/reports/summo/imports/${importBody.batch.importNo}/finalize`, {
+      method: "POST", headers: { Cookie: adminCookie }
+    });
+    if (!finalizeImportResponse.ok) throw new Error("SUMMO opening import should finalize.");
+
+    const refreshSummoResponse = await fetch(`${baseUrl}/api/reports/summo/periods/${summoPeriod}/refresh`, {
+      method: "POST", headers: { Cookie: adminCookie }
+    });
+    const refreshSummoBody = await refreshSummoResponse.json();
+    const mariaSummoRow = refreshSummoBody.snapshot?.rows?.find((row) => row.memberNo === "M-000482");
+    if (!refreshSummoResponse.ok || mariaSummoRow?.canteen !== 120 || mariaSummoRow?.wrs !== 80 ||
+      refreshSummoBody.snapshot?.sourceSummary?.systemMovementCount !== 2 ||
+      refreshSummoBody.snapshot?.systemMovementDetails?.length !== 2) {
+      throw new Error("SUMMO draft should include finalized Canteen/WRS system movements with drill-down details.");
+    }
+    const lockSummoResponse = await fetch(`${baseUrl}/api/reports/summo/periods/${summoPeriod}/lock`, {
+      method: "POST", headers: { Cookie: adminCookie }
+    });
+    if (!lockSummoResponse.ok) {
+      const lockBody = await lockSummoResponse.json();
+      throw new Error(`A valid SUMMO period should lock: ${lockBody.error}`);
+    }
+    const lockedDraftAttempt = await fetch(`${baseUrl}/api/member-charge-batches`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ costCenterCode: "C1", transactionDate: summoDate, entries: [
+        { memberNo: "M-000482", amount: 25, referenceNo: "SUMMO-LOCKED-SMOKE", remarks: "" }
+      ] })
+    });
+    if (lockedDraftAttempt.status !== 409) throw new Error("Locked SUMMO periods should reject new system payable inputs.");
+    const lockedReversalAttempt = await fetch(`${baseUrl}/api/member-charge-movements/${wrsSummoMovement.movementNo}/reverse`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ reason: "Locked-period smoke check" })
+    });
+    if (lockedReversalAttempt.status !== 409) throw new Error("Locked SUMMO periods should reject payable reversals.");
+    const reopenSummoResponse = await fetch(`${baseUrl}/api/reports/summo/periods/${summoPeriod}/reopen`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: JSON.stringify({ reason: "Continue cost-center smoke verification" })
+    });
+    if (!reopenSummoResponse.ok) throw new Error("Authorized reopen should release the period for corrections.");
+    const reopenedReversalResponse = await fetch(`${baseUrl}/api/member-charge-movements/${wrsSummoMovement.movementNo}/reverse`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ reason: "Valid correction after audited reopen" })
+    });
+    if (!reopenedReversalResponse.ok) throw new Error("Payable correction should proceed after the SUMMO period is reopened.");
 
     const membershipChargeAttempt = await fetch(`${baseUrl}/api/member-charge-batches`, {
       method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
