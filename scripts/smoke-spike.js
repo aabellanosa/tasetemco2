@@ -2138,8 +2138,11 @@ async function run() {
       throw new Error("Loan officer should not have member application create permission.");
     }
 
-    if (!loanOfficerBody.user.permissions.includes("members:previous-loans:edit")) {
-      throw new Error("Loan officer should be able to edit member previous loan records.");
+    if (
+      !loanOfficerBody.user.permissions.includes("members:previous-loans:edit") ||
+      !loanOfficerBody.user.permissions.includes("members:previous-loans:unlock-approve")
+    ) {
+      throw new Error("Loan officer should edit previous loans and decide unlock requests.");
     }
 
     const loanOfficerPreviousLoansUpdate = await fetch(
@@ -2186,11 +2189,55 @@ async function run() {
     if (
       !previousLoanStatement.ok ||
       previousLoanStatementBody.previousLoans.length !== 2 ||
+      previousLoanStatementBody.previousLoanControl.status !== "Locked" ||
+      previousLoanStatementBody.previousLoanControl.revision !== 1 ||
       !previousLoanStatementBody.previousLoans.some(
         (loan) => loan.loanLabel === "Salary Loan" && loan.outstandingBalance === 2500.5
       )
     ) {
       throw new Error("Member statement should expose previous loan rows.");
+    }
+
+    const lockedPreviousLoanUpdate = await fetch(
+      `${baseUrl}/api/members/${approvalBody.member.id}/previous-loans`,
+      { method: "PUT", headers: { "Content-Type": "application/json", Cookie: loanOfficerCookie },
+        body: JSON.stringify({ previousLoans: [] }) }
+    );
+    if (lockedPreviousLoanUpdate.status !== 409) {
+      throw new Error("A saved previous-loan set should be immutable while locked.");
+    }
+
+    const unlockRequestResponse = await fetch(
+      `${baseUrl}/api/members/${approvalBody.member.id}/previous-loans/unlock-requests`,
+      { method: "POST", headers: { "Content-Type": "application/json", Cookie: loanOfficerCookie },
+        body: JSON.stringify({ reason: "Correct balance after source-document review" }) }
+    );
+    const unlockRequestBody = await unlockRequestResponse.json();
+    const pendingUnlockRequest = unlockRequestBody.unlockRequests?.find((item) => item.status === "Pending");
+    if (!unlockRequestResponse.ok || !pendingUnlockRequest) {
+      throw new Error("An authorized user should create a reasoned previous-loan unlock request.");
+    }
+
+    const unlockDecisionResponse = await fetch(
+      `${baseUrl}/api/members/${approvalBody.member.id}/previous-loans/unlock-requests/${pendingUnlockRequest.requestNo}/decision`,
+      { method: "POST", headers: { "Content-Type": "application/json", Cookie: loanOfficerCookie },
+        body: JSON.stringify({ decision: "Approved", remarks: "Matched against signed loan ledger" }) }
+    );
+    const unlockDecisionBody = await unlockDecisionResponse.json();
+    if (!unlockDecisionResponse.ok || unlockDecisionBody.control.status !== "Unlocked") {
+      throw new Error("Loan Officer approval should open one previous-loan edit window.");
+    }
+
+    const revisedPreviousLoanResponse = await fetch(
+      `${baseUrl}/api/members/${approvalBody.member.id}/previous-loans`,
+      { method: "PUT", headers: { "Content-Type": "application/json", Cookie: loanOfficerCookie },
+        body: JSON.stringify({ previousLoans: [{ loanLabel: "Salary Loan", applicationDate: "2025-01-15",
+          outstandingBalance: 2400.5, notes: "Corrected from signed ledger" }] }) }
+    );
+    const revisedPreviousLoanBody = await revisedPreviousLoanResponse.json();
+    if (!revisedPreviousLoanResponse.ok || revisedPreviousLoanBody.control.status !== "Locked" ||
+      revisedPreviousLoanBody.control.revision !== 2 || revisedPreviousLoanBody.unlockRequests[0].status !== "Approved") {
+      throw new Error("Saving an unlocked previous-loan revision should immediately lock it with an audit trail.");
     }
 
     const forbiddenCreate = await fetch(`${baseUrl}/api/member-applications`, {

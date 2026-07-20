@@ -95,6 +95,7 @@ export const rolePermissions = {
     "members:view",
     "members:profile:edit",
     "members:previous-loans:edit",
+    "members:previous-loans:unlock-request",
     "members:applications:view",
     "members:applications:create",
     "members:applications:approve",
@@ -154,6 +155,8 @@ export const rolePermissions = {
   "Loan Officer": [
     "members:view",
     "members:previous-loans:edit",
+    "members:previous-loans:unlock-request",
+    "members:previous-loans:unlock-approve",
     "loans:products:view",
     "loans:applications:view",
     "loans:applications:create",
@@ -189,6 +192,7 @@ export const rolePermissions = {
     "members:view",
     "members:profile:edit",
     "members:previous-loans:edit",
+    "members:previous-loans:unlock-request",
     "members:applications:view",
     "members:applications:create"
   ],
@@ -553,6 +557,8 @@ export const loanApplications = [
 
 export const loanDocumentForms = [];
 export const memberPreviousLoans = [];
+export const memberPreviousLoanControls = [];
+export const memberPreviousLoanUnlockRequests = [];
 
 export const loans = [
   {

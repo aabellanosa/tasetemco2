@@ -22,7 +22,9 @@ import {
   memberApplications,
   memberImportBatches,
   memberImportRows,
+  memberPreviousLoanControls,
   memberPreviousLoans,
+  memberPreviousLoanUnlockRequests,
   members,
   openingBalanceImportBatches,
   openingBalanceImportRows,
@@ -155,6 +157,8 @@ const persistedTables = [
   "loan_products",
   "member_import_rows",
   "member_import_batches",
+  "member_previous_loan_unlock_requests",
+  "member_previous_loan_controls",
   "member_previous_loans",
   "member_applications",
   "members",
@@ -166,6 +170,10 @@ const requiredSchemaColumns = {
   summo_import_rows: ["import_no", "member_no", "movement_type", "amount", "row_status"],
   summo_periods: ["report_period", "cluster_name", "status", "snapshot"],
   users: ["additional_roles"],
+  member_previous_loan_controls: ["member_no", "status", "revision", "locked_by", "locked_at"],
+  member_previous_loan_unlock_requests: [
+    "request_no", "member_no", "reason", "status", "requested_by", "requested_at", "decided_by", "decided_at"
+  ],
   members: [
     "contact_number",
     "address",
@@ -3515,6 +3523,180 @@ async function listMemberPreviousLoans(memberId) {
   return rows.map(mapMemberPreviousLoan);
 }
 
+function mapPreviousLoanControl(row, hasPreviousLoans = false) {
+  if (!row) {
+    return {
+      memberNo: "",
+      status: hasPreviousLoans ? "Locked" : "Not Set",
+      revision: hasPreviousLoans ? 1 : 0,
+      lockedBy: hasPreviousLoans ? "migration" : "",
+      lockedAt: "",
+      unlockedBy: "",
+      unlockedAt: "",
+      approvedRequestNo: ""
+    };
+  }
+
+  return {
+    memberNo: row.memberNo || "",
+    status: row.status || "Locked",
+    revision: Number(row.revision || 0),
+    lockedBy: row.lockedBy || "",
+    lockedAt: row.lockedAt || "",
+    unlockedBy: row.unlockedBy || "",
+    unlockedAt: row.unlockedAt || "",
+    approvedRequestNo: row.approvedRequestNo || ""
+  };
+}
+
+function mapPreviousLoanUnlockRequest(row) {
+  return {
+    requestNo: row.requestNo,
+    memberNo: row.memberNo,
+    reason: row.reason || "",
+    status: row.status || "Pending",
+    requestedBy: row.requestedBy || "",
+    requestedAt: row.requestedAt || "",
+    decidedBy: row.decidedBy || "",
+    decidedAt: row.decidedAt || "",
+    decisionRemarks: row.decisionRemarks || ""
+  };
+}
+
+async function getMemberPreviousLoanState(memberId) {
+  const db = await getPool();
+  const previousLoans = await listMemberPreviousLoans(memberId);
+
+  if (!db) {
+    const control = memberPreviousLoanControls.find((item) => item.memberNo === memberId);
+    return {
+      control: { ...mapPreviousLoanControl(control, previousLoans.length > 0), memberNo: memberId },
+      unlockRequests: memberPreviousLoanUnlockRequests
+        .filter((item) => item.memberNo === memberId)
+        .sort((left, right) => String(right.requestedAt).localeCompare(String(left.requestedAt)))
+        .map(mapPreviousLoanUnlockRequest)
+    };
+  }
+
+  const [controlRows] = await db.execute(
+    `SELECT member_no AS memberNo, status, revision, locked_by AS lockedBy, locked_at AS lockedAt,
+            unlocked_by AS unlockedBy, unlocked_at AS unlockedAt,
+            approved_request_no AS approvedRequestNo
+     FROM member_previous_loan_controls WHERE member_no = ? LIMIT 1`,
+    [memberId]
+  );
+  const [requestRows] = await db.execute(
+    `SELECT request_no AS requestNo, member_no AS memberNo, reason, status,
+            requested_by AS requestedBy, requested_at AS requestedAt,
+            decided_by AS decidedBy, decided_at AS decidedAt, decision_remarks AS decisionRemarks
+     FROM member_previous_loan_unlock_requests WHERE member_no = ?
+     ORDER BY requested_at DESC, id DESC`,
+    [memberId]
+  );
+  return {
+    control: { ...mapPreviousLoanControl(controlRows[0], previousLoans.length > 0), memberNo: memberId },
+    unlockRequests: requestRows.map(mapPreviousLoanUnlockRequest)
+  };
+}
+
+function nextPreviousLoanUnlockRequestNo() {
+  const year = new Date().getFullYear();
+  return `PLU-${year}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
+async function requestPreviousLoanUnlock(memberId, reason, user) {
+  const member = (await listMembers()).find((item) => item.id === memberId);
+  if (!member) return { error: "Member was not found.", statusCode: 404 };
+  const cleanedReason = String(reason || "").trim();
+  if (!cleanedReason) return { error: "An unlock reason is required.", statusCode: 400 };
+  const state = await getMemberPreviousLoanState(memberId);
+  if (state.control.status !== "Locked") {
+    return { error: "Previous loans are not currently locked.", statusCode: 409 };
+  }
+  if (state.unlockRequests.some((item) => item.status === "Pending")) {
+    return { error: "An unlock request is already pending.", statusCode: 409 };
+  }
+
+  const db = await getPool();
+  const now = new Date().toISOString();
+  const requestNo = nextPreviousLoanUnlockRequestNo();
+  if (db) {
+    await db.execute(
+      `INSERT INTO member_previous_loan_unlock_requests
+       (request_no, member_no, reason, status, requested_by) VALUES (?, ?, ?, 'Pending', ?)`,
+      [requestNo, memberId, cleanedReason, user.username]
+    );
+  } else {
+    memberPreviousLoanUnlockRequests.push({
+      requestNo, memberNo: memberId, reason: cleanedReason, status: "Pending",
+      requestedBy: user.username, requestedAt: now, decidedBy: "", decidedAt: "", decisionRemarks: ""
+    });
+  }
+  return getMemberPreviousLoanState(memberId);
+}
+
+async function decidePreviousLoanUnlock(memberId, requestNo, decision, remarks, user) {
+  const normalizedDecision = String(decision || "").trim();
+  const cleanedRemarks = String(remarks || "").trim();
+  if (!["Approved", "Rejected"].includes(normalizedDecision)) {
+    return { error: "Decision must be Approved or Rejected.", statusCode: 400 };
+  }
+  if (!cleanedRemarks) return { error: "Decision remarks are required.", statusCode: 400 };
+  const db = await getPool();
+  const now = new Date().toISOString();
+
+  if (!db) {
+    const request = memberPreviousLoanUnlockRequests.find(
+      (item) => item.memberNo === memberId && item.requestNo === requestNo
+    );
+    if (!request) return { error: "Unlock request was not found.", statusCode: 404 };
+    if (request.status !== "Pending") return { error: "Unlock request was already decided.", statusCode: 409 };
+    Object.assign(request, { status: normalizedDecision, decidedBy: user.username, decidedAt: now, decisionRemarks: cleanedRemarks });
+    if (normalizedDecision === "Approved") {
+      let control = memberPreviousLoanControls.find((item) => item.memberNo === memberId);
+      if (!control) {
+        control = { memberNo: memberId, revision: 1, lockedBy: "migration", lockedAt: "" };
+        memberPreviousLoanControls.push(control);
+      }
+      Object.assign(control, { status: "Unlocked", unlockedBy: user.username, unlockedAt: now, approvedRequestNo: requestNo });
+    }
+    return getMemberPreviousLoanState(memberId);
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT status FROM member_previous_loan_unlock_requests
+       WHERE member_no = ? AND request_no = ? FOR UPDATE`, [memberId, requestNo]
+    );
+    if (!rows[0]) { await connection.rollback(); return { error: "Unlock request was not found.", statusCode: 404 }; }
+    if (rows[0].status !== "Pending") { await connection.rollback(); return { error: "Unlock request was already decided.", statusCode: 409 }; }
+    await connection.execute(
+      `UPDATE member_previous_loan_unlock_requests
+       SET status = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP, decision_remarks = ?
+       WHERE member_no = ? AND request_no = ?`,
+      [normalizedDecision, user.username, cleanedRemarks, memberId, requestNo]
+    );
+    if (normalizedDecision === "Approved") {
+      await connection.execute(
+        `INSERT INTO member_previous_loan_controls
+         (member_no, status, revision, locked_by, locked_at, unlocked_by, unlocked_at, approved_request_no)
+         VALUES (?, 'Unlocked', 1, 'migration', NULL, ?, CURRENT_TIMESTAMP, ?)
+         ON CONFLICT (member_no) DO UPDATE SET status = 'Unlocked', unlocked_by = EXCLUDED.unlocked_by,
+           unlocked_at = CURRENT_TIMESTAMP, approved_request_no = EXCLUDED.approved_request_no,
+           updated_at = CURRENT_TIMESTAMP`,
+        [memberId, user.username, requestNo]
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally { connection.release(); }
+  return getMemberPreviousLoanState(memberId);
+}
+
 async function replaceMemberPreviousLoans(memberId, rows, user) {
   const memberRows = await listMembers();
   const member = memberRows.find((item) => item.id === memberId);
@@ -3527,6 +3709,11 @@ async function replaceMemberPreviousLoans(memberId, rows, user) {
 
   if (validation.error) {
     return { error: validation.error, statusCode: 400 };
+  }
+
+  const state = await getMemberPreviousLoanState(memberId);
+  if (state.control.status === "Locked") {
+    return { error: "Previous loans are locked. An approved unlock request is required before editing.", statusCode: 409 };
   }
 
   const db = await getPool();
@@ -3552,8 +3739,19 @@ async function replaceMemberPreviousLoans(memberId, rows, user) {
       });
     }
 
+    let control = memberPreviousLoanControls.find((item) => item.memberNo === memberId);
+    if (!control) {
+      control = { memberNo: memberId };
+      memberPreviousLoanControls.push(control);
+    }
+    Object.assign(control, {
+      status: "Locked", revision: Number(state.control.revision || 0) + 1,
+      lockedBy: user.username, lockedAt: now, unlockedBy: "", unlockedAt: ""
+    });
+
     return {
       previousLoans: await listMemberPreviousLoans(memberId),
+      ...(await getMemberPreviousLoanState(memberId)),
       totalPreviousLoanBalance: validation.value.reduce(
         (total, row) => addMoney(total, row.outstandingBalance),
         0
@@ -3564,6 +3762,17 @@ async function replaceMemberPreviousLoans(memberId, rows, user) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    await connection.execute(`SELECT member_no FROM members WHERE member_no = ? FOR UPDATE`, [memberId]);
+    const [controlRows] = await connection.execute(
+      `SELECT status, revision FROM member_previous_loan_controls WHERE member_no = ? FOR UPDATE`,
+      [memberId]
+    );
+    const transactionControl = controlRows[0];
+    if (transactionControl?.status === "Locked") {
+      await connection.rollback();
+      return { error: "Previous loans are locked. An approved unlock request is required before editing.", statusCode: 409 };
+    }
+    const nextRevision = Number(transactionControl?.revision || state.control.revision || 0) + 1;
     await connection.execute(`DELETE FROM member_previous_loans WHERE member_no = ?`, [memberId]);
 
     for (const row of validation.value) {
@@ -3583,6 +3792,16 @@ async function replaceMemberPreviousLoans(memberId, rows, user) {
       );
     }
 
+    await connection.execute(
+      `INSERT INTO member_previous_loan_controls
+       (member_no, status, revision, locked_by, locked_at, unlocked_by, unlocked_at)
+       VALUES (?, 'Locked', ?, ?, CURRENT_TIMESTAMP, '', NULL)
+       ON CONFLICT (member_no) DO UPDATE SET status = 'Locked', revision = EXCLUDED.revision,
+         locked_by = EXCLUDED.locked_by, locked_at = CURRENT_TIMESTAMP, unlocked_by = '',
+         unlocked_at = NULL, updated_at = CURRENT_TIMESTAMP`,
+      [memberId, nextRevision, user.username]
+    );
+
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -3594,6 +3813,7 @@ async function replaceMemberPreviousLoans(memberId, rows, user) {
   const previousLoans = await listMemberPreviousLoans(memberId);
   return {
     previousLoans,
+    ...(await getMemberPreviousLoanState(memberId)),
     totalPreviousLoanBalance: previousLoans.reduce((total, row) => addMoney(total, row.outstandingBalance), 0)
   };
 }
@@ -6878,7 +7098,9 @@ async function getMemberStatement(memberId) {
       ));
 
     const previousLoans = await listMemberPreviousLoans(member.id);
-    return { member, previousLoans, transactions };
+    const previousLoanState = await getMemberPreviousLoanState(member.id);
+    return { member, previousLoans, previousLoanControl: previousLoanState.control,
+      previousLoanUnlockRequests: previousLoanState.unlockRequests, transactions };
   }
 
   const [memberRows] = await db.execute(
@@ -6966,9 +7188,12 @@ async function getMemberStatement(memberId) {
       createdAt: row.finalizedAt
     }));
 
+  const previousLoanState = await getMemberPreviousLoanState(memberId);
   return {
     member,
     previousLoans: await listMemberPreviousLoans(memberId),
+    previousLoanControl: previousLoanState.control,
+    previousLoanUnlockRequests: previousLoanState.unlockRequests,
     transactions: [
       ...openingBalanceRows,
       ...initialPaymentRows,
@@ -9932,6 +10157,30 @@ app.put("/api/members/:memberId/previous-loans", async (request, response) => {
     return;
   }
 
+  response.json(result);
+});
+
+app.post("/api/members/:memberId/previous-loans/unlock-requests", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "members:previous-loans:unlock-request")) {
+    response.status(403).json({ error: "Access denied" }); return;
+  }
+  const result = await requestPreviousLoanUnlock(request.params.memberId, request.body.reason, user);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.status(201).json(result);
+});
+
+app.post("/api/members/:memberId/previous-loans/unlock-requests/:requestNo/decision", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "members:previous-loans:unlock-approve")) {
+    response.status(403).json({ error: "Only a Loan Officer may decide unlock requests." }); return;
+  }
+  const result = await decidePreviousLoanUnlock(
+    request.params.memberId, request.params.requestNo, request.body.decision, request.body.remarks, user
+  );
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
   response.json(result);
 });
 

@@ -2232,6 +2232,8 @@ function Members({ user }) {
     status: "Active"
   });
   const [previousLoanRows, setPreviousLoanRows] = useState([]);
+  const [previousLoanUnlockReason, setPreviousLoanUnlockReason] = useState("");
+  const [previousLoanDecisionRemarks, setPreviousLoanDecisionRemarks] = useState("");
   const [selectedTellerMemberId, setSelectedTellerMemberId] = useState("");
   const [tellerMemberSearch, setTellerMemberSearch] = useState("");
   const [tellerTransactionType, setTellerTransactionType] = useState("initial-payment");
@@ -2244,6 +2246,8 @@ function Members({ user }) {
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canEditMemberProfile = user.permissions.includes("members:profile:edit");
   const canEditPreviousLoans = user.permissions.includes("members:previous-loans:edit");
+  const canRequestPreviousLoanUnlock = user.permissions.includes("members:previous-loans:unlock-request");
+  const canApprovePreviousLoanUnlock = user.permissions.includes("members:previous-loans:unlock-approve");
   const canViewApplications = user.permissions.includes("members:applications:view");
   const canApproveApplication = user.permissions.includes("members:applications:approve");
   const canViewInitialPayments = user.permissions.includes("members:initial-payments:view");
@@ -2360,6 +2364,10 @@ function Members({ user }) {
   const statementPreviousLoanTotal = statement
     ? previousLoanRows.reduce((total, row) => addMoney(total, row.outstandingBalance), 0)
     : 0;
+  const previousLoanControl = statement?.previousLoanControl || { status: "Not Set", revision: 0 };
+  const previousLoanUnlockRequests = statement?.previousLoanUnlockRequests || [];
+  const pendingPreviousLoanUnlockRequest = previousLoanUnlockRequests.find((item) => item.status === "Pending");
+  const canModifyPreviousLoans = canEditPreviousLoans && previousLoanControl.status !== "Locked";
 
   const loadMembersWorkflow = useCallback(
     async ({ silent = false } = {}) => {
@@ -2669,6 +2677,8 @@ function Members({ user }) {
           notes: row.notes || ""
         }))
       );
+      setPreviousLoanUnlockReason("");
+      setPreviousLoanDecisionRemarks("");
     } catch (statementError) {
       setError(statementError.message);
     }
@@ -2741,7 +2751,9 @@ function Members({ user }) {
       });
       setStatement((current) => ({
         ...current,
-        previousLoans: data.previousLoans
+        previousLoans: data.previousLoans,
+        previousLoanControl: data.control,
+        previousLoanUnlockRequests: data.unlockRequests
       }));
       setPreviousLoanRows(
         data.previousLoans.map((row) => ({
@@ -2757,6 +2769,35 @@ function Members({ user }) {
     } catch (previousLoanError) {
       setError(previousLoanError.message);
     }
+  }
+
+  async function requestPreviousLoanUnlock() {
+    if (!statement) return;
+    setError(""); setMessage("");
+    try {
+      const data = await api(`/api/members/${statement.member.id}/previous-loans/unlock-requests`, {
+        method: "POST", body: JSON.stringify({ reason: previousLoanUnlockReason })
+      });
+      setStatement((current) => ({ ...current, previousLoanControl: data.control,
+        previousLoanUnlockRequests: data.unlockRequests }));
+      setPreviousLoanUnlockReason("");
+      setMessage("Unlock request submitted for Loan Officer approval.");
+    } catch (unlockError) { setError(unlockError.message); }
+  }
+
+  async function decidePreviousLoanUnlock(decision) {
+    if (!statement || !pendingPreviousLoanUnlockRequest) return;
+    setError(""); setMessage("");
+    try {
+      const data = await api(
+        `/api/members/${statement.member.id}/previous-loans/unlock-requests/${pendingPreviousLoanUnlockRequest.requestNo}/decision`,
+        { method: "POST", body: JSON.stringify({ decision, remarks: previousLoanDecisionRemarks }) }
+      );
+      setStatement((current) => ({ ...current, previousLoanControl: data.control,
+        previousLoanUnlockRequests: data.unlockRequests }));
+      setPreviousLoanDecisionRemarks("");
+      setMessage(decision === "Approved" ? "Previous loans unlocked for one revision." : "Unlock request rejected.");
+    } catch (decisionError) { setError(decisionError.message); }
   }
 
   return (
@@ -3515,8 +3556,8 @@ function Members({ user }) {
           </Box>
 
           <Box
-            as={canEditPreviousLoans ? "form" : "div"}
-            onSubmit={canEditPreviousLoans ? submitPreviousLoans : undefined}
+            as={canModifyPreviousLoans ? "form" : "div"}
+            onSubmit={canModifyPreviousLoans ? submitPreviousLoans : undefined}
             borderWidth="1px"
             borderRadius="md"
             p={4}
@@ -3529,7 +3570,7 @@ function Members({ user }) {
                   Historical loan balances captured during member setup. These do not create new cash releases.
                 </Text>
               </Box>
-              {canEditPreviousLoans ? (
+              {canModifyPreviousLoans ? (
                 <HStack>
                   <Button type="button" size="sm" variant="outline" onClick={addPreviousLoanRow}>
                     Add Loan
@@ -3539,9 +3580,51 @@ function Members({ user }) {
                   </Button>
                 </HStack>
               ) : (
-                <Badge colorScheme="gray">Read only</Badge>
+                <HStack>
+                  <Badge colorScheme={previousLoanControl.status === "Locked" ? "red" : "gray"}>
+                    {previousLoanControl.status}
+                  </Badge>
+                  {previousLoanControl.revision ? <Badge>Revision {previousLoanControl.revision}</Badge> : null}
+                </HStack>
               )}
             </Flex>
+            {previousLoanControl.status === "Locked" ? (
+              <Box bg="orange.50" borderWidth="1px" borderColor="orange.200" borderRadius="md" p={3} mb={4}>
+                <Text fontSize="sm">
+                  Locked by {previousLoanControl.lockedBy || "system"} on {formatDateTime(previousLoanControl.lockedAt)}.
+                  An approved unlock permits exactly one save, which creates the next locked revision.
+                </Text>
+                {pendingPreviousLoanUnlockRequest ? (
+                  <Text mt={2} fontSize="sm" fontWeight="bold">
+                    Pending {pendingPreviousLoanUnlockRequest.requestNo}: {pendingPreviousLoanUnlockRequest.reason}
+                  </Text>
+                ) : canRequestPreviousLoanUnlock ? (
+                  <HStack mt={3} align="flex-end">
+                    <FormControl>
+                      <FormLabel fontSize="sm">Reason for unlock</FormLabel>
+                      <Input value={previousLoanUnlockReason}
+                        onChange={(event) => setPreviousLoanUnlockReason(event.target.value)} />
+                    </FormControl>
+                    <Button type="button" colorScheme="orange" onClick={requestPreviousLoanUnlock}>Request Unlock</Button>
+                  </HStack>
+                ) : null}
+                {pendingPreviousLoanUnlockRequest && canApprovePreviousLoanUnlock ? (
+                  <HStack mt={3} align="flex-end">
+                    <FormControl>
+                      <FormLabel fontSize="sm">Loan Officer decision remarks</FormLabel>
+                      <Input value={previousLoanDecisionRemarks}
+                        onChange={(event) => setPreviousLoanDecisionRemarks(event.target.value)} />
+                    </FormControl>
+                    <Button type="button" colorScheme="green" onClick={() => decidePreviousLoanUnlock("Approved")}>Approve</Button>
+                    <Button type="button" colorScheme="red" variant="outline" onClick={() => decidePreviousLoanUnlock("Rejected")}>Reject</Button>
+                  </HStack>
+                ) : null}
+              </Box>
+            ) : previousLoanControl.status === "Unlocked" ? (
+              <Text bg="green.50" borderRadius="md" p={3} mb={4} fontSize="sm">
+                Unlocked by {previousLoanControl.unlockedBy} on {formatDateTime(previousLoanControl.unlockedAt)}. Saving will lock it again.
+              </Text>
+            ) : null}
             <TableContainer>
               <Table size="sm">
                 <Thead>
@@ -3550,14 +3633,14 @@ function Members({ user }) {
                     <Th>Application Date</Th>
                     <Th isNumeric>Outstanding Balance</Th>
                     <Th>Notes</Th>
-                    {canEditPreviousLoans ? <Th>Action</Th> : null}
+                    {canModifyPreviousLoans ? <Th>Action</Th> : null}
                   </Tr>
                 </Thead>
                 <Tbody>
                   {previousLoanRows.map((row, index) => (
                     <Tr key={row.id || index}>
                       <Td minW="180px">
-                        {canEditPreviousLoans ? (
+                        {canModifyPreviousLoans ? (
                           <Input
                             size="sm"
                             value={row.loanLabel}
@@ -3569,7 +3652,7 @@ function Members({ user }) {
                         )}
                       </Td>
                       <Td minW="150px">
-                        {canEditPreviousLoans ? (
+                        {canModifyPreviousLoans ? (
                           <Input
                             size="sm"
                             type="date"
@@ -3581,7 +3664,7 @@ function Members({ user }) {
                         )}
                       </Td>
                       <Td isNumeric minW="160px">
-                        {canEditPreviousLoans ? (
+                        {canModifyPreviousLoans ? (
                           <NumberInput
                             min={0}
                             precision={2}
@@ -3598,7 +3681,7 @@ function Members({ user }) {
                         )}
                       </Td>
                       <Td minW="220px">
-                        {canEditPreviousLoans ? (
+                        {canModifyPreviousLoans ? (
                           <Input
                             size="sm"
                             value={row.notes}
@@ -3609,7 +3692,7 @@ function Members({ user }) {
                           row.notes || "-"
                         )}
                       </Td>
-                      {canEditPreviousLoans ? (
+                      {canModifyPreviousLoans ? (
                         <Td>
                           <Button type="button" size="sm" variant="outline" onClick={() => removePreviousLoanRow(index)}>
                             Remove
@@ -3620,7 +3703,7 @@ function Members({ user }) {
                   ))}
                   {previousLoanRows.length === 0 ? (
                     <Tr>
-                      <Td colSpan={canEditPreviousLoans ? 5 : 4} color="gray.500">
+                      <Td colSpan={canModifyPreviousLoans ? 5 : 4} color="gray.500">
                         No previous loans recorded.
                       </Td>
                     </Tr>
@@ -3631,6 +3714,20 @@ function Members({ user }) {
             <Flex justify="flex-end" mt={3}>
               <Text fontWeight="bold">Total: {formatMoney(statementPreviousLoanTotal)}</Text>
             </Flex>
+            {previousLoanUnlockRequests.length ? (
+              <Box mt={5}>
+                <Heading size="xs" mb={2}>Unlock Audit Trail</Heading>
+                <TableContainer>
+                  <Table size="sm"><Thead><Tr><Th>Request</Th><Th>Reason</Th><Th>Requested</Th><Th>Status</Th><Th>Decision</Th></Tr></Thead>
+                    <Tbody>{previousLoanUnlockRequests.map((item) => (
+                      <Tr key={item.requestNo}><Td>{item.requestNo}</Td><Td>{item.reason}</Td>
+                        <Td>{item.requestedBy}<br />{formatDateTime(item.requestedAt)}</Td>
+                        <Td><Badge colorScheme={item.status === "Approved" ? "green" : item.status === "Rejected" ? "red" : "orange"}>{item.status}</Badge></Td>
+                        <Td>{item.decidedBy || "-"}<br />{item.decisionRemarks || "-"}<br />{formatDateTime(item.decidedAt)}</Td></Tr>
+                    ))}</Tbody></Table>
+                </TableContainer>
+              </Box>
+            ) : null}
           </Box>
 
           <TableContainer>
