@@ -151,7 +151,7 @@ The React/Postgres pivot uses action-level permissions, not just screen access. 
 | Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
 | Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No | No |
 
-Previous / Existing Loans are maintained separately from general member profile fields. `admin`, `membership`, and `loanofficer` can encode multiple historical loan rows with loan label, application date, outstanding balance, and notes. These setup balances do not create teller cash movement, loan release records, or ledger entries.
+Previous / Existing Loans are maintained separately from general member profile fields. `admin`, `membership`, and `loanofficer` can encode multiple historical rows. Labels are selected from active loan products; existing inactive or legacy labels remain visible as historical. The first save locks the set. Corrections require a reasoned unlock request and a Loan Officer decision with remarks; approval permits one save before the next revision locks again. The system retains the request, decision, actors, remarks, and timestamps. These setup balances do not create teller cash movement, loan release records, or ledger entries.
 
 The Members workflow auto-refreshes every 5 seconds for demo testing across browser profiles. Users can also click Refresh to pull the latest member applications, active members, and initial payment history.
 
@@ -165,7 +165,7 @@ The Auditor / Compliance Officer has read-only User / Security access. Auditor c
 
 Member Profile v1 expands member master data with contact number, address, birthdate, civil status, occupation/source of income, membership date, cluster/group, and status. `admin` and `membership` can update profile fields; other member-view roles can inspect them read-only. Share capital and savings balances stay read-only because they are derived from transactions.
 
-Previous / Existing Loans v1 replaces the single manual previous-loan amount with a normalized multi-row member detail table. Each row captures loan label, application date, outstanding balance, and notes. `admin`, `membership`, and `loanofficer` can maintain this loan-history section; Loan Officer receives this specific capability without receiving full member-profile edit access.
+Previous / Existing Loans v1 replaces the single manual previous-loan amount with a normalized multi-row member detail table. Each row captures an active-product label, application date, outstanding balance, and notes. `admin`, `membership`, and `loanofficer` can perform the initial capture; Loan Officer receives this capability without full member-profile edit access. Saved sets are immutable until a reasoned request is approved by a Loan Officer, and each approval allows exactly one revised save before relocking. Historical inactive labels remain readable.
 
 TASETEMCO Member Classification v1 makes cluster/group a controlled value instead of free text. Manual application/profile forms use a dropdown, member imports normalize case and spacing, and unknown classifications are flagged before import finalization. Approved values are `REGULAR MEMBERS CAPTURE`, `REGULAR MEMBERS NON CAPTURE`, `RETIREES`, `REGULAR MEMBERS LGU`, `COMMUNITY A MEMBERS`, and `COMMUNITY B MEMBERS`.
 
@@ -191,7 +191,7 @@ Opening Balance Accounting Entries v1d.2 creates one balanced journal when an op
 
 Opening Balance Visibility v1e adds finalized opening balances to each member statement with batch number, cutover date, source reference, amounts, and linked journal number. The Member Subsidiary Ledger separately shows opening share capital and opening savings beside normal transaction movements and current balances.
 
-Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. Manager, Loan Officer, Teller / Cashier, and Auditor have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, and Appliance Loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee. This spike adds the `loan_products` Postgres table, so run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying the app build.
+Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. Manager, Loan Officer, Teller / Cashier, Membership Officer, and Auditor have read-only product access. Membership Officer uses this access for the active-product previous-loan dropdown and cannot maintain product rules. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, and Appliance Loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee. This spike adds the `loan_products` Postgres table, so run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying the app build.
 
 | Loan Product Access | View | Create / Edit |
 | --- | --- | --- |
@@ -200,7 +200,7 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 | Loan Officer | Yes | No |
 | Teller / Cashier | Yes | No |
 | Auditor / Compliance Officer | Yes | No |
-| Membership Officer | No | No |
+| Membership Officer | Yes | No |
 
 Loan Application v1 adds persisted Draft and Submitted applications under a role-aware Loans workspace. The Loan Officer selects an active member and active loan product, enters the requested principal, term, purpose, application date, and internal collateral type, then saves a Draft. Collateral type is limited to `PDC` or `ATM Cards`, supports management review only, and is intentionally excluded from the printed loan application form. Product amount and term limits are enforced, and the product's rate, method, frequency, fees, penalties, and accounting mappings are snapshotted into the application.
 

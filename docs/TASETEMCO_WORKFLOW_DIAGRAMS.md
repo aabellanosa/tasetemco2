@@ -48,12 +48,31 @@ Member setup additions:
   Maintain profile and controlled member classification
 
 [Membership Officer, Loan Officer, or Admin]
-  Maintain previous/existing loan rows
-  (label, application date, balance, notes)
+  Select each label from Active Loan Products
+  Enter application date, balance, and notes
+        |
+        v
+(System) Save revision 1 and immediately lock the loan set
+        |
+        v
+[Membership Officer, Loan Officer, or Admin]
+  Submit a reasoned unlock request when correction is needed
+        |
+        v
+[Loan Officer] Approve or reject with decision remarks
+        |
+        +---- Rejected ----> (System) Keep loan set locked
+        |
+        +---- Approved ----> (System) Allow exactly one save
+                                      |
+                                      v
+                            Save next revision and lock again
 
 (System)
-  Treat previous-loan rows as setup/reference data only
-  Do not create cash movement or a new system loan
+  Retain request, decision, actor, remarks, and timestamps
+  Keep inactive historical labels visible until replaced
+  Treat rows as setup/reference data only; do not create
+  cash movement or a new system loan
 ```
 
 ## 2. Member Masterlist Import
@@ -360,9 +379,9 @@ Reopening a locked month also unlocks every later locked SUMMO month.
 ## 12. Current Role Separation Summary
 
 ```text
-Membership Officer  prepares member records
+Membership Officer  prepares member records and requests previous-loan unlocks
 System Administrator approves membership and decides submitted loans
-Loan Officer         prepares applications, documents, and computations
+Loan Officer         prepares loans and decides previous-loan unlock requests
 Bookkeeper           reviews/posts batches, prepares funding, and prepares SUMMO
 General Manager      approves teller funding and locks/reopens SUMMO periods
 Teller               receives/releases cash and acknowledges assigned funding

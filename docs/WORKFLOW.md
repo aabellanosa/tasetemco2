@@ -90,6 +90,7 @@ Typical access:
 - Create loan applications
 - View borrower profile and account history
 - Maintain previous / existing loan balances during client data setup
+- Approve or reject reasoned requests to unlock a saved previous-loan revision
 - Encode loan terms, collateral, co-makers, and amortization details
 - Recommend approval or rejection
 - Monitor delinquency and collection status
@@ -145,6 +146,7 @@ Typical access:
 - Encode member applications
 - Update member contact information
 - Capture membership classification and cluster/group
+- Select previous-loan labels from active loan products and request corrections when locked
 - Track member status
 
 Restrictions:
@@ -198,7 +200,7 @@ The React/Postgres pivot separates screen access from action access. A role may 
 | Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
 | Board / Read-Only Executive | No | No | No | No | No | No | No | No | No | No | No | No | No |
 
-Previous / Existing Loans are maintained separately from general member profile fields. System Administrator, Membership Officer, and Loan Officer can encode multiple historical loan rows with loan label, application date, outstanding balance, and notes. These setup balances do not create teller cash movement, loan release records, or ledger entries.
+Previous / Existing Loans are maintained separately from general member profile fields. System Administrator, Membership Officer, and Loan Officer can encode multiple historical rows with application date, outstanding balance, and notes. Loan labels are selected from active loan products; an inactive or legacy label already stored on a row remains visible as historical until changed. The first save immediately locks the set. A later correction requires a reasoned unlock request and a Loan Officer approval or rejection with remarks. Approval permits exactly one save, which creates the next revision and locks the set again. The request, decision, actors, remarks, and timestamps form the audit trail. These setup balances do not create teller cash movement, loan release records, or ledger entries.
 
 For demo testing across browser profiles, the Members workflow auto-refreshes every 5 seconds. The manual Refresh button pulls the latest member applications, active members, and initial payment history immediately.
 
@@ -230,7 +232,7 @@ Opening Balance Accounting Entries v1d.2 creates one balanced journal when an op
 
 Opening Balance Visibility v1e adds finalized opening balances to each member statement with batch number, cutover date, source reference, amounts, and linked journal number. The Member Subsidiary Ledger separately shows opening share capital and opening savings beside normal transaction movements and current balances.
 
-Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. The System Administrator can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. General Manager, Loan Officer, Teller / Cashier, and Auditor / Compliance Officer have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, and Appliance Loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee.
+Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. The System Administrator can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. General Manager, Loan Officer, Teller / Cashier, Membership Officer, and Auditor / Compliance Officer have read-only product access. Membership Officer uses this access to select active products as previous-loan labels and cannot maintain product rules. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, and Appliance Loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee.
 
 | Loan Product Access | View | Create / Edit |
 | --- | --- | --- |
@@ -239,7 +241,7 @@ Loan Product Foundation v1 replaces the Loans placeholder with persisted lending
 | Loan Officer | Yes | No |
 | Teller / Cashier | Yes | No |
 | Auditor / Compliance Officer | Yes | No |
-| Membership Officer | No | No |
+| Membership Officer | Yes | No |
 
 Loan Application v1 adds a separate Applications tab beside Loan Products. The Loan Officer selects an active member and active product, enters requested principal, term, purpose, application date, and internal collateral type, and saves a Draft. Collateral type is limited to `PDC` or `ATM Cards`, supports management review only, and is intentionally excluded from the printed loan application form. The system validates the amount and term against the selected product and snapshots the product rules into the application so later product edits do not silently change an existing request. Only the originating Loan Officer can edit or submit their Draft.
 
