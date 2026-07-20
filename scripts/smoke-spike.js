@@ -689,6 +689,68 @@ async function run() {
       throw new Error("Teller should be allowed to record initial member payments.");
     }
 
+    if (!tellerBody.user.permissions.includes("member-charges:encode")) {
+      throw new Error("Teller should own daily cost-center payable capture.");
+    }
+
+    const costCenterResponse = await fetch(`${baseUrl}/api/cost-centers`, { headers: { Cookie: tellerCookie } });
+    const costCenterRows = await costCenterResponse.json();
+    if (!costCenterResponse.ok || !costCenterRows.some((row) => row.code === "C1" && row.summoColumn === "Canteen") ||
+      !costCenterRows.some((row) => row.code === "C2" && row.summoColumn === "Canteen") ||
+      !costCenterRows.some((row) => row.code === "WRS" && row.summoColumn === "WRS")) {
+      throw new Error("Seeded cost centers should expose their future SUMMO mappings.");
+    }
+
+    const adminCostCenterCreate = await fetch(`${baseUrl}/api/cost-centers`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: JSON.stringify({ code: "TEST-CC", name: "Test Cost Center", type: "Other", summoColumn: "Other", status: "Active" })
+    });
+    if (!adminCostCenterCreate.ok) throw new Error("Admin should maintain cost-center definitions.");
+
+    const membershipChargeAttempt = await fetch(`${baseUrl}/api/member-charge-batches`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ costCenterCode: "C1", transactionDate: new Date().toISOString().slice(0, 10), entries: [
+        { memberNo: approvalBody.member.id, amount: 100, referenceNo: "C1-BLOCKED", remarks: "" }
+      ] })
+    });
+    if (membershipChargeAttempt.status !== 403) throw new Error("Membership Officer should not encode cost-center charges.");
+
+    const skippedDay = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const draftChargeResponse = await fetch(`${baseUrl}/api/member-charge-batches`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ costCenterCode: "C1", transactionDate: skippedDay, entries: [
+        { memberNo: approvalBody.member.id, amount: 125.5, referenceNo: "C1-SMOKE-001", remarks: "Skipped-day lunch charges" },
+        { memberNo: postImportApprovalBody.member.id, amount: 75, referenceNo: "C1-SMOKE-002", remarks: "" }
+      ] })
+    });
+    const draftChargeBody = await draftChargeResponse.json();
+    if (!draftChargeResponse.ok || draftChargeBody.batch.status !== "Draft" ||
+      draftChargeBody.batch.totalAmount !== 200.5 || draftChargeBody.entries.length !== 2) {
+      throw new Error("Teller should save a backdated multi-member payable batch as Draft.");
+    }
+
+    const duplicateChargeReference = await fetch(`${baseUrl}/api/member-charge-batches`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ costCenterCode: "C1", transactionDate: skippedDay, entries: [
+        { memberNo: approvalBody.member.id, amount: 50, referenceNo: "C1-SMOKE-001", remarks: "Duplicate source slip" }
+      ] })
+    });
+    if (duplicateChargeReference.status !== 409) {
+      throw new Error("Duplicate cost-center references for the same date should be rejected.");
+    }
+
+    const revisedChargeResponse = await fetch(`${baseUrl}/api/member-charge-batches/${draftChargeBody.batch.batchNo}`, {
+      method: "PUT", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ costCenterCode: "C2", transactionDate: skippedDay, entries: [
+        { memberNo: approvalBody.member.id, amount: 150, referenceNo: "C2-SMOKE-001", remarks: "Corrected source and amount" }
+      ] })
+    });
+    const revisedChargeBody = await revisedChargeResponse.json();
+    if (!revisedChargeResponse.ok || revisedChargeBody.batch.costCenterCode !== "C2" ||
+      revisedChargeBody.batch.totalAmount !== 150 || revisedChargeBody.entries.length !== 1) {
+      throw new Error("Creating Teller should be able to revise their Draft payable batch.");
+    }
+
     const initialPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

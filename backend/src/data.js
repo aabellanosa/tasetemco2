@@ -117,7 +117,11 @@ export const rolePermissions = {
     "loans:computations:view",
     "loans:releases:view",
     "loans:collections:view",
-    "teller-fundings:view"
+    "teller-fundings:view",
+    "cost-centers:view",
+    "cost-centers:manage",
+    "member-charges:view",
+    "member-charges:encode"
   ],
   "General Manager": [
     "members:view",
@@ -137,7 +141,9 @@ export const rolePermissions = {
     "loans:releases:view",
     "loans:collections:view",
     "teller-fundings:view",
-    "teller-fundings:approve"
+    "teller-fundings:approve",
+    "cost-centers:view",
+    "member-charges:view"
   ],
   "Accountant / Bookkeeper": [
     "ledger:view",
@@ -150,7 +156,9 @@ export const rolePermissions = {
     "reports:summo:prepare",
     "loans:collections:view",
     "teller-fundings:view",
-    "teller-fundings:prepare"
+    "teller-fundings:prepare",
+    "cost-centers:view",
+    "member-charges:view"
   ],
   "Loan Officer": [
     "members:view",
@@ -186,7 +194,10 @@ export const rolePermissions = {
     "loans:collections:view",
     "loans:collections:create",
     "teller-fundings:view",
-    "teller-fundings:acknowledge"
+    "teller-fundings:acknowledge",
+    "cost-centers:view",
+    "member-charges:view",
+    "member-charges:encode"
   ],
   "Membership Officer": [
     "members:view",
@@ -214,7 +225,9 @@ export const rolePermissions = {
     "loans:computations:view",
     "loans:releases:view",
     "loans:collections:view",
-    "teller-fundings:view"
+    "teller-fundings:view",
+    "cost-centers:view",
+    "member-charges:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
 };
@@ -560,6 +573,13 @@ export const loanDocumentForms = [];
 export const memberPreviousLoans = [];
 export const memberPreviousLoanControls = [];
 export const memberPreviousLoanUnlockRequests = [];
+export const costCenters = [
+  { code: "C1", name: "Canteen 1", type: "Canteen", summoColumn: "Canteen", status: "Active" },
+  { code: "C2", name: "Canteen 2", type: "Canteen", summoColumn: "Canteen", status: "Active" },
+  { code: "WRS", name: "Water Refilling Station", type: "Water Station", summoColumn: "WRS", status: "Active" }
+];
+export const memberChargeBatches = [];
+export const memberChargeEntries = [];
 
 export const loans = [
   {

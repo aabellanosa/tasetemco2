@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Accordion,
   AccordionButton,
@@ -28,6 +28,7 @@ import {
   ModalOverlay,
   NumberInput,
   NumberInputField,
+  Portal,
   Select,
   Stat,
   StatHelpText,
@@ -271,6 +272,72 @@ function filterMemberOptions(members, query, selectedMemberId = "") {
   }
 
   return filteredMembers;
+}
+
+function MemberCombobox({ members, value, onChange, placeholder = "Search member name or number", maxResults = 15 }) {
+  const selectedMember = members.find((member) => member.id === value);
+  const selectedLabel = selectedMember ? `${selectedMember.name} (${selectedMember.id})` : "";
+  const [query, setQuery] = useState(selectedLabel);
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const inputRef = useRef(null);
+  const matches = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized || (selectedMember && query === selectedLabel)) return members.slice(0, maxResults);
+    return members.filter((member) => `${member.name} ${member.id}`.toLowerCase().includes(normalized)).slice(0, maxResults);
+  }, [members, query, selectedLabel, selectedMember, maxResults]);
+
+  useEffect(() => {
+    setQuery(selectedLabel);
+  }, [selectedLabel]);
+
+  function selectMember(member) {
+    onChange(member.id);
+    setQuery(`${member.name} (${member.id})`);
+    setIsOpen(false);
+    setActiveIndex(0);
+  }
+
+  function openMenu() {
+    const rect = inputRef.current?.getBoundingClientRect();
+    if (rect) setMenuPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    setIsOpen(true);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault(); openMenu(); setActiveIndex((current) => Math.min(current + 1, matches.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault(); setActiveIndex((current) => Math.max(current - 1, 0));
+    } else if (event.key === "Enter" && isOpen && matches[activeIndex]) {
+      event.preventDefault(); selectMember(matches[activeIndex]);
+    } else if (event.key === "Escape") {
+      setIsOpen(false);
+    }
+  }
+
+  return <Box position="relative" minW={0}>
+    <Input ref={inputRef} size="sm" value={query} placeholder={placeholder} autoComplete="off"
+      role="combobox" aria-expanded={isOpen} aria-autocomplete="list"
+      onFocus={() => { openMenu(); setActiveIndex(0); }}
+      onBlur={() => { setIsOpen(false); if (!value) setQuery(""); else setQuery(selectedLabel); }}
+      onKeyDown={handleKeyDown}
+      onChange={(event) => { setQuery(event.target.value); onChange(""); openMenu(); setActiveIndex(0); }} />
+    {isOpen && menuPosition ? <Portal><Box position="fixed" top={`${menuPosition.top}px`} left={`${menuPosition.left}px`}
+      width={`${menuPosition.width}px`} zIndex={1500} bg="white"
+      borderWidth="1px" borderRadius="md" boxShadow="lg" maxH="260px" overflowY="auto" role="listbox">
+      {matches.map((member, index) => <Box key={member.id} role="option" aria-selected={index === activeIndex}
+        px={3} py={2} cursor="pointer" bg={index === activeIndex ? "green.50" : "white"}
+        borderBottomWidth={index < matches.length - 1 ? "1px" : 0}
+        onMouseDown={(event) => { event.preventDefault(); selectMember(member); }}
+        onMouseEnter={() => setActiveIndex(index)}>
+        <Text fontWeight="semibold" fontSize="sm">{member.name}</Text>
+        <Text color="gray.500" fontSize="xs">{member.id} · {member.group}</Text>
+      </Box>)}
+      {matches.length === 0 ? <Text px={3} py={3} color="gray.500" fontSize="sm">No active members match.</Text> : null}
+    </Box></Portal> : null}
+  </Box>;
 }
 
 function escapeHtml(value) {
@@ -2169,6 +2236,128 @@ function OpeningBalancePreview({ memberLookup, user, onBalancesChanged }) {
   );
 }
 
+function CostCenterAdministration({ user }) {
+  const [rows, setRows] = useState([]);
+  const [form, setForm] = useState({ code: "", name: "", type: "", summoColumn: "", status: "Active" });
+  const [drafts, setDrafts] = useState({});
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const canManage = user.permissions.includes("cost-centers:manage");
+  const load = useCallback(async () => {
+    try {
+      const data = await api("/api/cost-centers");
+      setRows(data); setDrafts(Object.fromEntries(data.map((row) => [row.code, { ...row }]))); setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  async function create(event) {
+    event.preventDefault(); setError(""); setMessage("");
+    try {
+      await api("/api/cost-centers", { method: "POST", body: JSON.stringify(form) });
+      setForm({ code: "", name: "", type: "", summoColumn: "", status: "Active" });
+      setMessage("Cost center created."); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function save(code) {
+    setError(""); setMessage("");
+    try {
+      await api(`/api/cost-centers/${code}`, { method: "PATCH", body: JSON.stringify(drafts[code]) });
+      setMessage(`${code} updated.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  if (!user.permissions.includes("cost-centers:view")) return null;
+  return <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+    <Heading size="md">Cost Centers</Heading>
+    <Text color="gray.600" mt={1} mb={4}>Operational payable sources and their future SUMMO column mapping.</Text>
+    {message ? <Text color="green.700" mb={3}>{message}</Text> : null}
+    {error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+    {canManage ? <Grid as="form" onSubmit={create} templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={3} mb={5}>
+      <FormControl isRequired><FormLabel>Code</FormLabel><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} /></FormControl>
+      <FormControl isRequired><FormLabel>Name</FormLabel><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></FormControl>
+      <FormControl isRequired><FormLabel>Type</FormLabel><Input value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} /></FormControl>
+      <FormControl isRequired><FormLabel>SUMMO Column</FormLabel><Input value={form.summoColumn} onChange={(e) => setForm({ ...form, summoColumn: e.target.value })} /></FormControl>
+      <Button alignSelf="end" type="submit" colorScheme="green">Add Cost Center</Button>
+    </Grid> : null}
+    <TableContainer><Table size="sm"><Thead><Tr><Th>Code</Th><Th>Name</Th><Th>Type</Th><Th>SUMMO Mapping</Th><Th>Status</Th>{canManage ? <Th /> : null}</Tr></Thead>
+      <Tbody>{rows.map((row) => { const draft = drafts[row.code] || row; return <Tr key={row.code}><Td>{row.code}</Td>
+        <Td>{canManage ? <Input size="sm" value={draft.name} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, name: e.target.value } })} /> : row.name}</Td>
+        <Td>{canManage ? <Input size="sm" value={draft.type} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, type: e.target.value } })} /> : row.type}</Td>
+        <Td>{canManage ? <Input size="sm" value={draft.summoColumn} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, summoColumn: e.target.value } })} /> : row.summoColumn}</Td>
+        <Td>{canManage ? <Select size="sm" value={draft.status} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, status: e.target.value } })}><option>Active</option><option>Inactive</option></Select> : <Badge>{row.status}</Badge>}</Td>
+        {canManage ? <Td><Button size="sm" onClick={() => save(row.code)}>Save</Button></Td> : null}</Tr>; })}</Tbody>
+    </Table></TableContainer>
+  </Box>;
+}
+
+function MemberChargeCapture({ members, user }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const emptyEntry = () => ({ id: `new-${Date.now()}-${Math.random()}`, memberNo: "", amount: 0, referenceNo: "", remarks: "" });
+  const [centers, setCenters] = useState([]);
+  const [batches, setBatches] = useState([]);
+  const [batchNo, setBatchNo] = useState("");
+  const [costCenterCode, setCostCenterCode] = useState("");
+  const [transactionDate, setTransactionDate] = useState(today);
+  const [entries, setEntries] = useState([emptyEntry()]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const activeMembers = members.filter((member) => member.status === "Active");
+  const activeCenters = centers.filter((center) => center.status === "Active");
+  const total = entries.reduce((sum, row) => addMoney(sum, row.amount), 0);
+  const load = useCallback(async () => {
+    try {
+      const [centerRows, batchRows] = await Promise.all([api("/api/cost-centers"), api("/api/member-charge-batches")]);
+      setCenters(centerRows); setBatches(batchRows);
+      setCostCenterCode((current) => current || centerRows.find((row) => row.status === "Active")?.code || "");
+      setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  function updateEntry(index, field, value) { setEntries((current) => current.map((row, i) => i === index ? { ...row, [field]: value } : row)); }
+  function reset() { setBatchNo(""); setTransactionDate(today); setEntries([emptyEntry()]); setMessage(""); setError(""); }
+  async function openBatch(selectedBatchNo) {
+    try {
+      const data = await api(`/api/member-charge-batches/${selectedBatchNo}`);
+      setBatchNo(data.batch.batchNo); setCostCenterCode(data.batch.costCenterCode);
+      setTransactionDate(data.batch.transactionDate); setEntries(data.entries); setMessage(""); setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function saveDraft(event) {
+    event.preventDefault(); setError(""); setMessage("");
+    try {
+      const data = await api(batchNo ? `/api/member-charge-batches/${batchNo}` : "/api/member-charge-batches", {
+        method: batchNo ? "PUT" : "POST", body: JSON.stringify({ costCenterCode, transactionDate, entries })
+      });
+      setBatchNo(data.batch.batchNo); setEntries(data.entries); setMessage(`${data.batch.batchNo} saved as Draft.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  return <VStack align="stretch" spacing={5}>
+    <Box as="form" onSubmit={saveDraft} borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Daily Member Payables</Heading>
+        <Text color="gray.600">Capture skipped days when needed. Drafts do not yet affect balances or SUMMO.</Text></Box>
+        <HStack><Badge colorScheme="blue">{batchNo || "New Draft"}</Badge><Button type="button" variant="outline" onClick={reset}>New</Button><Button type="submit" colorScheme="green">Save Draft</Button></HStack></Flex>
+      {message ? <Text color="green.700" mb={3}>{message}</Text> : null}{error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+      <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1fr" }} gap={4} mb={4}>
+        <FormControl isRequired><FormLabel>Cost Center</FormLabel><Select value={costCenterCode} onChange={(e) => setCostCenterCode(e.target.value)}>{activeCenters.map((center) => <option key={center.code} value={center.code}>{center.name} ({center.code})</option>)}</Select></FormControl>
+        <FormControl isRequired><FormLabel>Transaction Date</FormLabel><Input type="date" max={today} value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} /></FormControl>
+        <Box alignSelf="end"><Text fontSize="sm" color="gray.500">Running total</Text><Heading size="md">{formatMoney(total)}</Heading><Text fontSize="sm">{entries.length} row(s)</Text></Box>
+      </Grid>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Amount</Th><Th>Reference</Th><Th>Remarks</Th><Th /></Tr></Thead>
+        <Tbody>{entries.map((row, index) => <Tr key={row.id || index}><Td minW="300px"><MemberCombobox members={activeMembers} value={row.memberNo} onChange={(memberNo) => updateEntry(index, "memberNo", memberNo)} /></Td>
+          <Td minW="140px"><NumberInput min={0.01} precision={2} value={row.amount} onChange={(value) => updateEntry(index, "amount", Number(value || 0))}><NumberInputField textAlign="right" /></NumberInput></Td>
+          <Td><Input size="sm" value={row.referenceNo} onChange={(e) => updateEntry(index, "referenceNo", e.target.value)} /></Td>
+          <Td><Input size="sm" value={row.remarks} onChange={(e) => updateEntry(index, "remarks", e.target.value)} /></Td>
+          <Td><Button size="sm" variant="outline" isDisabled={entries.length === 1} onClick={() => setEntries(entries.filter((_, i) => i !== index))}>Remove</Button></Td></Tr>)}</Tbody>
+      </Table></TableContainer>
+      <Button mt={3} type="button" variant="outline" onClick={() => setEntries([...entries, emptyEntry()])}>Add Row</Button>
+    </Box>
+    <Box borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Draft Batch History</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Date</Th><Th>Cost Center</Th><Th isNumeric>Rows</Th><Th isNumeric>Total</Th><Th>Encoder</Th><Th /></Tr></Thead>
+        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{formatDate(batch.transactionDate)}</Td><Td>{batch.costCenterName}</Td><Td isNumeric>{batch.entryCount}</Td><Td isNumeric>{formatMoney(batch.totalAmount)}</Td><Td>{batch.createdBy}</Td><Td>{batch.status === "Draft" && batch.createdBy === user.username ? <Button size="sm" onClick={() => openBatch(batch.batchNo)}>Edit</Button> : <Badge>{batch.status}</Badge>}</Td></Tr>)}</Tbody>
+      </Table></TableContainer>
+    </Box>
+  </VStack>;
+}
+
 function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [memberDirectorySearch, setMemberDirectorySearch] = useState("");
@@ -2264,6 +2453,7 @@ function Members({ user }) {
   const canViewLoanProducts = user.permissions.includes("loans:products:view");
   const canViewTellerCashCount = user.permissions.includes("teller-cash-counts:view");
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
+  const canEncodeMemberCharges = user.permissions.includes("member-charges:encode");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
   const memberDirectoryQuery = memberDirectorySearch.trim().toLowerCase();
@@ -2823,6 +3013,7 @@ function Members({ user }) {
           {(canCreateApplication || canViewApplications) ? <Tab flexShrink={0}>Applications</Tab> : null}
           {canEditMemberProfile ? <Tab flexShrink={0}>Imports</Tab> : null}
           {canUseTellerWorkspace ? <Tab flexShrink={0}>Teller Transactions</Tab> : null}
+          {canEncodeMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
           <Tab flexShrink={0}>Member Directory</Tab>
           {(canViewInitialPayments ||
             canViewShareCapitalContributions ||
@@ -3284,6 +3475,10 @@ function Members({ user }) {
       ) : null}
               </VStack>
             </TabPanel>
+          ) : null}
+
+          {canEncodeMemberCharges ? (
+            <TabPanel px={0}><MemberChargeCapture members={members} user={user} /></TabPanel>
           ) : null}
 
           <TabPanel px={0}>
@@ -9664,6 +9859,7 @@ function Shell({ user, onLogout }) {
     if (view === "users") {
       return (
         <VStack align="stretch" spacing={5}>
+          <CostCenterAdministration user={user} />
           <AdminUserManagement user={user} />
           <AdminDemoMaintenance user={user} />
         </VStack>

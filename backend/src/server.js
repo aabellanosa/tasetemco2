@@ -8,6 +8,7 @@ import multer from "multer";
 import pg from "pg";
 import {
   dashboard,
+  costCenters,
   defaultPassword,
   initialPayments,
   journalEntries,
@@ -25,6 +26,8 @@ import {
   memberPreviousLoanControls,
   memberPreviousLoans,
   memberPreviousLoanUnlockRequests,
+  memberChargeBatches,
+  memberChargeEntries,
   members,
   openingBalanceImportBatches,
   openingBalanceImportRows,
@@ -133,6 +136,9 @@ const sessions = new Map();
 let pool = null;
 
 const persistedTables = [
+  "member_charge_entries",
+  "member_charge_batches",
+  "cost_centers",
   "summo_import_rows",
   "summo_import_batches",
   "summo_periods",
@@ -166,6 +172,9 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  cost_centers: ["code", "name", "cost_center_type", "summo_column", "status"],
+  member_charge_batches: ["batch_no", "cost_center_code", "transaction_date", "status", "created_by"],
+  member_charge_entries: ["batch_no", "member_no", "amount", "reference_no", "remarks"],
   summo_import_batches: ["import_no", "report_period", "status", "created_by"],
   summo_import_rows: ["import_no", "member_no", "movement_type", "amount", "row_status"],
   summo_periods: ["report_period", "cluster_name", "status", "snapshot"],
@@ -3816,6 +3825,237 @@ async function replaceMemberPreviousLoans(memberId, rows, user) {
     ...(await getMemberPreviousLoanState(memberId)),
     totalPreviousLoanBalance: previousLoans.reduce((total, row) => addMoney(total, row.outstandingBalance), 0)
   };
+}
+
+function mapCostCenter(row) {
+  return {
+    code: row.code,
+    name: row.name,
+    type: row.type || row.costCenterType || "",
+    summoColumn: row.summoColumn || "",
+    status: row.status || "Active",
+    createdBy: row.createdBy || "",
+    updatedBy: row.updatedBy || "",
+    createdAt: row.createdAt || "",
+    updatedAt: row.updatedAt || ""
+  };
+}
+
+async function listCostCenters() {
+  const db = await getPool();
+  if (!db) return costCenters.map(mapCostCenter).sort((a, b) => a.name.localeCompare(b.name));
+  const [rows] = await db.execute(
+    `SELECT code, name, cost_center_type AS costCenterType, summo_column AS summoColumn,
+            status, created_by AS createdBy, updated_by AS updatedBy,
+            created_at AS createdAt, updated_at AS updatedAt
+     FROM cost_centers ORDER BY name, code`
+  );
+  return rows.map(mapCostCenter);
+}
+
+function validateCostCenterInput(body, fixedCode = "") {
+  const code = String(fixedCode || body.code || "").trim().toUpperCase();
+  const name = String(body.name || "").trim();
+  const type = String(body.type || "").trim();
+  const summoColumn = String(body.summoColumn || "").trim();
+  const status = String(body.status || "Active").trim();
+  if (!/^[A-Z0-9-]{1,40}$/.test(code)) return { error: "Cost center code must use letters, numbers, or hyphens." };
+  if (!name || !type || !summoColumn) return { error: "Name, type, and SUMMO mapping are required." };
+  if (!["Active", "Inactive"].includes(status)) return { error: "Cost center status is invalid." };
+  return { value: { code, name, type, summoColumn, status } };
+}
+
+async function saveCostCenter(input, user, isUpdate = false) {
+  const db = await getPool();
+  const now = new Date().toISOString();
+  if (!db) {
+    const existing = costCenters.find((item) => item.code === input.code);
+    if (!isUpdate && existing) return { error: "Cost center code already exists.", statusCode: 409 };
+    if (isUpdate && !existing) return { error: "Cost center was not found.", statusCode: 404 };
+    if (existing) Object.assign(existing, input, { updatedBy: user.username, updatedAt: now });
+    else costCenters.push({ ...input, createdBy: user.username, updatedBy: user.username, createdAt: now, updatedAt: now });
+    return { costCenter: mapCostCenter(existing || costCenters[costCenters.length - 1]) };
+  }
+  if (isUpdate) {
+    const [result] = await db.execute(
+      `UPDATE cost_centers SET name = ?, cost_center_type = ?, summo_column = ?, status = ?,
+       updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE code = ?`,
+      [input.name, input.type, input.summoColumn, input.status, user.username, input.code]
+    );
+    if (!(result.rowCount || result.affectedRows)) return { error: "Cost center was not found.", statusCode: 404 };
+  } else {
+    try {
+      await db.execute(
+        `INSERT INTO cost_centers (code, name, cost_center_type, summo_column, status, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [input.code, input.name, input.type, input.summoColumn, input.status, user.username, user.username]
+      );
+    } catch (error) {
+      if (error.code === "23505") return { error: "Cost center code already exists.", statusCode: 409 };
+      throw error;
+    }
+  }
+  return { costCenter: (await listCostCenters()).find((item) => item.code === input.code) };
+}
+
+function mapMemberChargeEntry(row) {
+  return { id: Number(row.id || 0), batchNo: row.batchNo, memberNo: row.memberNo,
+    memberName: row.memberName || "", amount: Number(row.amount || 0),
+    referenceNo: row.referenceNo || "", remarks: row.remarks || "", createdAt: row.createdAt || "" };
+}
+
+function mapMemberChargeBatch(row) {
+  return { batchNo: row.batchNo, costCenterCode: row.costCenterCode, costCenterName: row.costCenterName || "",
+    transactionDate: formatDateOnly(row.transactionDate), status: row.status || "Draft",
+    entryCount: Number(row.entryCount || 0), totalAmount: Number(row.totalAmount || 0),
+    createdBy: row.createdBy || "", updatedBy: row.updatedBy || "",
+    createdAt: row.createdAt || "", updatedAt: row.updatedAt || "" };
+}
+
+async function listMemberChargeBatches() {
+  const db = await getPool();
+  if (!db) return memberChargeBatches.map((batch) => {
+    const rows = memberChargeEntries.filter((entry) => entry.batchNo === batch.batchNo);
+    const center = costCenters.find((item) => item.code === batch.costCenterCode);
+    return mapMemberChargeBatch({ ...batch, costCenterName: center?.name,
+      entryCount: rows.length, totalAmount: rows.reduce((sum, row) => addMoney(sum, row.amount), 0) });
+  }).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const [rows] = await db.execute(
+    `SELECT b.batch_no AS batchNo, b.cost_center_code AS costCenterCode, c.name AS costCenterName,
+            b.transaction_date AS transactionDate, b.status, b.created_by AS createdBy,
+            b.updated_by AS updatedBy, b.created_at AS createdAt, b.updated_at AS updatedAt,
+            COUNT(e.id) AS entryCount, COALESCE(SUM(e.amount), 0) AS totalAmount
+     FROM member_charge_batches b JOIN cost_centers c ON c.code = b.cost_center_code
+     LEFT JOIN member_charge_entries e ON e.batch_no = b.batch_no
+     GROUP BY b.id, c.name ORDER BY b.updated_at DESC, b.id DESC`
+  );
+  return rows.map(mapMemberChargeBatch);
+}
+
+async function getMemberChargeBatch(batchNo) {
+  const batches = await listMemberChargeBatches();
+  const batch = batches.find((item) => item.batchNo === batchNo);
+  if (!batch) return { error: "Member charge batch was not found.", statusCode: 404 };
+  const db = await getPool();
+  if (!db) {
+    return { batch, entries: memberChargeEntries.filter((item) => item.batchNo === batchNo)
+      .map((entry) => mapMemberChargeEntry({ ...entry, memberName: members.find((m) => m.id === entry.memberNo)?.name })) };
+  }
+  const [rows] = await db.execute(
+    `SELECT e.id, e.batch_no AS batchNo, e.member_no AS memberNo, m.full_name AS memberName,
+            e.amount, e.reference_no AS referenceNo, e.remarks, e.created_at AS createdAt
+     FROM member_charge_entries e JOIN members m ON m.member_no = e.member_no
+     WHERE e.batch_no = ? ORDER BY e.id`, [batchNo]
+  );
+  return { batch, entries: rows.map(mapMemberChargeEntry) };
+}
+
+async function validateMemberChargeDraft(body) {
+  const costCenterCode = String(body.costCenterCode || "").trim().toUpperCase();
+  const transactionDate = normalizeOptionalDate(body.transactionDate);
+  if (!transactionDate || transactionDate > new Date().toISOString().slice(0, 10)) {
+    return { error: "Transaction date is required and cannot be in the future." };
+  }
+  const center = (await listCostCenters()).find((item) => item.code === costCenterCode && item.status === "Active");
+  if (!center) return { error: "Select an active cost center." };
+  if (!Array.isArray(body.entries) || !body.entries.length) return { error: "Add at least one member charge." };
+  const activeMembers = (await listMembers()).filter((item) => item.status === "Active");
+  const entries = [];
+  const references = new Set();
+  for (const [index, row] of body.entries.entries()) {
+    const memberNo = String(row.memberNo || "").trim();
+    const amount = Number(row.amount || 0);
+    const referenceNo = String(row.referenceNo || "").trim();
+    const remarks = String(row.remarks || "").trim();
+    if (!activeMembers.some((item) => item.id === memberNo)) return { error: `Row ${index + 1} needs an active member.` };
+    if (!isMoney(amount) || amount <= 0) return { error: `Row ${index + 1} needs a positive amount.` };
+    const referenceKey = referenceNo.toLowerCase();
+    if (referenceKey && references.has(referenceKey)) return { error: `Reference ${referenceNo} is duplicated in this batch.` };
+    if (referenceKey) references.add(referenceKey);
+    entries.push({ memberNo, amount: moneyValue(amount), referenceNo, remarks });
+  }
+  return { value: { costCenterCode, transactionDate, entries } };
+}
+
+async function saveMemberChargeDraft(body, user, batchNo = "") {
+  const validation = await validateMemberChargeDraft(body);
+  if (validation.error) return { error: validation.error, statusCode: 400 };
+  const input = validation.value;
+  const db = await getPool();
+  const now = new Date().toISOString();
+  const nextBatchNo = batchNo || `MCB-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  const submittedReferences = input.entries.map((entry) => entry.referenceNo.toLowerCase()).filter(Boolean);
+  if (submittedReferences.length) {
+    if (!db) {
+      const conflictingBatchNos = memberChargeBatches
+        .filter((batch) => batch.batchNo !== nextBatchNo && batch.costCenterCode === input.costCenterCode &&
+          batch.transactionDate === input.transactionDate)
+        .map((batch) => batch.batchNo);
+      const duplicate = memberChargeEntries.find((entry) => conflictingBatchNos.includes(entry.batchNo) &&
+        submittedReferences.includes(String(entry.referenceNo || "").toLowerCase()));
+      if (duplicate) return { error: `Reference ${duplicate.referenceNo} already exists for this cost center and date.`, statusCode: 409 };
+    } else {
+      const [duplicateRows] = await db.execute(
+        `SELECT e.reference_no AS referenceNo FROM member_charge_entries e
+         JOIN member_charge_batches b ON b.batch_no = e.batch_no
+         WHERE b.cost_center_code = ? AND b.transaction_date = ? AND b.batch_no <> ?
+           AND LOWER(e.reference_no) = ANY(?) LIMIT 1`,
+        [input.costCenterCode, input.transactionDate, nextBatchNo, submittedReferences]
+      );
+      if (duplicateRows[0]) return { error: `Reference ${duplicateRows[0].referenceNo} already exists for this cost center and date.`, statusCode: 409 };
+    }
+  }
+  if (!db) {
+    let batch = memberChargeBatches.find((item) => item.batchNo === nextBatchNo);
+    if (batch && (batch.status !== "Draft" || batch.createdBy !== user.username)) {
+      return { error: "Only the creating Teller may edit this draft batch.", statusCode: 403 };
+    }
+    if (!batch) {
+      batch = { batchNo: nextBatchNo, status: "Draft", createdBy: user.username, createdAt: now };
+      memberChargeBatches.push(batch);
+    }
+    Object.assign(batch, { costCenterCode: input.costCenterCode, transactionDate: input.transactionDate,
+      updatedBy: user.username, updatedAt: now });
+    for (let i = memberChargeEntries.length - 1; i >= 0; i -= 1) if (memberChargeEntries[i].batchNo === nextBatchNo) memberChargeEntries.splice(i, 1);
+    input.entries.forEach((entry) => memberChargeEntries.push({ id: memberChargeEntries.length + 1,
+      batchNo: nextBatchNo, ...entry, createdAt: now }));
+    return getMemberChargeBatch(nextBatchNo);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (batchNo) {
+      const [rows] = await connection.execute(
+        `SELECT status, created_by AS createdBy FROM member_charge_batches WHERE batch_no = ? FOR UPDATE`, [batchNo]
+      );
+      if (!rows[0]) { await connection.rollback(); return { error: "Member charge batch was not found.", statusCode: 404 }; }
+      if (rows[0].status !== "Draft" || rows[0].createdBy !== user.username) {
+        await connection.rollback(); return { error: "Only the creating Teller may edit this draft batch.", statusCode: 403 };
+      }
+      await connection.execute(
+        `UPDATE member_charge_batches SET cost_center_code = ?, transaction_date = ?, updated_by = ?,
+         updated_at = CURRENT_TIMESTAMP WHERE batch_no = ?`,
+        [input.costCenterCode, input.transactionDate, user.username, nextBatchNo]
+      );
+      await connection.execute(`DELETE FROM member_charge_entries WHERE batch_no = ?`, [nextBatchNo]);
+    } else {
+      await connection.execute(
+        `INSERT INTO member_charge_batches
+         (batch_no, cost_center_code, transaction_date, status, created_by, updated_by)
+         VALUES (?, ?, ?, 'Draft', ?, ?)`,
+        [nextBatchNo, input.costCenterCode, input.transactionDate, user.username, user.username]
+      );
+    }
+    for (const entry of input.entries) {
+      await connection.execute(
+        `INSERT INTO member_charge_entries (batch_no, member_no, amount, reference_no, remarks)
+         VALUES (?, ?, ?, ?, ?)`,
+        [nextBatchNo, entry.memberNo, entry.amount, entry.referenceNo, entry.remarks]
+      );
+    }
+    await connection.commit();
+  } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
+  return getMemberChargeBatch(nextBatchNo);
 }
 
 function sanitizeMemberImportRow(row) {
@@ -10180,6 +10420,69 @@ app.post("/api/members/:memberId/previous-loans/unlock-requests/:requestNo/decis
   const result = await decidePreviousLoanUnlock(
     request.params.memberId, request.params.requestNo, request.body.decision, request.body.remarks, user
   );
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.json(result);
+});
+
+app.get("/api/cost-centers", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "cost-centers:view")) { response.status(403).json({ error: "Access denied" }); return; }
+  response.json(await listCostCenters());
+});
+
+app.post("/api/cost-centers", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "cost-centers:manage")) { response.status(403).json({ error: "Admin access required" }); return; }
+  const validation = validateCostCenterInput(request.body);
+  if (validation.error) { response.status(400).json({ error: validation.error }); return; }
+  const result = await saveCostCenter(validation.value, user);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.status(201).json(result);
+});
+
+app.patch("/api/cost-centers/:code", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "cost-centers:manage")) { response.status(403).json({ error: "Admin access required" }); return; }
+  const validation = validateCostCenterInput(request.body, request.params.code);
+  if (validation.error) { response.status(400).json({ error: validation.error }); return; }
+  const result = await saveCostCenter(validation.value, user, true);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.json(result);
+});
+
+app.get("/api/member-charge-batches", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "member-charges:view")) { response.status(403).json({ error: "Access denied" }); return; }
+  response.json(await listMemberChargeBatches());
+});
+
+app.get("/api/member-charge-batches/:batchNo", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "member-charges:view")) { response.status(403).json({ error: "Access denied" }); return; }
+  const result = await getMemberChargeBatch(request.params.batchNo);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.json(result);
+});
+
+app.post("/api/member-charge-batches", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "member-charges:encode")) { response.status(403).json({ error: "Teller / Cashier access required" }); return; }
+  const result = await saveMemberChargeDraft(request.body, user);
+  if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
+  response.status(201).json(result);
+});
+
+app.put("/api/member-charge-batches/:batchNo", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "member-charges:encode")) { response.status(403).json({ error: "Teller / Cashier access required" }); return; }
+  const result = await saveMemberChargeDraft(request.body, user, request.params.batchNo);
   if (result.error) { response.status(result.statusCode).json({ error: result.error }); return; }
   response.json(result);
 });
