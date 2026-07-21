@@ -9,7 +9,7 @@ These diagrams describe the implemented React, Node/Express, and Postgres protot
 | Work | Primary role | UI location |
 | --- | --- | --- |
 | Receive initial/share/savings payments or release savings | Teller / Cashier | Members -> Teller Transactions |
-| Encode C1, C2, or WRS member payables | Teller / Cashier | Members -> Cost Center Charges |
+| Encode C1, C2, WRS, or G-mar Commercial member payables | Teller / Cashier | Members -> Cost Center Charges |
 | Review cost-center totals or one member | General Manager / Bookkeeper / Auditor | Ledger or Members -> Cost Center Charges |
 | Create and submit a loan application | Loan Officer | Loans -> Applications |
 | Decide a submitted loan | System Administrator | Loans -> Applications |
@@ -325,7 +325,10 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
 ```text
 [System Administrator]
   Maintain cost centers and future SUMMO mapping
-  Seeded mappings: C1 -> Canteen, C2 -> Canteen, WRS -> WRS
+  Seeded mappings:
+    C1/C2 -> Canteen
+    WRS   -> WRS
+    GMAR  -> G-mar Capital
         |
         v
 [Teller / Cashier]
@@ -381,6 +384,7 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
 (System sources)
   Finalized C1/C2 payable movements -> Canteen
   Finalized WRS payable movements   -> WRS
+  Finalized GMAR payable movements  -> G-mar Capital
   Posted loan installments and collections
         |
         +-------------------------+
@@ -416,7 +420,7 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
   Carry member credit when ending balance is negative
   Block locking when:
     relevant cost-center Draft batches remain
-    the same Canteen/WRS category exists in Excel and system inputs
+    the same Canteen/WRS/G-mar category exists in Excel and system inputs
     a finalized cost center has no supported SUMMO mapping
     loan products or period-chain rules are unresolved
         |
@@ -437,6 +441,7 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
         +---- Client-format export -> Preserve exact six-sheet workbook
                                       Fill REG_MEM_CAP only:
                                         member names
+                                        GMAR    -> G-mar Capital (column P)
                                         C1 + C2 -> Canteen
                                         WRS     -> WRS
         |
@@ -462,7 +467,8 @@ Client-format workbook flow:
                         v
                       (System)
                         Validate six sheet names and REG_MEM_CAP structure
-                        Validate light-green B, S, and T target cells
+                        Validate light-green B, P, S, and T target cells
+                        Never overwrite protected Q interest formulas
                         Stop when Active roster exceeds 67 template rows
                         Preserve formulas, yellow/manual cells, styles,
                         merged cells, and all other worksheets
@@ -478,7 +484,8 @@ SUMMO Excel imports do not post accounting journals.
 Finalized imports are immutable; corrections use a superseding batch or reversal.
 Reopening a locked month also unlocks every later locked SUMMO month.
 Finalized cost-center movements retain their posting-time SUMMO mapping.
-The client-format pilot uses finalized system cost-center movements only; temporary SUMMO Excel imports do not fill its Canteen or WRS cells.
+The client-format pilot uses finalized system cost-center movements only; temporary SUMMO Excel imports do not fill its G-mar Capital, Canteen, or WRS cells.
+GMAR writes principal to column P only. Column Q retains the workbook's shared 2% formula.
 Preview is operational working output. Locked Version is the official frozen-month output.
 ```
 

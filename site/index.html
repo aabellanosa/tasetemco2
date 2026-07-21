@@ -205,7 +205,7 @@
         </div>
         <div class="capability-grid">
           <article><h3>Teller Receipts</h3><p>Members -> Teller Transactions for initial payments, share capital, savings deposits, and savings withdrawals.</p></article>
-          <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily C1, C2, WRS, and future configured member payables.</p></article>
+          <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily Canteen 1, Canteen 2, Water Refilling Station, G-mar Commercial, and future configured member payables.</p></article>
           <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
           <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
           <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, analytical XLSX export, and the exact client-format six-sheet workbook.</p></article>
@@ -271,7 +271,7 @@
           <article>
             <h3>Daily Cost-Center Payables</h3>
             <ol>
-              <li>System Administrator maintains cost centers and their SUMMO mapping: C1/C2 to Canteen and WRS to WRS.</li>
+              <li>System Administrator maintains cost centers and their SUMMO mapping: Canteen 1/2 to Canteen, Water Refilling Station to WRS, and G-mar Commercial to G-mar Capital.</li>
               <li>Teller chooses a cost center and actual transaction date; skipped days may be entered later.</li>
               <li>Teller searches members and enters amount, source reference, and optional remarks in a multi-member Draft.</li>
               <li>Drafts have no payable effect and only the creating Teller may edit them.</li>
@@ -347,12 +347,12 @@
           <article>
             <h3>SUMMO Monthly Report</h3>
             <ol>
-              <li>Finalized C1/C2 movements automatically supply Canteen; finalized WRS movements automatically supply WRS.</li>
+              <li>Finalized Canteen 1/2 purchases automatically supply Canteen, Water Refilling Station purchases supply WRS, and G-mar Commercial purchases supply G-mar Capital.</li>
               <li>Bookkeeper uses the standard XLSX only for categories not yet captured by system transactions.</li>
               <li>System validates reporting month, member, category, amount, reference, and reversals.</li>
               <li>Bookkeeper reviews and finalizes a valid import batch; it does not post journals.</li>
               <li>System combines finalized system and imported movements with scheduled loan dues, posted cash collections, and carried balances.</li>
-              <li>Pending cost-center Drafts, unsupported mappings, or overlapping system/Excel Canteen or WRS sources block locking.</li>
+              <li>Pending cost-center Drafts, unsupported mappings, or duplicate system/Excel sources block locking.</li>
               <li>System applies effective-dated interest rules, rounds components to cents, and flags unmapped loans.</li>
               <li>Bookkeeper refreshes and reconciles source totals plus movement, batch, and member drill-down.</li>
               <li>The screen may be filtered to one member without changing the complete snapshot or XLSX export.</li>
@@ -360,7 +360,8 @@
               <li>Export produces printable Regular Capture, Loan Details, and Audit sheets.</li>
               <li><strong>Generate Preview</strong> fills the client-format workbook from current finalized system movements before locking.</li>
               <li><strong>Download Locked Version</strong> produces the official client-format workbook only after the month is locked.</li>
-              <li>The first-sheet pilot fills only REG_MEM_CAP member names, Canteen from C1/C2, and WRS from WRS. Excel-import values are not copied into these cells.</li>
+              <li>The first-sheet pilot fills member names plus G-mar Capital, Canteen, and WRS from finalized daily transactions. Excel-import values are not copied into these cells.</li>
+              <li>The workbook keeps its protected 2% G-mar interest formula and calculates the interest from the filled G-mar amount.</li>
               <li>The exact six sheets, formulas, yellow manual cells, headers, merged cells, formatting, and five future cluster sheets remain unchanged.</li>
               <li>Generation stops when template safeguards fail or the Active Regular Capture roster exceeds the current 67-row capacity.</li>
               <li>A locked month blocks affected new, edited, finalized, and reversed cost-center activity.</li>

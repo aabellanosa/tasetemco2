@@ -38,7 +38,8 @@ function validateSite(directory) {
   assert(index.includes("SUMMO Monthly Report"), "SUMMO workflow is missing.");
   assert(index.includes("SUMMO — Regular Members Capture"), "SUMMO report listing is missing.");
   assert(index.includes("Daily Cost-Center Payables"), "Cost-center payable workflow is missing.");
-  assert(index.includes("C1/C2 movements automatically supply Canteen"), "System-to-SUMMO Canteen flow is missing.");
+  assert(index.includes("G-mar Commercial purchases supply G-mar Capital"), "System-to-SUMMO G-mar flow is missing.");
+  assert(index.includes("protected 2% G-mar interest formula"), "User guidance for G-mar interest is missing.");
   assert(index.includes("Generate Preview"), "Client-format SUMMO preview flow is missing.");
   assert(index.includes("Download Locked Version"), "Locked client-format SUMMO flow is missing.");
   assert(index.includes("current 67-row capacity"), "Client-format SUMMO capacity safeguard is missing.");
@@ -57,6 +58,8 @@ assert(diagrams.includes("No Dedicated Loan Approver"), "Updated loan decision d
 assert(diagrams.includes("Flexible Loan Collection"), "Updated collection diagram is missing.");
 assert(diagrams.includes("Client-format workbook flow"), "Client-format SUMMO workflow diagram is missing.");
 assert(diagrams.includes("Preserve formulas, yellow/manual cells"), "Client workbook preservation controls are missing.");
+assert(diagrams.includes("GMAR writes principal to column P only"), "Developer G-mar workbook mapping is missing.");
+assert(diagrams.includes("Column Q retains the workbook's shared 2% formula"), "Developer G-mar formula protection is missing.");
 
 validateSite(siteDir);
 
