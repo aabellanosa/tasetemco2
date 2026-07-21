@@ -770,12 +770,39 @@ async function run() {
       refreshSummoBody.snapshot?.systemMovementDetails?.length !== 2) {
       throw new Error("SUMMO draft should include finalized Canteen/WRS system movements with drill-down details.");
     }
+    const previewClientWorkbookResponse = await fetch(
+      `${baseUrl}/api/reports/summo/client-workbook/${summoPeriod}/preview.xlsx`,
+      { headers: { Cookie: adminCookie } }
+    );
+    if (!previewClientWorkbookResponse.ok) {
+      throw new Error(`Client-format SUMMO preview should download: ${await previewClientWorkbookResponse.text()}`);
+    }
+    const previewClientWorkbook = new ExcelJS.Workbook();
+    await previewClientWorkbook.xlsx.load(await previewClientWorkbookResponse.arrayBuffer());
+    if (previewClientWorkbook.worksheets.length !== 6) {
+      throw new Error("Client-format SUMMO preview should preserve all six worksheets.");
+    }
+    const previewCaptureSheet = previewClientWorkbook.getWorksheet("REG_MEM_CAP");
+    const mariaClientRow = Array.from({ length: 67 }, (_, index) => index + 7)
+      .find((rowNumber) => previewCaptureSheet.getCell(`B${rowNumber}`).value === "Maria L. Santos");
+    if (!mariaClientRow || previewCaptureSheet.getCell(`S${mariaClientRow}`).value !== 120 ||
+      previewCaptureSheet.getCell(`T${mariaClientRow}`).value !== 80 ||
+      !previewCaptureSheet.getCell(`AK${mariaClientRow}`).value?.formula) {
+      throw new Error("Client-format SUMMO preview should fill Maria's Canteen/WRS cells and retain formulas.");
+    }
     const lockSummoResponse = await fetch(`${baseUrl}/api/reports/summo/periods/${summoPeriod}/lock`, {
       method: "POST", headers: { Cookie: adminCookie }
     });
     if (!lockSummoResponse.ok) {
       const lockBody = await lockSummoResponse.json();
       throw new Error(`A valid SUMMO period should lock: ${lockBody.error}`);
+    }
+    const lockedClientWorkbookResponse = await fetch(
+      `${baseUrl}/api/reports/summo/client-workbook/${summoPeriod}/locked.xlsx`,
+      { headers: { Cookie: adminCookie } }
+    );
+    if (!lockedClientWorkbookResponse.ok) {
+      throw new Error(`Locked client-format SUMMO should download: ${await lockedClientWorkbookResponse.text()}`);
     }
     const lockedDraftAttempt = await fetch(`${baseUrl}/api/member-charge-batches`, {
       method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },

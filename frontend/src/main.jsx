@@ -5222,6 +5222,37 @@ function SummoReport({ user }) {
     if (result) setMessage(`Reopened ${result.affectedPeriods.join(", ")}.`);
   }
 
+  async function downloadClientWorkbook(mode) {
+    setIsBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBase}/api/reports/summo/client-workbook/${period}/${mode}.xlsx`, {
+        credentials: "include"
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Client-format SUMMO generation failed.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") || "";
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `TASETEMCO-SUMMO-${period}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setMessage(`${mode === "locked" ? "Locked" : "Preview"} client-format workbook generated.`);
+    } catch (downloadError) {
+      setError(downloadError.message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   const report = periodData?.snapshot;
   const reportMembers = (report?.rows || []).map((row) => ({
     id: row.memberNo, name: row.memberName, group: report?.cluster || "REGULAR MEMBERS CAPTURE", contactNumber: ""
@@ -5253,6 +5284,27 @@ function SummoReport({ user }) {
         </HStack>
         {error ? <Text color="red.500" mt={3}>{error}</Text> : null}
         {message ? <Text color="green.600" mt={3}>{message}</Text> : null}
+      </Box>
+
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" gap={4} wrap="wrap" align="center">
+          <Box>
+            <Heading size="sm">Client-format Six-Cluster Workbook</Heading>
+            <Text color="gray.600" fontSize="sm" mt={1}>
+              Pilot output fills only REG_MEM_CAP member names, Canteen from finalized C1/C2, and WRS from finalized WRS movements. Formulas, manual cells, and the other five sheets remain unchanged.
+            </Text>
+          </Box>
+          <HStack wrap="wrap">
+            {canPrepare ? <Button size="sm" variant="outline" onClick={() => downloadClientWorkbook("preview")} isLoading={isBusy}>
+              Generate Preview
+            </Button> : null}
+            <Button size="sm" colorScheme="green" onClick={() => downloadClientWorkbook("locked")}
+              isLoading={isBusy} isDisabled={periodData?.status !== "Locked"}>
+              Download Locked Version
+            </Button>
+          </HStack>
+        </Flex>
+        <Text color="gray.500" fontSize="xs" mt={3}>Preview reads current finalized movements. The official version requires a locked SUMMO period.</Text>
       </Box>
 
       {canPrepare ? (

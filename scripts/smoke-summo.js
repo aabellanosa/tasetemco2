@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import ExcelJS from "exceljs";
 import {
+  CLIENT_SUMMO_TEMPLATE_SHEETS,
   SUMMO_CLUSTER,
+  buildClientSummoWorkbook,
   buildMovementTemplate,
   buildSummoWorkbook,
   calculateSummo,
@@ -80,5 +84,49 @@ await exportedWorkbook.xlsx.load(exportBuffer);
 assert.ok(exportedWorkbook.getWorksheet("Regular Capture"));
 assert.ok(exportedWorkbook.getWorksheet("Loan Details"));
 assert.ok(exportedWorkbook.getWorksheet("Audit"));
+
+const clientTemplateBuffer = await readFile(path.resolve(
+  "backend", "templates", "summo", "TASETEMCO-SUMMO-6-CLUSTER-TEMPLATE.xlsx"
+));
+const originalClientWorkbook = new ExcelJS.Workbook();
+await originalClientWorkbook.xlsx.load(clientTemplateBuffer);
+const clientWorkbookBuffer = await buildClientSummoWorkbook({
+  templateBuffer: clientTemplateBuffer,
+  period: "2026-07",
+  rows: [{ memberNo: "M-001", memberName: "Capture Member", canteen: 250, wrs: 75 }]
+});
+const clientWorkbook = new ExcelJS.Workbook();
+await clientWorkbook.xlsx.load(clientWorkbookBuffer);
+assert.deepEqual(clientWorkbook.worksheets.map((sheet) => sheet.name), [...CLIENT_SUMMO_TEMPLATE_SHEETS]);
+const clientSheet = clientWorkbook.getWorksheet("REG_MEM_CAP");
+const originalClientSheet = originalClientWorkbook.getWorksheet("REG_MEM_CAP");
+assert.equal(clientSheet.getCell("B7").value, "Capture Member");
+assert.equal(clientSheet.getCell("S7").value, 250);
+assert.equal(clientSheet.getCell("T7").value, 75);
+assert.equal(clientSheet.getCell("S3").value, "JULY'2026");
+assert.equal(clientSheet.getCell("X7").value, originalClientSheet.getCell("X7").value);
+assert.deepEqual(clientSheet.getCell("X7").fill, originalClientSheet.getCell("X7").fill);
+assert.deepEqual(clientSheet.getCell("S7").fill, originalClientSheet.getCell("S7").fill);
+for (const sheetName of CLIENT_SUMMO_TEMPLATE_SHEETS) {
+  const originalSheet = originalClientWorkbook.getWorksheet(sheetName);
+  const generatedSheet = clientWorkbook.getWorksheet(sheetName);
+  originalSheet.eachRow((row) => row.eachCell((cell) => {
+    if (cell.value?.formula) {
+      assert.equal(generatedSheet.getCell(cell.address).value?.formula, cell.value.formula);
+    }
+  }));
+}
+assert.equal(
+  clientWorkbook.getWorksheet("REG_MEM_NONCAP").getCell("S7").value,
+  originalClientWorkbook.getWorksheet("REG_MEM_NONCAP").getCell("S7").value
+);
+await assert.rejects(
+  buildClientSummoWorkbook({
+    templateBuffer: clientTemplateBuffer,
+    period: "2026-07",
+    rows: Array.from({ length: 68 }, (_, index) => ({ memberName: `Member ${index + 1}` }))
+  }),
+  /exceed the 67 template rows/
+);
 
 console.log("SUMMO smoke checks passed.");

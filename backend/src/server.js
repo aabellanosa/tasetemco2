@@ -52,6 +52,7 @@ import {
   SUMMO_DEFAULT_RATES,
   SUMMO_PRODUCT_COLUMNS,
   buildMovementTemplate,
+  buildClientSummoWorkbook,
   buildSummoWorkbook,
   calculateSummo,
   normalizePeriod,
@@ -134,6 +135,11 @@ const databaseDirPath = databaseDirCandidates.find((candidate) =>
 );
 const schemaSqlPath = databaseDirPath ? path.join(databaseDirPath, "schema.postgres.sql") : "";
 const seedSqlPath = databaseDirPath ? path.join(databaseDirPath, "seed.postgres.sql") : "";
+const clientSummoTemplateCandidates = [
+  path.resolve(process.cwd(), "backend", "templates", "summo", "TASETEMCO-SUMMO-6-CLUSTER-TEMPLATE.xlsx"),
+  path.resolve(process.cwd(), "templates", "summo", "TASETEMCO-SUMMO-6-CLUSTER-TEMPLATE.xlsx")
+];
+const clientSummoTemplatePath = clientSummoTemplateCandidates.find((candidate) => fs.existsSync(candidate)) || "";
 const sessions = new Map();
 let pool = null;
 
@@ -7349,6 +7355,54 @@ async function calculateSummoDraft(period) {
   return report;
 }
 
+function buildClientSummoCostCenterRows(report) {
+  const rows = new Map((report.rows || []).map((row) => [row.memberNo, {
+    memberNo: row.memberNo, memberName: row.memberName, canteen: 0, wrs: 0
+  }]));
+  const movements = report.systemMovementDetails || [];
+  const originals = new Map(movements.filter((movement) => movement.movementType !== "REVERSAL")
+    .map((movement) => [movement.referenceNo, movement]));
+  for (const movement of movements) {
+    const row = rows.get(movement.memberNo);
+    if (!row) continue;
+    const original = movement.movementType === "REVERSAL" ? originals.get(movement.reversesReference) : movement;
+    if (!original || !["CANTEEN", "WRS"].includes(original.movementType)) continue;
+    const field = original.movementType === "CANTEEN" ? "canteen" : "wrs";
+    row[field] = addMoney(row[field], movement.movementType === "REVERSAL" ? -movement.amount : movement.amount);
+  }
+  return Array.from(rows.values());
+}
+
+async function generateClientSummoWorkbook(period, mode) {
+  if (!clientSummoTemplatePath) {
+    return { error: "The client SUMMO workbook template is not installed.", statusCode: 500 };
+  }
+  let report;
+  let status;
+  if (mode === "locked") {
+    const savedPeriod = await getSummoPeriod(period);
+    if (!savedPeriod || savedPeriod.status !== "Locked" || !savedPeriod.snapshot?.rows) {
+      return { error: "Lock the SUMMO period before downloading its official client workbook.", statusCode: 409 };
+    }
+    report = savedPeriod.snapshot;
+    status = "Locked";
+  } else {
+    report = await calculateSummoDraft(period);
+    if (report.error) return report;
+    status = "Preview";
+  }
+  try {
+    const buffer = await buildClientSummoWorkbook({
+      templateBuffer: fs.readFileSync(clientSummoTemplatePath),
+      period,
+      rows: buildClientSummoCostCenterRows(report)
+    });
+    return { buffer, status };
+  } catch (error) {
+    return { error: error.message || "The client SUMMO workbook could not be generated.", statusCode: 409 };
+  }
+}
+
 async function saveSummoDraft(period, user) {
   const existing = await getSummoPeriod(period);
   if (existing?.status === "Locked") return { error: "Reopen the locked SUMMO period before refreshing it.", statusCode: 409 };
@@ -11703,6 +11757,28 @@ app.get("/api/reports/summo/periods/:period.xlsx", async (request, response) => 
   response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   response.setHeader("Content-Disposition", `attachment; filename="SUMMO-${period.period}-${period.status}.xlsx"`);
   return response.send(Buffer.from(buffer));
+});
+
+app.get("/api/reports/summo/client-workbook/:period/:mode.xlsx", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  const period = normalizePeriod(request.params.period);
+  const mode = String(request.params.mode || "").toLowerCase();
+  if (!period || !["preview", "locked"].includes(mode)) {
+    return response.status(400).json({ error: "Use a valid period and preview or locked workbook mode." });
+  }
+  if (mode === "preview" && !hasPermission(user, "reports:summo:prepare") && !isAdminUser(user)) {
+    return response.status(403).json({ error: "SUMMO preparation access is required for a preview." });
+  }
+  if (mode === "locked" && !hasPermission(user, "reports:view")) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  const result = await generateClientSummoWorkbook(period, mode);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  response.setHeader("Content-Disposition",
+    `attachment; filename="TASETEMCO-SUMMO-REG-MEM-CAP-${period}-${result.status.toUpperCase()}.xlsx"`);
+  return response.send(Buffer.from(result.buffer));
 });
 
 app.get("/api/reports/member-subsidiary-ledger", async (request, response) => {

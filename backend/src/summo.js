@@ -2,6 +2,16 @@ import ExcelJS from "exceljs";
 
 export const SUMMO_CLUSTER = "REGULAR MEMBERS CAPTURE";
 
+export const CLIENT_SUMMO_TEMPLATE_SHEETS = Object.freeze([
+  "REG_MEM_CAP", "REG_MEM_NONCAP", "RET", "REG_MEM_LGU", "COM_A", "COM_B"
+]);
+
+const CLIENT_SUMMO_SYSTEM_FILL = Object.freeze({
+  memberName: "B",
+  canteen: "S",
+  wrs: "T"
+});
+
 export const SUMMO_MOVEMENT_TYPES = Object.freeze({
   LBP: "LBP",
   GMAR: "GMAR",
@@ -589,5 +599,83 @@ export async function buildSummoWorkbook(report, metadata = {}) {
     ["Validation issues", report.issues.join(" | ") || "None"]
   ]);
   audit.getColumn(1).font = { bold: true };
+  return workbook.xlsx.writeBuffer();
+}
+
+function isClientSummoSystemCell(cell) {
+  const color = cell.fill?.fgColor || {};
+  return cell.fill?.type === "pattern" && cell.fill?.pattern === "solid" &&
+    Number(color.theme) === 9 && Math.abs(Number(color.tint) - 0.7999816888943144) < 0.000001;
+}
+
+function clientSummoMemberRows(sheet) {
+  const rows = [];
+  for (let rowNumber = 7; rowNumber <= Math.max(sheet.rowCount, 7); rowNumber += 1) {
+    const nameCell = sheet.getCell(`B${rowNumber}`);
+    if (nameCell.isMerged && nameCell.master.address === nameCell.address) rows.push(rowNumber);
+    else if (rows.length) break;
+  }
+  return rows;
+}
+
+function clientSummoMonthLabel(period) {
+  const [year, month] = period.split("-").map(Number);
+  const monthName = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" })
+    .format(new Date(Date.UTC(year, month - 1, 1))).toUpperCase();
+  return `${monthName}'${year}`;
+}
+
+export async function buildClientSummoWorkbook({ templateBuffer, period, rows = [] }) {
+  const normalizedPeriod = normalizePeriod(period);
+  if (!normalizedPeriod) throw new Error("Reporting period must be YYYY-MM.");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(templateBuffer);
+  const issues = [];
+  for (const sheetName of CLIENT_SUMMO_TEMPLATE_SHEETS) {
+    if (!workbook.getWorksheet(sheetName)) issues.push(`Missing worksheet ${sheetName}.`);
+  }
+  const sheet = workbook.getWorksheet("REG_MEM_CAP");
+  if (sheet) {
+    if (String(sheet.getCell("A6").text || "").trim() !== SUMMO_CLUSTER) {
+      issues.push(`REG_MEM_CAP title must be ${SUMMO_CLUSTER}.`);
+    }
+    if (String(sheet.getCell("S4").text || "").trim().toUpperCase() !== "CANTEEN") {
+      issues.push("Expected Canteen header in S4.");
+    }
+    if (String(sheet.getCell("T4").text || "").trim().toUpperCase() !== "WRS") {
+      issues.push("Expected WRS header in T4.");
+    }
+    const memberRows = clientSummoMemberRows(sheet);
+    if (!memberRows.length) issues.push("No merged member rows were found from B7:E7 downward.");
+    if (rows.length > memberRows.length) {
+      issues.push(`${rows.length} active Regular Capture members exceed the ${memberRows.length} template rows.`);
+    }
+    for (const rowNumber of memberRows) {
+      for (const [field, column] of Object.entries(CLIENT_SUMMO_SYSTEM_FILL)) {
+        const cell = sheet.getCell(`${column}${rowNumber}`);
+        if (!isClientSummoSystemCell(cell)) issues.push(`${cell.address} (${field}) is not an approved light-green system cell.`);
+        if (cell.formula) issues.push(`${cell.address} (${field}) contains a formula and cannot be overwritten.`);
+      }
+    }
+    if (!issues.length) {
+      for (const rowNumber of memberRows) {
+        sheet.getCell(`B${rowNumber}`).value = null;
+        sheet.getCell(`S${rowNumber}`).value = null;
+        sheet.getCell(`T${rowNumber}`).value = null;
+      }
+      [...rows].sort((left, right) => String(left.memberName || "").localeCompare(String(right.memberName || "")) ||
+        String(left.memberNo || "").localeCompare(String(right.memberNo || ""))).forEach((row, index) => {
+        const rowNumber = memberRows[index];
+        sheet.getCell(`B${rowNumber}`).value = String(row.memberName || "").trim();
+        sheet.getCell(`S${rowNumber}`).value = Number(row.canteen || 0) || null;
+        sheet.getCell(`T${rowNumber}`).value = Number(row.wrs || 0) || null;
+      });
+      sheet.getCell("S3").value = clientSummoMonthLabel(normalizedPeriod);
+    }
+  }
+  if (issues.length) throw new Error(`Client SUMMO template validation failed: ${issues.join(" ")}`);
+  workbook.calcProperties.fullCalcOnLoad = true;
+  workbook.lastModifiedBy = "TASETEMCO Cooperative System";
+  workbook.modified = new Date();
   return workbook.xlsx.writeBuffer();
 }
