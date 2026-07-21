@@ -698,7 +698,9 @@ async function run() {
     const costCenterRows = await costCenterResponse.json();
     if (!costCenterResponse.ok || !costCenterRows.some((row) => row.code === "C1" && row.summoColumn === "Canteen") ||
       !costCenterRows.some((row) => row.code === "C2" && row.summoColumn === "Canteen") ||
-      !costCenterRows.some((row) => row.code === "WRS" && row.summoColumn === "WRS")) {
+      !costCenterRows.some((row) => row.code === "WRS" && row.summoColumn === "WRS") ||
+      !costCenterRows.some((row) => row.code === "GMAR" && row.name === "G-mar Commercial" &&
+        row.summoColumn === "G-mar Capital")) {
       throw new Error("Seeded cost centers should expose their future SUMMO mappings.");
     }
 
@@ -728,8 +730,10 @@ async function run() {
     };
     const canteenSummoMovement = await createAndFinalizeSystemCharge("C1", 120, "SUMMO-C1-SMOKE");
     const wrsSummoMovement = await createAndFinalizeSystemCharge("WRS", 80, "SUMMO-WRS-SMOKE");
-    if (canteenSummoMovement?.summoColumn !== "Canteen" || wrsSummoMovement?.summoColumn !== "WRS") {
-      throw new Error("Finalized cost-center movements should snapshot their SUMMO column mapping.");
+    const gmarSummoMovement = await createAndFinalizeSystemCharge("GMAR", 300, "SUMMO-GMAR-SMOKE");
+    if (canteenSummoMovement?.summoColumn !== "Canteen" || wrsSummoMovement?.summoColumn !== "WRS" ||
+      gmarSummoMovement?.summoColumn !== "G-mar Capital") {
+      throw new Error("Finalized Canteen/WRS/G-mar movements should snapshot their SUMMO column mapping.");
     }
 
     const templateResponse = await fetch(`${baseUrl}/api/reports/summo/template?period=${summoPeriod}`, {
@@ -766,9 +770,11 @@ async function run() {
     const refreshSummoBody = await refreshSummoResponse.json();
     const mariaSummoRow = refreshSummoBody.snapshot?.rows?.find((row) => row.memberNo === "M-000482");
     if (!refreshSummoResponse.ok || mariaSummoRow?.canteen !== 120 || mariaSummoRow?.wrs !== 80 ||
-      refreshSummoBody.snapshot?.sourceSummary?.systemMovementCount !== 2 ||
-      refreshSummoBody.snapshot?.systemMovementDetails?.length !== 2) {
-      throw new Error("SUMMO draft should include finalized Canteen/WRS system movements with drill-down details.");
+      mariaSummoRow?.gmarCapital !== 300 || mariaSummoRow?.gmarInterest !== 6 ||
+      refreshSummoBody.snapshot?.sourceSummary?.systemMovementCount !== 3 ||
+      refreshSummoBody.snapshot?.sourceSummary?.systemGmarAmount !== 300 ||
+      refreshSummoBody.snapshot?.systemMovementDetails?.length !== 3) {
+      throw new Error("SUMMO draft should include finalized Canteen/WRS/G-mar system movements with drill-down details.");
     }
     const previewClientWorkbookResponse = await fetch(
       `${baseUrl}/api/reports/summo/client-workbook/${summoPeriod}/preview.xlsx`,
@@ -785,10 +791,13 @@ async function run() {
     const previewCaptureSheet = previewClientWorkbook.getWorksheet("REG_MEM_CAP");
     const mariaClientRow = Array.from({ length: 67 }, (_, index) => index + 7)
       .find((rowNumber) => previewCaptureSheet.getCell(`B${rowNumber}`).value === "Maria L. Santos");
-    if (!mariaClientRow || previewCaptureSheet.getCell(`S${mariaClientRow}`).value !== 120 ||
+    if (!mariaClientRow || previewCaptureSheet.getCell(`P${mariaClientRow}`).value !== 300 ||
+      previewCaptureSheet.getCell(`S${mariaClientRow}`).value !== 120 ||
       previewCaptureSheet.getCell(`T${mariaClientRow}`).value !== 80 ||
+      (!previewCaptureSheet.getCell(`Q${mariaClientRow}`).value?.formula &&
+        !previewCaptureSheet.getCell(`Q${mariaClientRow}`).value?.sharedFormula) ||
       !previewCaptureSheet.getCell(`AK${mariaClientRow}`).value?.formula) {
-      throw new Error("Client-format SUMMO preview should fill Maria's Canteen/WRS cells and retain formulas.");
+      throw new Error("Client-format SUMMO preview should fill Maria's G-mar/Canteen/WRS cells and retain formulas.");
     }
     const lockSummoResponse = await fetch(`${baseUrl}/api/reports/summo/periods/${summoPeriod}/lock`, {
       method: "POST", headers: { Cookie: adminCookie }
@@ -943,8 +952,8 @@ async function run() {
       headers: { Cookie: managerCookie }
     });
     const memberChargeReviewBody = await memberChargeReview.json();
-    if (!memberChargeReview.ok || memberChargeReviewBody.summary.finalizedSourceAmount !== 200 ||
-      memberChargeReviewBody.summary.reversalAmount !== -80 || memberChargeReviewBody.summary.netPayableMovement !== 120 ||
+    if (!memberChargeReview.ok || memberChargeReviewBody.summary.finalizedSourceAmount !== 500 ||
+      memberChargeReviewBody.summary.reversalAmount !== -80 || memberChargeReviewBody.summary.netPayableMovement !== 420 ||
       !memberChargeReviewBody.movements.every((movement) => movement.memberNo === "M-000482")) {
       throw new Error("Member-filtered reconciliation should recalculate sources and movements for only that member.");
     }

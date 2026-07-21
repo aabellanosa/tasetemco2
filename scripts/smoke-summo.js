@@ -93,7 +93,7 @@ await originalClientWorkbook.xlsx.load(clientTemplateBuffer);
 const clientWorkbookBuffer = await buildClientSummoWorkbook({
   templateBuffer: clientTemplateBuffer,
   period: "2026-07",
-  rows: [{ memberNo: "M-001", memberName: "Capture Member", canteen: 250, wrs: 75 }]
+  rows: [{ memberNo: "M-001", memberName: "Capture Member", gmarCapital: 400, canteen: 250, wrs: 75 }]
 });
 const clientWorkbook = new ExcelJS.Workbook();
 await clientWorkbook.xlsx.load(clientWorkbookBuffer);
@@ -101,12 +101,15 @@ assert.deepEqual(clientWorkbook.worksheets.map((sheet) => sheet.name), [...CLIEN
 const clientSheet = clientWorkbook.getWorksheet("REG_MEM_CAP");
 const originalClientSheet = originalClientWorkbook.getWorksheet("REG_MEM_CAP");
 assert.equal(clientSheet.getCell("B7").value, "Capture Member");
+assert.equal(clientSheet.getCell("P7").value, 400);
 assert.equal(clientSheet.getCell("S7").value, 250);
 assert.equal(clientSheet.getCell("T7").value, 75);
 assert.equal(clientSheet.getCell("S3").value, "JULY'2026");
 assert.equal(clientSheet.getCell("X7").value, originalClientSheet.getCell("X7").value);
 assert.deepEqual(clientSheet.getCell("X7").fill, originalClientSheet.getCell("X7").fill);
 assert.deepEqual(clientSheet.getCell("S7").fill, originalClientSheet.getCell("S7").fill);
+assert.deepEqual(clientSheet.getCell("P7").fill, originalClientSheet.getCell("P7").fill);
+assert.deepEqual(clientSheet.getCell("Q7").value, originalClientSheet.getCell("Q7").value);
 for (const sheetName of CLIENT_SUMMO_TEMPLATE_SHEETS) {
   const originalSheet = originalClientWorkbook.getWorksheet(sheetName);
   const generatedSheet = clientWorkbook.getWorksheet(sheetName);

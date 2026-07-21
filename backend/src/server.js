@@ -7235,7 +7235,8 @@ async function listSystemSummoMovements(period) {
     memberMap.has(movement.memberNo) && movement.transactionDate >= bounds.start && movement.transactionDate <= bounds.end
   );
   return movements.map((movement) => {
-    const mappedType = String(movement.summoColumn || "").trim().toUpperCase().replace(/[ /-]+/g, "_");
+    const mappedValue = String(movement.summoColumn || "").trim().toUpperCase().replace(/[ /-]+/g, "_");
+    const mappedType = mappedValue === "G_MAR_CAPITAL" ? "GMAR" : mappedValue;
     return {
       id: movement.movementNo,
       importNo: "SYSTEM-COST-CENTER",
@@ -7313,7 +7314,7 @@ async function calculateSummoDraft(period) {
   if (pendingCostCenterBatches.length) {
     predecessorIssues.push(`${pendingCostCenterBatches.length} cost-center batch(es) remain Draft for this period.`);
   }
-  const supportedCostCenterTypes = new Set(["CANTEEN", "WRS"]);
+  const supportedCostCenterTypes = new Set(["CANTEEN", "WRS", "GMAR"]);
   const unmappedSystemMovements = systemMovements.filter(
     (movement) => movement.movementType !== "REVERSAL" && !supportedCostCenterTypes.has(movement.movementType)
   );
@@ -7321,11 +7322,11 @@ async function calculateSummoDraft(period) {
     predecessorIssues.push(`${unmappedSystemMovements.length} finalized cost-center movement(s) have no supported SUMMO mapping.`);
   }
   const importedSystemTypes = new Set(importedMovements
-    .filter((movement) => ["CANTEEN", "WRS"].includes(movement.movementType))
+    .filter((movement) => ["CANTEEN", "WRS", "GMAR"].includes(movement.movementType))
     .map((movement) => movement.movementType));
   const importedSystemOverlap = systemMovements.some((movement) => importedSystemTypes.has(movement.movementType));
   if (importedSystemOverlap) {
-    predecessorIssues.push("Canteen/WRS inputs exist in both finalized Excel imports and system transactions; remove the duplicate source before locking.");
+    predecessorIssues.push("Canteen/WRS/G-mar inputs exist in both finalized Excel imports and system transactions; remove the duplicate source before locking.");
   }
   const rules = await getEffectiveSummoRules(normalizedPeriod);
   const report = calculateSummo({
@@ -7348,6 +7349,8 @@ async function calculateSummoDraft(period) {
       .reduce((sum, item) => addMoney(sum, item.amount), 0),
     systemWrsAmount: systemMovements.filter((item) => item.movementType === "WRS")
       .reduce((sum, item) => addMoney(sum, item.amount), 0),
+    systemGmarAmount: systemMovements.filter((item) => item.movementType === "GMAR")
+      .reduce((sum, item) => addMoney(sum, item.amount), 0),
     systemReversalAmount: systemMovements.filter((item) => item.movementType === "REVERSAL")
       .reduce((sum, item) => addMoney(sum, item.amount), 0)
   };
@@ -7357,7 +7360,7 @@ async function calculateSummoDraft(period) {
 
 function buildClientSummoCostCenterRows(report) {
   const rows = new Map((report.rows || []).map((row) => [row.memberNo, {
-    memberNo: row.memberNo, memberName: row.memberName, canteen: 0, wrs: 0
+    memberNo: row.memberNo, memberName: row.memberName, gmarCapital: 0, canteen: 0, wrs: 0
   }]));
   const movements = report.systemMovementDetails || [];
   const originals = new Map(movements.filter((movement) => movement.movementType !== "REVERSAL")
@@ -7366,8 +7369,9 @@ function buildClientSummoCostCenterRows(report) {
     const row = rows.get(movement.memberNo);
     if (!row) continue;
     const original = movement.movementType === "REVERSAL" ? originals.get(movement.reversesReference) : movement;
-    if (!original || !["CANTEEN", "WRS"].includes(original.movementType)) continue;
-    const field = original.movementType === "CANTEEN" ? "canteen" : "wrs";
+    if (!original || !["CANTEEN", "WRS", "GMAR"].includes(original.movementType)) continue;
+    const field = original.movementType === "CANTEEN" ? "canteen" :
+      original.movementType === "WRS" ? "wrs" : "gmarCapital";
     row[field] = addMoney(row[field], movement.movementType === "REVERSAL" ? -movement.amount : movement.amount);
   }
   return Array.from(rows.values());

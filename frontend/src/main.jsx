@@ -5291,7 +5291,7 @@ function SummoReport({ user }) {
           <Box>
             <Heading size="sm">Client-format Six-Cluster Workbook</Heading>
             <Text color="gray.600" fontSize="sm" mt={1}>
-              Pilot output fills only REG_MEM_CAP member names, Canteen from finalized C1/C2, and WRS from finalized WRS movements. Formulas, manual cells, and the other five sheets remain unchanged.
+              Pilot output fills only REG_MEM_CAP member names, G-mar Capital from finalized G-mar Commercial, Canteen from finalized C1/C2, and WRS from finalized WRS movements. Protected formulas, manual cells, and the other five sheets remain unchanged.
             </Text>
           </Box>
           <HStack wrap="wrap">
@@ -5312,7 +5312,7 @@ function SummoReport({ user }) {
           <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
             <Box>
               <Heading size="sm">External Movement Import</Heading>
-              <Text color="gray.600" fontSize="sm">Use Excel only for categories not yet captured in the system. Finalized Canteen and WRS transactions are included automatically; importing the same category for the month blocks locking to prevent duplicate reporting.</Text>
+              <Text color="gray.600" fontSize="sm">Use Excel only for categories not yet captured in the system. Finalized Canteen, WRS, and G-mar transactions are included automatically; importing the same category for the month blocks locking to prevent duplicate reporting.</Text>
             </Box>
             <Button size="sm" variant="outline" as="a" href={`${apiBase}/api/reports/summo/template?period=${period}`}>
               Download Template
@@ -5376,15 +5376,16 @@ function SummoReport({ user }) {
           </FormControl>
           {selectedMemberNo ? <Button size="sm" variant="outline" onClick={() => setSelectedMemberNo("")}>Show All</Button> : null}
         </Flex> : null}
-        {report?.sourceSummary ? <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={4}>
+        {report?.sourceSummary ? <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={3} mb={4}>
           <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Movements</Text><Text fontWeight="bold">{report.sourceSummary.systemMovementCount}</Text><Text fontSize="xs">{report.sourceSummary.pendingCostCenterBatchCount} draft batches pending</Text></Box>
           <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Canteen</Text><Text fontWeight="bold">{formatMoney(report.sourceSummary.systemCanteenAmount)}</Text></Box>
           <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System WRS</Text><Text fontWeight="bold">{formatMoney(report.sourceSummary.systemWrsAmount)}</Text></Box>
+          <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System G-mar</Text><Text fontWeight="bold">{formatMoney(report.sourceSummary.systemGmarAmount)}</Text></Box>
           <Box borderWidth="1px" borderRadius="md" p={3}><Text color="gray.500" fontSize="sm">System Reversals</Text><Text fontWeight="bold" color="red.600">-{formatMoney(report.sourceSummary.systemReversalAmount)}</Text></Box>
         </Grid> : null}
         {report?.rows ? (
-          <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>Canteen</Th><Th isNumeric>WRS</Th><Th isNumeric>Current Charges</Th><Th isNumeric>Previous Total</Th><Th isNumeric>Gross Payable</Th><Th isNumeric>Settlements</Th><Th isNumeric>Balance</Th></Tr></Thead>
-            <Tbody>{visibleReportRows.map((row) => <Tr key={row.memberNo}><Td>{row.memberNo}<br />{row.memberName}</Td><Td isNumeric>{formatMoney(row.canteen)}</Td><Td isNumeric>{formatMoney(row.wrs)}</Td><Td isNumeric>{formatMoney(row.currentCharges)}</Td><Td isNumeric>{formatMoney(row.previousBalanceTotal)}</Td><Td isNumeric>{formatMoney(row.grossPayable)}</Td><Td isNumeric>{formatMoney(row.settlements)}</Td><Td isNumeric fontWeight="bold">{formatMoney(row.endingBalance)}</Td></Tr>)}</Tbody>
+          <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>G-mar</Th><Th isNumeric>Canteen</Th><Th isNumeric>WRS</Th><Th isNumeric>Current Charges</Th><Th isNumeric>Previous Total</Th><Th isNumeric>Gross Payable</Th><Th isNumeric>Settlements</Th><Th isNumeric>Balance</Th></Tr></Thead>
+            <Tbody>{visibleReportRows.map((row) => <Tr key={row.memberNo}><Td>{row.memberNo}<br />{row.memberName}</Td><Td isNumeric>{formatMoney(row.gmarCapital)}</Td><Td isNumeric>{formatMoney(row.canteen)}</Td><Td isNumeric>{formatMoney(row.wrs)}</Td><Td isNumeric>{formatMoney(row.currentCharges)}</Td><Td isNumeric>{formatMoney(row.previousBalanceTotal)}</Td><Td isNumeric>{formatMoney(row.grossPayable)}</Td><Td isNumeric>{formatMoney(row.settlements)}</Td><Td isNumeric fontWeight="bold">{formatMoney(row.endingBalance)}</Td></Tr>)}</Tbody>
           </Table></TableContainer>
         ) : <Text color="gray.500">Prepare the draft after finalizing the required movement imports.</Text>}
         {visibleSystemMovements.length ? <Box mt={5}><Heading size="sm" mb={2}>System Cost Center Drill-down</Heading>

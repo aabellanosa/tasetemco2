@@ -8,6 +8,7 @@ export const CLIENT_SUMMO_TEMPLATE_SHEETS = Object.freeze([
 
 const CLIENT_SUMMO_SYSTEM_FILL = Object.freeze({
   memberName: "B",
+  gmarCapital: "P",
   canteen: "S",
   wrs: "T"
 });
@@ -642,6 +643,9 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
     if (String(sheet.getCell("S4").text || "").trim().toUpperCase() !== "CANTEEN") {
       issues.push("Expected Canteen header in S4.");
     }
+    if (String(sheet.getCell("P4").text || "").trim().toUpperCase() !== "G-MAR CAPITAL") {
+      issues.push("Expected G-mar Capital header in P4.");
+    }
     if (String(sheet.getCell("T4").text || "").trim().toUpperCase() !== "WRS") {
       issues.push("Expected WRS header in T4.");
     }
@@ -660,6 +664,7 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
     if (!issues.length) {
       for (const rowNumber of memberRows) {
         sheet.getCell(`B${rowNumber}`).value = null;
+        sheet.getCell(`P${rowNumber}`).value = null;
         sheet.getCell(`S${rowNumber}`).value = null;
         sheet.getCell(`T${rowNumber}`).value = null;
       }
@@ -667,6 +672,7 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
         String(left.memberNo || "").localeCompare(String(right.memberNo || ""))).forEach((row, index) => {
         const rowNumber = memberRows[index];
         sheet.getCell(`B${rowNumber}`).value = String(row.memberName || "").trim();
+        sheet.getCell(`P${rowNumber}`).value = Number(row.gmarCapital || 0) || null;
         sheet.getCell(`S${rowNumber}`).value = Number(row.canteen || 0) || null;
         sheet.getCell(`T${rowNumber}`).value = Number(row.wrs || 0) || null;
       });

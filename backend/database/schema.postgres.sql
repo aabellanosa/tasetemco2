@@ -46,7 +46,8 @@ INSERT INTO cost_centers (code, name, cost_center_type, summo_column, status, cr
 VALUES
   ('C1', 'Canteen 1', 'Canteen', 'Canteen', 'Active', 'seed', 'seed'),
   ('C2', 'Canteen 2', 'Canteen', 'Canteen', 'Active', 'seed', 'seed'),
-  ('WRS', 'Water Refilling Station', 'Water Station', 'WRS', 'Active', 'seed', 'seed')
+  ('WRS', 'Water Refilling Station', 'Water Station', 'WRS', 'Active', 'seed', 'seed'),
+  ('GMAR', 'G-mar Commercial', 'Commercial Store', 'G-mar Capital', 'Active', 'seed', 'seed')
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS member_charge_batches (

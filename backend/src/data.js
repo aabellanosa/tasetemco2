@@ -580,7 +580,8 @@ export const memberPreviousLoanUnlockRequests = [];
 export const costCenters = [
   { code: "C1", name: "Canteen 1", type: "Canteen", summoColumn: "Canteen", status: "Active" },
   { code: "C2", name: "Canteen 2", type: "Canteen", summoColumn: "Canteen", status: "Active" },
-  { code: "WRS", name: "Water Refilling Station", type: "Water Station", summoColumn: "WRS", status: "Active" }
+  { code: "WRS", name: "Water Refilling Station", type: "Water Station", summoColumn: "WRS", status: "Active" },
+  { code: "GMAR", name: "G-mar Commercial", type: "Commercial Store", summoColumn: "G-mar Capital", status: "Active" }
 ];
 export const memberChargeBatches = [];
 export const memberChargeEntries = [];
