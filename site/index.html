@@ -208,7 +208,7 @@
           <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily C1, C2, WRS, and future configured member payables.</p></article>
           <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
           <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
-          <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, and XLSX export.</p></article>
+          <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, analytical XLSX export, and the exact client-format six-sheet workbook.</p></article>
           <article><h3>Keyboard Selection</h3><p>Type to filter, use Up/Down, press Enter to select or Tab to select and advance, and Escape to close.</p></article>
         </div>
       </section>
@@ -358,6 +358,11 @@
               <li>The screen may be filtered to one member without changing the complete snapshot or XLSX export.</li>
               <li>General Manager locks the month; Auditor and Board retain read-only access.</li>
               <li>Export produces printable Regular Capture, Loan Details, and Audit sheets.</li>
+              <li><strong>Generate Preview</strong> fills the client-format workbook from current finalized system movements before locking.</li>
+              <li><strong>Download Locked Version</strong> produces the official client-format workbook only after the month is locked.</li>
+              <li>The first-sheet pilot fills only REG_MEM_CAP member names, Canteen from C1/C2, and WRS from WRS. Excel-import values are not copied into these cells.</li>
+              <li>The exact six sheets, formulas, yellow manual cells, headers, merged cells, formatting, and five future cluster sheets remain unchanged.</li>
+              <li>Generation stops when template safeguards fail or the Active Regular Capture roster exceeds the current 67-row capacity.</li>
               <li>A locked month blocks affected new, edited, finalized, and reversed cost-center activity.</li>
               <li>Reopening a locked month also unlocks every later locked SUMMO month for chronological regeneration.</li>
               <li>Only REGULAR MEMBERS CAPTURE SUMMO is implemented; other cluster transactions remain recorded for future cluster reports.</li>
@@ -409,7 +414,8 @@
             TASETEMCO treats the general ledger as the source of financial statements.
             SUMMO is a separate operational monthly receivables report. It combines
             finalized system transactions with validated Excel inputs for categories
-            not yet captured in the application.
+            not yet captured in the application. It can also fill the cooperative's
+            exact six-sheet workbook without replacing its formulas or manual cells.
           </p>
         </div>
 
@@ -417,6 +423,7 @@
           <span>Daily Cash Position</span>
           <span>Member Subsidiary Ledger</span>
           <span>SUMMO — Regular Members Capture</span>
+          <span>Client-format Six-Cluster SUMMO Workbook</span>
           <span>Cost Center Charge Reconciliation</span>
           <span>Control Account Reconciliation</span>
           <span>Trial Balance</span>

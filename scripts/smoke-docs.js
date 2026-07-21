@@ -39,6 +39,9 @@ function validateSite(directory) {
   assert(index.includes("SUMMO — Regular Members Capture"), "SUMMO report listing is missing.");
   assert(index.includes("Daily Cost-Center Payables"), "Cost-center payable workflow is missing.");
   assert(index.includes("C1/C2 movements automatically supply Canteen"), "System-to-SUMMO Canteen flow is missing.");
+  assert(index.includes("Generate Preview"), "Client-format SUMMO preview flow is missing.");
+  assert(index.includes("Download Locked Version"), "Locked client-format SUMMO flow is missing.");
+  assert(index.includes("current 67-row capacity"), "Client-format SUMMO capacity safeguard is missing.");
   assert(index.includes("other cluster transactions remain recorded"), "SUMMO cluster-coverage boundary is missing.");
   assert(index.includes("Tab to select and advance"), "Keyboard member-selection guidance is missing.");
   assert(index.includes("System Administrator records assessment notes and a loan decision"), "Current Admin loan decision flow is missing.");
@@ -52,6 +55,8 @@ assert(diagrams.includes("Cost Center and Other Sources into SUMMO"), "SUMMO dia
 assert(diagrams.includes("Daily Cost-Center Member Payables"), "Cost-center workflow diagram is missing.");
 assert(diagrams.includes("No Dedicated Loan Approver"), "Updated loan decision diagram is missing.");
 assert(diagrams.includes("Flexible Loan Collection"), "Updated collection diagram is missing.");
+assert(diagrams.includes("Client-format workbook flow"), "Client-format SUMMO workflow diagram is missing.");
+assert(diagrams.includes("Preserve formulas, yellow/manual cells"), "Client workbook preservation controls are missing.");
 
 validateSite(siteDir);
 

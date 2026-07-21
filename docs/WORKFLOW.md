@@ -349,7 +349,9 @@ The Reports screen includes a Trial Balance report that summarizes posted genera
 
 The Reports screen includes a Statement of Financial Condition report. It presents assets, liabilities, and equity from posted general ledger balances. Until formal closing entries are built, current-period income and expense balances are shown as Current Period Surplus or Deficit under equity.
 
-SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Finalized C1 and C2 cost-center payables now supply Canteen amounts, and finalized WRS payables supply WRS amounts directly from everyday system transactions. Bookkeeper uses the XLSX template only for categories not yet captured in-system, reviews validation, finalizes the import, and refreshes a draft. The system combines both source types with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. Locked exports contain Regular Capture, Loan Details, and Audit sheets. SUMMO imports and cost-center payables do not yet create accounting journals.
+SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Finalized C1 and C2 cost-center payables now supply Canteen amounts, and finalized WRS payables supply WRS amounts directly from everyday system transactions. Bookkeeper uses the XLSX import only for categories not yet captured in-system, reviews validation, finalizes the import, and refreshes a draft. The system combines both source types with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. The system-generated analytical export contains Regular Capture, Loan Details, and Audit sheets. SUMMO imports and cost-center payables do not yet create accounting journals.
+
+Client-format SUMMO Workbook v1 preserves the cooperative's exact six-sheet workbook as a controlled output template. `Generate Preview` reads current finalized system movements, while `Download Locked Version` requires an already locked SUMMO month. The first-sheet pilot fills only `REG_MEM_CAP`: Active Regular Capture member names, Canteen totals from finalized C1/C2 movements, and WRS totals from finalized WRS movements. It does not copy temporary Excel-import values into these cells. The other five cluster sheets, yellow manual-input cells, formulas, headers, merged cells, and formatting remain unchanged. Generation stops if the expected sheet/header/color safeguards fail or if the Active Regular Capture roster exceeds the current 67 member rows. This output feature is application-only and requires no database migration.
 
 | SUMMO Access | View / Export | Prepare Imports and Drafts | Lock / Reopen |
 | --- | --- | --- | --- |
@@ -624,6 +626,9 @@ Status and correction flow:
 7. A locked Regular Capture period blocks new, edited, finalized, or reversed cost-center activity for affected members and dates.
 8. General Manager or Admin may reopen with a required audit reason; every later locked SUMMO period is reopened as part of the forward chain.
 9. Screen filtering to one member does not change the complete stored snapshot or XLSX export.
+10. Bookkeeper or Admin may generate a client-format Preview before locking; it fills only member names, Canteen, and WRS on `REG_MEM_CAP` from finalized system movements.
+11. After locking, an authorized report viewer may download the official Locked client-format workbook.
+12. System validates the six expected worksheets, first-sheet title and headers, approved light-green target cells, formula protection, and 67-row capacity before writing any output.
 
 ## 5. Reporting Workflow
 

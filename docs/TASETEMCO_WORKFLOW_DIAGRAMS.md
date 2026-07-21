@@ -15,6 +15,8 @@ These diagrams describe the implemented React, Node/Express, and Postgres protot
 | Decide a submitted loan | System Administrator | Loans -> Applications |
 | Release or collect a loan | Teller / Cashier | Loans -> Releases / Collections |
 | Prepare Regular Capture SUMMO | Bookkeeper / Admin | Reports -> Regular Members Capture SUMMO |
+| Generate client-format SUMMO Preview | Bookkeeper / Admin | Reports -> Regular Members Capture SUMMO |
+| Download official client-format workbook | Authorized report viewer, after lock | Reports -> Regular Members Capture SUMMO |
 | Lock or reopen SUMMO | General Manager / Admin | Reports -> Regular Members Capture SUMMO |
 
 Searchable member fields support mouse-free use: type a name, member number, cluster, or contact number; use Up/Down to highlight; use Enter to select or Tab to select and continue to the next field. Loan release and collection queues can be filtered by loan number, member name, or member number.
@@ -429,10 +431,42 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
         v
 (System)
   Snapshot rows, rates, totals, actors, and audit evidence
-  Export printable XLSX with Regular Capture, Loan Details, and Audit sheets
+        |
+        +---- Analytical export ----> Regular Capture, Loan Details, and Audit
+        |
+        +---- Client-format export -> Preserve exact six-sheet workbook
+                                      Fill REG_MEM_CAP only:
+                                        member names
+                                        C1 + C2 -> Canteen
+                                        WRS     -> WRS
         |
         v
 [Auditor / Board] Read-only review
+```
+
+Client-format workbook flow:
+
+```text
+[Bookkeeper or Admin] Select reporting month
+        |
+        +---- Generate Preview
+        |       |
+        |       v
+        |     (System) Read current finalized cost-center movements
+        |
+        +---- General Manager/Admin locks month
+                |
+                v
+              [Authorized report viewer] Download Locked Version
+                        |
+                        v
+                      (System)
+                        Validate six sheet names and REG_MEM_CAP structure
+                        Validate light-green B, S, and T target cells
+                        Stop when Active roster exceeds 67 template rows
+                        Preserve formulas, yellow/manual cells, styles,
+                        merged cells, and all other worksheets
+                        Produce a newly filled XLSX; never alter the master
 ```
 
 SUMMO source boundary:
@@ -444,6 +478,8 @@ SUMMO Excel imports do not post accounting journals.
 Finalized imports are immutable; corrections use a superseding batch or reversal.
 Reopening a locked month also unlocks every later locked SUMMO month.
 Finalized cost-center movements retain their posting-time SUMMO mapping.
+The client-format pilot uses finalized system cost-center movements only; temporary SUMMO Excel imports do not fill its Canteen or WRS cells.
+Preview is operational working output. Locked Version is the official frozen-month output.
 ```
 
 Cluster routing and current coverage:
