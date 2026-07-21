@@ -2271,6 +2271,114 @@ function CostCenterAdministration({ user }) {
   </Box>;
 }
 
+function MonthlyContributionCapture({ members, user }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const emptyEntry = () => ({ id: `new-${Date.now()}-${Math.random()}`, memberNo: "", tfeaAmount: 0,
+    cbuAmount: 0, securedSavingsAmount: 0, remarks: "" });
+  const [batches, setBatches] = useState([]);
+  const [batchNo, setBatchNo] = useState("");
+  const [batchStatus, setBatchStatus] = useState("Draft");
+  const [batchCreatedBy, setBatchCreatedBy] = useState(user.username);
+  const [contributionPeriod, setContributionPeriod] = useState(today.slice(0, 7));
+  const [transactionDate, setTransactionDate] = useState(today);
+  const [sourceType, setSourceType] = useState("Payroll Deduction");
+  const [sourceReference, setSourceReference] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [entries, setEntries] = useState([emptyEntry()]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const activeMembers = members.filter((member) => member.status === "Active");
+  const canEditDraft = batchStatus === "Draft" && batchCreatedBy === user.username;
+  const totals = entries.reduce((summary, entry) => ({
+    tfea: addMoney(summary.tfea, entry.tfeaAmount), cbu: addMoney(summary.cbu, entry.cbuAmount),
+    secured: addMoney(summary.secured, entry.securedSavingsAmount)
+  }), { tfea: 0, cbu: 0, secured: 0 });
+  const load = useCallback(async () => {
+    try { setBatches(await api("/api/monthly-contribution-batches")); setError(""); }
+    catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  function updateEntry(index, field, value) {
+    setEntries((current) => current.map((entry, rowIndex) => rowIndex === index ? { ...entry, [field]: value } : entry));
+  }
+  function reset() {
+    setBatchNo(""); setBatchStatus("Draft"); setBatchCreatedBy(user.username); setContributionPeriod(today.slice(0, 7));
+    setTransactionDate(today); setSourceType("Payroll Deduction"); setSourceReference(""); setRemarks("");
+    setEntries([emptyEntry()]); setMessage(""); setError("");
+  }
+  async function openBatch(selectedBatchNo) {
+    try {
+      const data = await api(`/api/monthly-contribution-batches/${selectedBatchNo}`);
+      setBatchNo(data.batch.batchNo); setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy);
+      setContributionPeriod(data.batch.contributionPeriod); setTransactionDate(data.batch.transactionDate);
+      setSourceType(data.batch.sourceType); setSourceReference(data.batch.sourceReference); setRemarks(data.batch.remarks);
+      setEntries(data.entries); setMessage(""); setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function saveDraft(event) {
+    event.preventDefault(); setMessage(""); setError("");
+    try {
+      const data = await api(batchNo ? `/api/monthly-contribution-batches/${batchNo}` : "/api/monthly-contribution-batches", {
+        method: batchNo ? "PUT" : "POST",
+        body: JSON.stringify({ contributionPeriod, transactionDate, sourceType, sourceReference, remarks, entries })
+      });
+      setBatchNo(data.batch.batchNo); setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy);
+      setEntries(data.entries); setMessage(`${data.batch.batchNo} saved as Draft.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function finalizeBatch() {
+    if (!batchNo || !window.confirm(`Finalize ${batchNo}? CBU amounts will immediately increase member CBU balances.`)) return;
+    setMessage(""); setError("");
+    try {
+      const data = await api(`/api/monthly-contribution-batches/${batchNo}/finalize`, { method: "POST" });
+      setBatchStatus(data.batch.status);
+      setMessage(`${batchNo} finalized. SUMMO contributions and member CBU balances were updated.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  return <VStack align="stretch" spacing={5}>
+    <Box as="form" onSubmit={saveDraft} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Monthly Member Contributions</Heading>
+        <Text color="gray.600">Record payroll-deducted TFEA, CBU, and Secured Savings without creating member payables.</Text></Box>
+        <HStack><Badge colorScheme={batchStatus === "Finalized" ? "green" : "blue"}>{batchNo || "New Draft"} · {batchStatus}</Badge>
+          <Button type="button" variant="outline" onClick={reset}>New</Button>
+          {canEditDraft ? <Button type="submit" colorScheme="green">Save Draft</Button> : null}
+          {batchNo && batchStatus === "Draft" ? <Button type="button" colorScheme="orange" onClick={finalizeBatch}>Finalize</Button> : null}</HStack></Flex>
+      {message ? <Text color="green.700" mb={3}>{message}</Text> : null}{error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+      <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4} mb={4}>
+        <FormControl isRequired><FormLabel>Contribution Month</FormLabel><Input isDisabled={!canEditDraft} type="month" value={contributionPeriod}
+          onChange={(event) => { setContributionPeriod(event.target.value); setTransactionDate(`${event.target.value}-01`); }} /></FormControl>
+        <FormControl isRequired><FormLabel>Transaction Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={today} value={transactionDate} onChange={(event) => setTransactionDate(event.target.value)} /></FormControl>
+        <FormControl isRequired><FormLabel>Source</FormLabel><Select isDisabled={!canEditDraft} value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+          <option>Payroll Deduction</option><option disabled>Cash Payment — account mapping required</option></Select></FormControl>
+        <FormControl isRequired><FormLabel>Payroll Reference</FormLabel><Input isDisabled={!canEditDraft} value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} placeholder="e.g. PAYROLL-2026-07" /></FormControl>
+      </Grid>
+      <FormControl mb={4}><FormLabel>Batch Remarks</FormLabel><Input isDisabled={!canEditDraft} value={remarks} onChange={(event) => setRemarks(event.target.value)} /></FormControl>
+      <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={4}>
+        <Box borderWidth="1px" borderRadius="md" p={3}><Text fontSize="sm" color="gray.500">Members</Text><Text fontWeight="bold">{entries.length}</Text></Box>
+        <Box borderWidth="1px" borderRadius="md" p={3}><Text fontSize="sm" color="gray.500">TFEA</Text><Text fontWeight="bold">{formatMoney(totals.tfea)}</Text></Box>
+        <Box borderWidth="1px" borderRadius="md" p={3}><Text fontSize="sm" color="gray.500">CBU</Text><Text fontWeight="bold">{formatMoney(totals.cbu)}</Text></Box>
+        <Box borderWidth="1px" borderRadius="md" p={3}><Text fontSize="sm" color="gray.500">Secured Savings</Text><Text fontWeight="bold">{formatMoney(totals.secured)}</Text></Box>
+      </Grid>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Member</Th><Th isNumeric>TFEA</Th><Th isNumeric>CBU</Th><Th isNumeric>Secured Savings</Th><Th>Remarks</Th><Th /></Tr></Thead>
+        <Tbody>{entries.map((entry, index) => <Tr key={entry.id || index}><Td minW="300px">{canEditDraft ? <MemberCombobox members={activeMembers} value={entry.memberNo}
+          onChange={(memberNo) => updateEntry(index, "memberNo", memberNo)} /> : `${entry.memberName} (${entry.memberNo})`}</Td>
+          {["tfeaAmount", "cbuAmount", "securedSavingsAmount"].map((field) => <Td key={field} minW="130px">{canEditDraft ? <NumberInput min={0} precision={2} value={entry[field]}
+            onChange={(value) => updateEntry(index, field, Number(value || 0))}><NumberInputField textAlign="right" /></NumberInput> : formatMoney(entry[field])}</Td>)}
+          <Td>{canEditDraft ? <Input size="sm" value={entry.remarks} onChange={(event) => updateEntry(index, "remarks", event.target.value)} /> : entry.remarks || "-"}</Td>
+          <Td>{canEditDraft ? <Button size="sm" variant="outline" isDisabled={entries.length === 1} onClick={() => setEntries(entries.filter((_, rowIndex) => rowIndex !== index))}>Remove</Button>
+            : <Badge colorScheme="green">Locked</Badge>}</Td></Tr>)}</Tbody></Table></TableContainer>
+      {canEditDraft ? <Button mt={3} type="button" variant="outline" onClick={() => setEntries([...entries, emptyEntry()])}>Add Member</Button> : null}
+    </Box>
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Contribution Batch History</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Month</Th><Th>Payroll Reference</Th><Th>Status</Th><Th isNumeric>Members</Th><Th isNumeric>TFEA</Th><Th isNumeric>CBU</Th><Th isNumeric>Secured Savings</Th><Th /></Tr></Thead>
+        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{batch.contributionPeriod}</Td><Td>{batch.sourceReference}</Td>
+          <Td><Badge colorScheme={batch.status === "Finalized" ? "green" : "blue"}>{batch.status}</Badge></Td><Td isNumeric>{batch.entryCount}</Td>
+          <Td isNumeric>{formatMoney(batch.tfeaTotal)}</Td><Td isNumeric>{formatMoney(batch.cbuTotal)}</Td><Td isNumeric>{formatMoney(batch.securedSavingsTotal)}</Td>
+          <Td><Button size="sm" onClick={() => openBatch(batch.batchNo)}>{batch.status === "Draft" && batch.createdBy === user.username ? "Edit" : "View"}</Button></Td></Tr>)}</Tbody>
+      </Table></TableContainer></Box>
+  </VStack>;
+}
+
 function MemberChargeCapture({ members, user }) {
   const today = new Date().toISOString().slice(0, 10);
   const emptyEntry = () => ({ id: `new-${Date.now()}-${Math.random()}`, memberNo: "", amount: 0, referenceNo: "", remarks: "" });
@@ -2551,6 +2659,7 @@ function Members({ user }) {
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const canEncodeMemberCharges = user.permissions.includes("member-charges:encode");
   const canViewMemberCharges = user.permissions.includes("member-charges:view");
+  const canViewMonthlyContributions = user.permissions.includes("monthly-contributions:view");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
   const memberDirectoryQuery = memberDirectorySearch.trim().toLowerCase();
@@ -3110,6 +3219,7 @@ function Members({ user }) {
           {canEditMemberProfile ? <Tab flexShrink={0}>Imports</Tab> : null}
           {canUseTellerWorkspace ? <Tab flexShrink={0}>Teller Transactions</Tab> : null}
           {canViewMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
+          {canViewMonthlyContributions ? <Tab flexShrink={0}>Monthly Contributions</Tab> : null}
           <Tab flexShrink={0}>Member Directory</Tab>
           {(canViewInitialPayments ||
             canViewShareCapitalContributions ||
@@ -3564,6 +3674,10 @@ function Members({ user }) {
             <TabPanel px={0}>{canEncodeMemberCharges
               ? <MemberChargeCapture members={members} user={user} />
               : <MemberChargeReview />}</TabPanel>
+          ) : null}
+
+          {canViewMonthlyContributions ? (
+            <TabPanel px={0}><MonthlyContributionCapture members={members} user={user} /></TabPanel>
           ) : null}
 
           <TabPanel px={0}>

@@ -10,7 +10,10 @@ const CLIENT_SUMMO_SYSTEM_FILL = Object.freeze({
   memberName: "B",
   gmarCapital: "P",
   canteen: "S",
-  wrs: "T"
+  wrs: "T",
+  tfea: "U",
+  cbu: "V",
+  securedSavings: "AE"
 });
 
 export const SUMMO_MOVEMENT_TYPES = Object.freeze({
@@ -649,6 +652,9 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
     if (String(sheet.getCell("T4").text || "").trim().toUpperCase() !== "WRS") {
       issues.push("Expected WRS header in T4.");
     }
+    if (String(sheet.getCell("U4").text || "").trim().toUpperCase() !== "TFEA") issues.push("Expected TFEA header in U4.");
+    if (!String(sheet.getCell("V4").text || "").trim().toUpperCase().startsWith("CBU")) issues.push("Expected CBU header in V4.");
+    if (String(sheet.getCell("AE4").text || "").trim().toUpperCase() !== "SECURED") issues.push("Expected Secured Savings header in AE4.");
     const memberRows = clientSummoMemberRows(sheet);
     if (!memberRows.length) issues.push("No merged member rows were found from B7:E7 downward.");
     if (rows.length > memberRows.length) {
@@ -657,7 +663,9 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
     for (const rowNumber of memberRows) {
       for (const [field, column] of Object.entries(CLIENT_SUMMO_SYSTEM_FILL)) {
         const cell = sheet.getCell(`${column}${rowNumber}`);
-        if (!isClientSummoSystemCell(cell)) issues.push(`${cell.address} (${field}) is not an approved light-green system cell.`);
+        const approvedCell = isClientSummoSystemCell(cell) ||
+          (field === "securedSavings" && cell.fill?.pattern === "none" && !cell.value);
+        if (!approvedCell) issues.push(`${cell.address} (${field}) is not an approved contribution input cell.`);
         if (cell.formula) issues.push(`${cell.address} (${field}) contains a formula and cannot be overwritten.`);
       }
     }
@@ -667,6 +675,9 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
         sheet.getCell(`P${rowNumber}`).value = null;
         sheet.getCell(`S${rowNumber}`).value = null;
         sheet.getCell(`T${rowNumber}`).value = null;
+        sheet.getCell(`U${rowNumber}`).value = null;
+        sheet.getCell(`V${rowNumber}`).value = null;
+        sheet.getCell(`AE${rowNumber}`).value = null;
       }
       [...rows].sort((left, right) => String(left.memberName || "").localeCompare(String(right.memberName || "")) ||
         String(left.memberNo || "").localeCompare(String(right.memberNo || ""))).forEach((row, index) => {
@@ -675,6 +686,9 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
         sheet.getCell(`P${rowNumber}`).value = Number(row.gmarCapital || 0) || null;
         sheet.getCell(`S${rowNumber}`).value = Number(row.canteen || 0) || null;
         sheet.getCell(`T${rowNumber}`).value = Number(row.wrs || 0) || null;
+        sheet.getCell(`U${rowNumber}`).value = Number(row.tfea || 0) || null;
+        sheet.getCell(`V${rowNumber}`).value = Number(row.cbu || 0) || null;
+        sheet.getCell(`AE${rowNumber}`).value = Number(row.securedSavings || 0) || null;
       });
       sheet.getCell("S3").value = clientSummoMonthLabel(normalizedPeriod);
     }

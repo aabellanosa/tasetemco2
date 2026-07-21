@@ -855,7 +855,13 @@ Layer 3 is posting and approval:
 
 This avoids building large fragile screens too early while still keeping the prototype useful and testable.
 
-## 10. Implementation Notes
+## 10. Monthly Member Contributions
+
+Teller / Cashier records a monthly payroll-deduction batch using one row per Active member and separate TFEA, CBU, and Secured Savings amounts. Drafts have no operational effect. Finalization creates immutable system SUMMO movements; each finalized CBU amount also increases that member's CBU/share-capital balance. These contributions never enter cost-center or member-payable totals.
+
+The first release accepts Payroll Deduction as the source and requires a unique payroll reference for the month. Cash Payment is reserved in the data model but remains disabled until TFEA and Secured Savings accounting mappings are approved, so cash cannot bypass teller-batch balancing. A locked Regular Capture SUMMO month blocks saving or finalizing affected batches. Finalized system contributions populate TFEA, CBU/S, and Secured Savings in the analytical report and columns U, V, and AE of the controlled client workbook.
+
+## 11. Implementation Notes
 
 When backend work begins, the application should treat the general ledger as the source of financial statements. Member savings, share capital, and loans should have subsidiary ledgers that reconcile to their related general ledger control accounts.
 

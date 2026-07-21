@@ -404,4 +404,6 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 
 ## Documentation
 
+The Teller / Cashier now has a **Monthly Contributions** workspace for payroll-deducted TFEA, CBU, and Secured Savings. Finalized batches feed SUMMO directly, and finalized CBU increases the member's share-capital balance; these amounts are not member payables. Cash-source capture is intentionally disabled until the remaining contribution account mappings are configured.
+
 - [Workflow Document](docs/WORKFLOW.md)

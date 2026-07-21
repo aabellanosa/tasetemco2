@@ -201,7 +201,10 @@ export const rolePermissions = {
     "member-charges:view",
     "member-charges:encode",
     "member-charges:finalize",
-    "member-charges:reverse"
+    "member-charges:reverse",
+    "monthly-contributions:view",
+    "monthly-contributions:encode",
+    "monthly-contributions:finalize"
   ],
   "Membership Officer": [
     "members:view",
@@ -710,6 +713,9 @@ export const initialPayments = [
 ];
 
 export const shareCapitalContributions = [];
+export const monthlyContributionBatches = [];
+export const monthlyContributionEntries = [];
+export const monthlyContributionMovements = [];
 
 export const savingsDeposits = [];
 
