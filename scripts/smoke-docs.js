@@ -32,10 +32,12 @@ function validateSite(directory) {
   assert(index.includes("System Administrator"), "Role matrix is missing System Administrator.");
   assert(index.includes("Board / Read-Only Executive"), "Role matrix is missing Board / Read-Only Executive.");
   assert(index.includes("Loan Product Deductions"), "Loan product deductions section is missing.");
+  assert(index.includes("principal up to PHP 500,000"), "LBP Loan maximum is missing.");
   assert(index.includes("2.5% monthly diminishing interest"), "TASETEMCO loan interest rule is missing.");
   assert(index.includes("1.5% insurance, 2% CBU, and 1% savings retention"), "TASETEMCO loan deduction rates are missing.");
   assert(index.includes("print a member loan breakdown"), "Printable loan breakdown workflow note is missing.");
   assert(index.includes("SUMMO Monthly Report"), "SUMMO workflow is missing.");
+  assert(index.includes("LBP due date and amount in columns F and G"), "Native LBP SUMMO coverage is missing.");
   assert(index.includes('id="monthly-contributions"'), "Monthly Contributions workflow is missing.");
   assert(index.includes("TFEA Payable, Share Capital, and Secured Savings Payable"), "Monthly contribution posting flow is missing.");
   assert(index.includes("posted Secured Savings less pending secured withdrawals"), "Secured Savings withdrawal controls are missing.");

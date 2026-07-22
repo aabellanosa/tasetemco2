@@ -551,6 +551,9 @@ Client-format workbook flow:
 
 SUMMO source boundary:
 
+- Posted non-revolving LBP Loan schedules (maximum principal PHP 500,000) populate LBP Due Date column F and LBP Amount column G.
+- New external imports do not accept LBP; overlap between legacy finalized LBP and a native schedule blocks locking.
+
 ```text
 System data is authoritative where implemented.
 Excel supplies only temporary external/report-supporting movements.

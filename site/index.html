@@ -343,6 +343,7 @@
               <li>Salary Loan supports PHP 10,000 to PHP 350,000.</li>
               <li>Educational Loan supports PHP 5,000 to PHP 10,000.</li>
               <li>Appliance Loan supports PHP 5,000 to PHP 100,000.</li>
+              <li>LBP Loan uses the Appliance Loan rules, is non-revolving, and supports principal up to PHP 500,000.</li>
               <li>Salary, Educational, and Appliance loans deduct 1.5% insurance, 2% CBU, and 1% savings retention.</li>
               <li>Service fee and insurance post to other income; CBU posts to share capital and savings retention posts to member savings.</li>
             </ol>
@@ -371,6 +372,8 @@
               <li>System validates reporting month, member, category, amount, reference, and reversals.</li>
               <li>Bookkeeper reviews and finalizes a valid import batch; it does not post journals.</li>
               <li>System combines finalized system and imported movements with scheduled loan dues, posted cash collections, and carried balances.</li>
+              <li>Posted LBP schedules fill the LBP due date and amount in columns F and G; new external imports no longer accept LBP.</li>
+              <li>A legacy imported LBP amount overlapping a native LBP schedule blocks locking to prevent double counting.</li>
               <li>Pending cost-center Drafts, unsupported mappings, or duplicate system/Excel sources block locking.</li>
               <li>System applies effective-dated interest rules, rounds components to cents, and flags unmapped loans.</li>
               <li>Bookkeeper refreshes and reconciles source totals plus movement, batch, and member drill-down.</li>
