@@ -349,9 +349,9 @@ The Reports screen includes a Trial Balance report that summarizes posted genera
 
 The Reports screen includes a Statement of Financial Condition report. It presents assets, liabilities, and equity from posted general ledger balances. Until formal closing entries are built, current-period income and expense balances are shown as Current Period Surplus or Deficit under equity.
 
-SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Finalized C1 and C2 cost-center payables supply Canteen, finalized WRS payables supply WRS, and finalized GMAR / G-mar Commercial payables supply G-mar Capital directly from everyday system transactions. The existing SUMMO calculation applies the configured 200-basis-point G-mar interest rate. Bookkeeper uses the XLSX import only for categories not yet captured in-system, reviews validation, finalizes the import, and refreshes a draft. The system combines both source types with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. The system-generated analytical export contains Regular Capture, Loan Details, and Audit sheets. SUMMO imports and cost-center payables do not yet create accounting journals.
+SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Finalized C1 and C2 cost-center payables supply Canteen, finalized WRS payables supply WRS, finalized GMAR / G-mar Commercial payables supply G-mar Capital, and posted Monthly Contributions supply TFEA, CBU, and Secured Savings directly from system transactions. The existing SUMMO calculation applies the configured 200-basis-point G-mar interest rate. Bookkeeper uses the XLSX import only for categories not yet captured in-system, reviews validation, finalizes the import, and refreshes a draft. The system combines both source types with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. The system-generated analytical export contains Regular Capture, Loan Details, and Audit sheets. SUMMO imports and cost-center payables do not create accounting journals; cash-paid Monthly Contributions post through the reviewed teller batch.
 
-Client-format SUMMO Workbook v1 preserves the cooperative's exact six-sheet workbook as a controlled output template. `Generate Preview` reads current finalized system movements, while `Download Locked Version` requires an already locked SUMMO month. The first-sheet pilot fills only `REG_MEM_CAP`: Active Regular Capture member names, G-mar Capital in column P from finalized GMAR movements, Canteen in column S from finalized C1/C2 movements, and WRS in column T from finalized WRS movements. It does not copy temporary Excel-import values into these cells. Protected column Q remains untouched and retains the workbook's shared `=P[row]*0.02` interest formula. The other five cluster sheets, yellow manual-input cells, formulas, headers, merged cells, and formatting remain unchanged. Generation stops if the expected sheet/header/color safeguards fail or if the Active Regular Capture roster exceeds the current 67 member rows.
+Client-format SUMMO Workbook v1 preserves the cooperative's exact six-sheet workbook as a controlled output template. `Generate Preview` reads current system movements, while `Download Locked Version` requires an already locked SUMMO month. The first-sheet pilot fills only `REG_MEM_CAP`: Active Regular Capture member names, G-mar Capital in column P from finalized GMAR movements, Canteen in column S from finalized C1/C2 movements, WRS in column T from finalized WRS movements, and posted TFEA, CBU, and Secured Savings in columns U, V, and AE. It does not copy temporary Excel-import values into system-managed cells. Protected column Q remains untouched and retains the workbook's shared `=P[row]*0.02` interest formula. The other five cluster sheets, formulas, headers, merged cells, and formatting remain unchanged. Generation stops if the expected sheet/header/color safeguards fail or if the Active Regular Capture roster exceeds the current 67 member rows.
 
 | SUMMO Access | View / Export | Prepare Imports and Drafts | Lock / Reopen |
 | --- | --- | --- | --- |
@@ -366,6 +366,8 @@ Daily Cost Center Payables v1 gives Teller/Cashier a multi-member Draft batch fo
 General Manager, Accountant / Bookkeeper, and Auditor can reconcile cost-center activity by date, center, status, or member and drill down through batch, source entry, movement, actor, and reason. A member filter recalculates totals and row counts for only that member, including the member's portion of a mixed-member batch.
 
 Cost-center movements are routed by member cluster. The current SUMMO consumes only Active `REGULAR MEMBERS CAPTURE` members. Transactions for Non Capture, LGU, Retirees, Community A, and Community B remain recorded and reconcilable but await their respective cluster reports; their absence from Regular Capture SUMMO does not mean the transactions were lost.
+
+Monthly Member Contributions v1 gives Teller/Cashier a separate multi-member Draft for cash-paid TFEA, CBU, and Secured Savings. Saving a Draft has no cash, balance, payable, journal, or SUMMO effect. The creating Teller adds the batch to the current Open teller batch using a unique official receipt/reference; its full total then forms part of expected cashier cash. After cash count and Bookkeeper review, reviewed-batch posting debits `1010 - Cash on Hand`, credits `2030 - TFEA Payable`, `3010 - Share Capital`, and `2040 - Secured Savings Payable`, creates immutable SUMMO movements, and increases each member's CBU/share-capital balance by the posted CBU amount. These contributions never aggregate into member payables.
 
 | Cost Center Access | Configure Centers | Encode / Finalize / Reverse | Reconcile / Drill Down |
 | --- | --- | --- | --- |
@@ -615,7 +617,19 @@ Status and correction flow:
 - `Finalized Charge -> Linked Reversal`
 - A finalized source row is never edited or deleted.
 
-### 4.12 Regular Capture SUMMO Preparation and Locking
+### 4.12 Monthly Member Contribution Cash Capture
+
+1. Teller opens Members -> Monthly Contributions and selects the contribution month.
+2. Teller enters a unique official receipt/reference and one or more Active member rows.
+3. Each row may contain TFEA, CBU, Secured Savings, or any combination; at least one amount must be positive.
+4. Teller saves a Draft. The Draft has no cash, balance, payable, journal, or SUMMO effect.
+5. The creating Teller adds the Draft to the current Open teller batch.
+6. System includes the full batch total in expected cashier cash and blocks duplicate cash-in references.
+7. Teller submits the cash count; Bookkeeper reviews the teller batch and records any required variance note.
+8. Bookkeeper posts the reviewed batch. The system creates one balanced contribution journal, posts system SUMMO movements, and increases each member's CBU/share-capital balance.
+9. A locked Regular Capture SUMMO month blocks new or unposted contribution activity for affected members.
+
+### 4.13 Regular Capture SUMMO Preparation and Locking
 
 1. Teller completes and finalizes relevant C1, C2, WRS, and GMAR batches.
 2. Bookkeeper uses XLSX only for categories still outside system capture.
@@ -818,6 +832,8 @@ Loan Collection v1a adds the `loan_collections` Postgres table. Run `npm run pg:
 Loan Collection v2 is UI-only and requires no migration. It makes the allocation discoverable before Teller confirms the receipt and in Bookkeeper review surfaces: interest applied, principal applied, amount received, payment type, and balance after receipt.
 
 Daily Cost Center Payables v1 adds `cost_centers`, `member_charge_batches`, `member_charge_entries`, and `member_charge_movements`. The SUMMO integration adds a posting-time `summo_column` snapshot to movements and backfills existing movements from their current cost-center configuration. The G-mar extension seeds `GMAR / G-mar Commercial` with SUMMO mapping `G-mar Capital`; run `npm run pg:migrate` so an existing Postgres installation receives that cost center. The later searchable-selector and report-filter UI changes require no schema migration.
+
+Monthly Member Contributions adds `monthly_contribution_batches`, `monthly_contribution_entries`, and `monthly_contribution_movements`, including teller-batch and journal-posting evidence. Run `npm run pg:migrate` before deploying this build. No seed or reset is required.
 
 ## 7. Audit Trail Requirements
 

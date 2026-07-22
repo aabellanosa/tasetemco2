@@ -393,4 +393,6 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 
 ## Documentation
 
+Monthly Member Contributions are recorded by Teller/Cashier as cash-paid TFEA, CBU, and Secured Savings. A Draft has no effect; adding it to the Open teller batch includes the total in expected cash. Reviewed-batch posting creates the balanced journal, feeds SUMMO columns U, V, and AE, and increases member CBU/share-capital balances. Run `npm run pg:migrate` before deploying the application build that introduces this workflow.
+
 - [Workflow Document](docs/WORKFLOW.md)

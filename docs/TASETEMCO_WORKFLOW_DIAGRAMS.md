@@ -10,6 +10,7 @@ These diagrams describe the implemented React, Node/Express, and Postgres protot
 | --- | --- | --- |
 | Receive initial/share/savings payments or release savings | Teller / Cashier | Members -> Teller Transactions |
 | Encode C1, C2, WRS, or G-mar Commercial member payables | Teller / Cashier | Members -> Cost Center Charges |
+| Collect monthly TFEA, CBU, and Secured Savings | Teller / Cashier | Members -> Monthly Contributions |
 | Review cost-center totals or one member | General Manager / Bookkeeper / Auditor | Ledger or Members -> Cost Center Charges |
 | Create and submit a loan application | Loan Officer | Loans -> Applications |
 | Decide a submitted loan | System Administrator | Loans -> Applications |
@@ -378,13 +379,54 @@ Reopened month                permits correction and retains reopen audit
 
 Member-filtered reconciliation recalculates row counts and amounts for only the selected member, including that member's portion of a mixed-member batch. Clearing the member filter restores full-batch totals.
 
-## 11. Cost Center and Other Sources into SUMMO — Regular Members Capture
+## 11. Monthly Member Contribution Cash Collection
+
+```text
+[Teller / Cashier]
+  Open Members -> Monthly Contributions
+  Select contribution month
+  Enter unique official receipt/reference
+  Add Active members with TFEA, CBU, and/or Secured Savings
+        |
+        v
+(System) Save Draft
+  no cash effect
+  no member balance effect
+  no member payable effect
+  no journal or SUMMO effect
+        |
+        v
+[Creating Teller] Add to current Open teller batch
+        |
+        v
+(System) Include the full total in expected cashier cash
+        |
+        v
+[Teller] Submit cash count
+        |
+        v
+[Bookkeeper] Review and post teller batch
+        |
+        v
+(System)
+  Debit Cash on Hand
+  Credit TFEA Payable
+  Credit Share Capital for CBU
+  Credit Secured Savings Payable
+  Create immutable SUMMO movements
+  Increase member CBU/share-capital balances
+```
+
+Monthly Contributions do not aggregate member payables. Only Posted contribution movements fill TFEA, CBU, and Secured Savings in SUMMO. A locked Regular Capture month blocks new or unposted activity for affected members.
+
+## 12. Cost Center and Other Sources into SUMMO — Regular Members Capture
 
 ```text
 (System sources)
   Finalized C1/C2 payable movements -> Canteen
   Finalized WRS payable movements   -> WRS
   Finalized GMAR payable movements  -> G-mar Capital
+  Posted cash contribution movements -> TFEA, CBU, Secured Savings
   Posted loan installments and collections
         |
         +-------------------------+
@@ -392,8 +434,7 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
 [Bookkeeper]                      |
   Use XLSX only for categories    |
   not yet captured in-system:     |
-  LBP, G-mar, TFEA, CBU,          |
-  provident, secured savings,     |
+  LBP, G-mar, provident,          |
   honorarium, payroll deduction,  |
   opening balance, and adjustments|
         |
@@ -420,7 +461,8 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
   Carry member credit when ending balance is negative
   Block locking when:
     relevant cost-center Draft batches remain
-    the same Canteen/WRS/G-mar category exists in Excel and system inputs
+    monthly contribution batches remain Draft or unposted
+    a system-managed category also exists in Excel imports
     a finalized cost center has no supported SUMMO mapping
     loan products or period-chain rules are unresolved
         |
@@ -444,6 +486,9 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
                                         GMAR    -> G-mar Capital (column P)
                                         C1 + C2 -> Canteen
                                         WRS     -> WRS
+                                        TFEA    -> TFEA (column U)
+                                        CBU     -> CBU/S (column V)
+                                        Secured -> Savings (column AE)
         |
         v
 [Auditor / Board] Read-only review
@@ -502,7 +547,7 @@ Cluster routing and current coverage:
 
 A transaction outside `REGULAR MEMBERS CAPTURE` is not lost when absent from the current SUMMO. It remains in cost-center history and reconciliation until its own cluster report is implemented.
 
-## 12. Administration and Audit
+## 13. Administration and Audit
 
 ```text
 [System Administrator]
@@ -517,7 +562,7 @@ A transaction outside `REGULAR MEMBERS CAPTURE` is not lost when absent from the
 [Auditor] Review users, transactions, batches, journals, and reports read-only
 ```
 
-## 13. Current Role Separation Summary
+## 14. Current Role Separation Summary
 
 ```text
 Membership Officer  prepares member records and requests previous-loan unlocks
