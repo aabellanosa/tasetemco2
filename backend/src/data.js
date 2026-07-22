@@ -720,6 +720,7 @@ export const monthlyContributionMovements = [];
 export const savingsDeposits = [];
 
 export const savingsWithdrawals = [];
+export const securedSavingsWithdrawals = [];
 
 export const journalEntries = [];
 

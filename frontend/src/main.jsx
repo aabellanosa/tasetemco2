@@ -689,6 +689,8 @@ function buildTellerBatchSummary(rows) {
           summary.shareCapitalContributionCount + (row.batchType === "Share Capital Contribution" ? 1 : 0),
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
         savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0),
+        securedSavingsWithdrawalCount:
+          summary.securedSavingsWithdrawalCount + (row.batchType === "Secured Savings Withdrawal" ? 1 : 0),
         loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
         loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0),
         monthlyContributionCount:
@@ -703,6 +705,7 @@ function buildTellerBatchSummary(rows) {
       shareCapitalContributionCount: 0,
       savingsDepositCount: 0,
       savingsWithdrawalCount: 0,
+      securedSavingsWithdrawalCount: 0,
       loanReleaseCount: 0,
       loanCollectionCount: 0,
       monthlyContributionCount: 0
@@ -1404,6 +1407,7 @@ function TellerBatchCashPosition({
             <Text fontWeight="bold">Share capital: {summary.shareCapitalContributionCount}</Text>
             <Text fontWeight="bold">Deposits: {summary.savingsDepositCount}</Text>
             <Text fontWeight="bold">Withdrawals: {summary.savingsWithdrawalCount}</Text>
+            <Text fontWeight="bold">Secured withdrawals: {summary.securedSavingsWithdrawalCount}</Text>
             <Text fontWeight="bold">Loan releases: {summary.loanReleaseCount}</Text>
             <Text fontWeight="bold">Loan collections: {summary.loanCollectionCount}</Text>
             <Text fontWeight="bold">Monthly contributions: {summary.monthlyContributionCount}</Text>
@@ -2578,6 +2582,7 @@ function Members({ user }) {
   const [monthlyContributionBatches, setMonthlyContributionBatches] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
+  const [securedSavingsWithdrawals, setSecuredSavingsWithdrawals] = useState([]);
   const [loanReleases, setLoanReleases] = useState([]);
   const [loanCollections, setLoanCollections] = useState([]);
   const [previousLoanProducts, setPreviousLoanProducts] = useState([]);
@@ -2615,6 +2620,9 @@ function Members({ user }) {
     memberId: "",
     amount: 500,
     referenceNo: ""
+  });
+  const [securedSavingsWithdrawalForm, setSecuredSavingsWithdrawalForm] = useState({
+    memberId: "", amount: 500, referenceNo: ""
   });
   const [cashCountForm, setCashCountForm] = useState({
     actualCash: 0
@@ -2761,6 +2769,11 @@ function Members({ user }) {
         savingsDepositAmount: 0,
         status: collection.status
       })),
+    ...securedSavingsWithdrawals
+      .filter((withdrawal) => withdrawal.status === "Teller Batch")
+      .map((withdrawal) => ({ ...withdrawal, batchType: "Secured Savings Withdrawal",
+        cashReceived: 0, cashOut: withdrawal.amount, shareCapitalAmount: 0,
+        membershipFeeAmount: 0, savingsDepositAmount: 0 })),
     ...monthlyContributionBatches
       .filter((contribution) => contribution.status === "Teller Batch")
       .map((contribution) => ({ id: contribution.batchNo, batchId: contribution.tellerBatchNo,
@@ -2791,6 +2804,7 @@ function Members({ user }) {
           contributionRows,
           savingsRows,
           withdrawalRows,
+          securedWithdrawalRows,
           loanReleaseRows,
           loanCollectionRows,
           loanProductRows,
@@ -2804,6 +2818,7 @@ function Members({ user }) {
           canViewShareCapitalContributions ? api("/api/share-capital-contributions") : [],
           canViewSavingsDeposits ? api("/api/savings-deposits") : [],
           canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : [],
+          canViewSavingsWithdrawals ? api("/api/secured-savings-withdrawals") : [],
           canViewLoanReleases ? api("/api/loan-releases") : [],
           canViewLoanCollections ? api("/api/loan-collections") : [],
           canViewLoanProducts ? api("/api/loan-products") : [],
@@ -2816,6 +2831,7 @@ function Members({ user }) {
         setShareCapitalContributions(contributionRows);
         setSavingsDeposits(savingsRows);
         setSavingsWithdrawals(withdrawalRows);
+        setSecuredSavingsWithdrawals(securedWithdrawalRows);
         setLoanReleases(loanReleaseRows);
         setLoanCollections(loanCollectionRows);
         setPreviousLoanProducts(loanProductRows);
@@ -2869,6 +2885,7 @@ function Members({ user }) {
     updateShareCapitalContributionForm("memberId", memberId);
     updateSavingsDepositForm("memberId", memberId);
     updateSavingsWithdrawalForm("memberId", memberId);
+    setSecuredSavingsWithdrawalForm((current) => ({ ...current, memberId }));
   }
 
   function updatePaymentForm(field, value) {
@@ -3046,6 +3063,19 @@ function Members({ user }) {
     } catch (withdrawalError) {
       setError(withdrawalError.message);
     }
+  }
+
+  async function submitSecuredSavingsWithdrawal(event) {
+    event.preventDefault(); setError(""); setMessage("");
+    try {
+      const data = await api("/api/secured-savings-withdrawals", {
+        method: "POST", body: JSON.stringify(securedSavingsWithdrawalForm)
+      });
+      setMessage(`${data.withdrawal.id} recorded for ${data.withdrawal.memberName}.`);
+      setSecuredSavingsWithdrawalForm({ memberId: securedSavingsWithdrawalForm.memberId,
+        amount: 500, referenceNo: "" });
+      await loadMembersWorkflow();
+    } catch (withdrawalError) { setError(withdrawalError.message); }
   }
 
   async function submitCashCount(event) {
@@ -3376,7 +3406,7 @@ function Members({ user }) {
           <Text color="gray.600" mb={5}>
             Select the member first, verify balances, then choose the transaction to record.
           </Text>
-          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(3, 1fr)" }} gap={4} mb={5}>
+          <Grid templateColumns={{ base: "1fr", lg: "1.2fr repeat(4, 1fr)" }} gap={4} mb={5}>
             <FormControl isRequired>
               <FormLabel>Member</FormLabel>
               <MemberCombobox
@@ -3401,6 +3431,10 @@ function Members({ user }) {
               </Text>
               <Text fontWeight="bold">{selectedTellerMember ? formatMoney(selectedTellerMember.savings) : "-"}</Text>
             </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Secured Savings</Text>
+              <Text fontWeight="bold">{selectedTellerMember ? formatMoney(selectedTellerMember.securedSavings) : "-"}</Text>
+            </Box>
             <FormControl>
               <FormLabel>Transaction type</FormLabel>
               <Select value={tellerTransactionType} onChange={(event) => setTellerTransactionType(event.target.value)}>
@@ -3410,6 +3444,7 @@ function Members({ user }) {
                 ) : null}
                 {canCreateSavingsDeposit ? <option value="savings-deposit">Savings deposit</option> : null}
                 {canCreateSavingsWithdrawal ? <option value="savings-withdrawal">Savings withdrawal</option> : null}
+                {canCreateSavingsWithdrawal ? <option value="secured-savings-withdrawal">Secured savings withdrawal</option> : null}
               </Select>
             </FormControl>
           </Grid>
@@ -3600,6 +3635,29 @@ function Members({ user }) {
                 <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
                   Record withdrawal
                 </Button>
+                {message ? <Text color="green.600">{message}</Text> : null}
+                {error ? <Text color="red.500">{error}</Text> : null}
+              </HStack>
+            </Box>
+          ) : null}
+
+          {tellerTransactionType === "secured-savings-withdrawal" && canCreateSavingsWithdrawal ? (
+            <Box as="form" onSubmit={submitSecuredSavingsWithdrawal}>
+              <Text color="gray.600" mb={4}>Withdraws only from the member's posted Secured Savings balance.</Text>
+              <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={4}>
+                <FormControl isRequired><FormLabel>Secured savings withdrawal</FormLabel>
+                  <NumberInput min={0.01} precision={2} step={0.01} value={securedSavingsWithdrawalForm.amount}
+                    onChange={(value) => setSecuredSavingsWithdrawalForm((current) => ({ ...current, amount: Number(value || 0) }))}>
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl isRequired><FormLabel>Voucher / reference no.</FormLabel>
+                  <Input value={securedSavingsWithdrawalForm.referenceNo}
+                    onChange={(event) => setSecuredSavingsWithdrawalForm((current) => ({ ...current, referenceNo: event.target.value }))} />
+                </FormControl>
+              </Grid>
+              <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
+                <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>Record secured withdrawal</Button>
                 {message ? <Text color="green.600">{message}</Text> : null}
                 {error ? <Text color="red.500">{error}</Text> : null}
               </HStack>
@@ -3852,6 +3910,10 @@ function Members({ user }) {
                 Savings
               </Text>
               <Text fontWeight="bold">{formatMoney(statement.member.savings)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Secured Savings</Text>
+              <Text fontWeight="bold">{formatMoney(statement.member.securedSavings)}</Text>
             </Box>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">
@@ -4410,6 +4472,18 @@ function Members({ user }) {
               </Tbody>
             </Table>
           </TableContainer>
+        </Box>
+      ) : null}
+      {canViewSavingsWithdrawals ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={4}>Secured Savings Withdrawal History</Heading>
+          <TableContainer><Table size="sm"><Thead><Tr><Th>Withdrawal No.</Th><Th>Member</Th><Th isNumeric>Amount</Th><Th>Reference</Th><Th>Released By</Th><Th>Status</Th></Tr></Thead>
+            <Tbody>{securedSavingsWithdrawals.map((withdrawal) => <Tr key={withdrawal.id}>
+              <Td>{withdrawal.id}</Td><Td>{withdrawal.memberName}</Td><Td isNumeric>{formatMoney(withdrawal.amount)}</Td>
+              <Td>{withdrawal.referenceNo}</Td><Td>{withdrawal.releasedBy}</Td>
+              <Td><Badge colorScheme={withdrawal.status === "Posted" ? "green" : "blue"}>{withdrawal.status}</Badge></Td>
+            </Tr>)}{securedSavingsWithdrawals.length === 0 ? <Tr><Td colSpan={6} color="gray.500">No secured savings withdrawals recorded.</Td></Tr> : null}</Tbody>
+          </Table></TableContainer>
         </Box>
       ) : null}
               </VStack>
@@ -5803,6 +5877,10 @@ function Reports({ user }) {
               <Text fontWeight="bold">{formatMoney(memberSummary.totalOpeningSavings)}</Text>
             </Box>
             <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Secured Savings</Text>
+              <Text fontWeight="bold">{formatMoney(memberSummary.totalSecuredSavings)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">Transactions</Text>
               <Text fontWeight="bold">{memberSummary.totalPostedTransactions} posted</Text>
               <Text color="gray.500" fontSize="sm">{memberSummary.totalUnpostedTransactions} unposted</Text>
@@ -5818,12 +5896,14 @@ function Reports({ user }) {
                   <Th>Status</Th>
                   <Th isNumeric>Share Balance</Th>
                   <Th isNumeric>Savings Balance</Th>
+                  <Th isNumeric>Secured Savings</Th>
                   <Th isNumeric>Opening Share</Th>
                   <Th isNumeric>Opening Savings</Th>
                   <Th isNumeric>Initial Share</Th>
                   <Th isNumeric>Share Adds</Th>
                   <Th isNumeric>Savings Deposits</Th>
                   <Th isNumeric>Savings Withdrawals</Th>
+                  <Th isNumeric>Secured Withdrawals</Th>
                   <Th isNumeric>Posted</Th>
                   <Th isNumeric>Unposted</Th>
                 </Tr>
@@ -5838,19 +5918,21 @@ function Reports({ user }) {
                     </Td>
                     <Td isNumeric>{formatMoney(member.shareCapitalBalance)}</Td>
                     <Td isNumeric>{formatMoney(member.savingsBalance)}</Td>
+                    <Td isNumeric>{formatMoney(member.securedSavingsBalance)}</Td>
                     <Td isNumeric>{formatMoney(member.openingShareCapitalTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.openingSavingsTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.initialPaymentTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.shareCapitalContributionTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.savingsDepositTotal)}</Td>
                     <Td isNumeric>{formatMoney(member.savingsWithdrawalTotal)}</Td>
+                    <Td isNumeric>{formatMoney(member.securedSavingsWithdrawalTotal)}</Td>
                     <Td isNumeric>{member.postedTransactionCount}</Td>
                     <Td isNumeric>{member.unpostedTransactionCount}</Td>
                   </Tr>
                 ))}
                 {memberLedgerReport.members.length === 0 ? (
                   <Tr>
-                    <Td colSpan={13} color="gray.500">No member subsidiary rows found.</Td>
+                    <Td colSpan={15} color="gray.500">No member subsidiary rows found.</Td>
                   </Tr>
                 ) : null}
               </Tbody>

@@ -247,6 +247,27 @@ Cash variance must be reviewed before closing.
 
 Cash Payment is the required source. The official receipt/reference is checked against other cash-in transactions so the same collection evidence cannot be reused.
 
+Secured Savings subsidiary and withdrawal:
+
+```text
+Posted Monthly Contribution -> increase member Secured Savings (separate from Regular Savings)
+        |
+        v
+[Teller] Request withdrawal up to posted balance minus pending withdrawals
+        |
+        v
+(System) Reserve availability and add cash-out to Open teller batch
+        |
+        v
+[Bookkeeper] Post reviewed batch
+        |
+        v
+Debit 2040 Secured Savings Payable / Credit 1010 Cash on Hand
+        |
+        v
+(System) Decrease member Secured Savings; Regular Savings remains unchanged
+```
+
 ## 6. Teller Batch Closing
 
 ```text

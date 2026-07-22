@@ -406,4 +406,6 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 
 The Teller / Cashier has a **Monthly Contributions** workspace for cash-paid TFEA, CBU, and Secured Savings. A saved Draft has no financial effect; adding it to the Open teller batch makes the total part of cashier collection and expected cash. After cash count and review, Bookkeeper posting debits Cash on Hand, credits TFEA Payable, Share Capital, and Secured Savings Payable, feeds SUMMO, and increases each member's CBU/share-capital balance. These amounts are not member payables.
 
+Secured Savings is maintained as a separate member subsidiary balance from regular savings. Posted Monthly Contributions increase Secured Savings. Teller may record a Secured Savings Withdrawal up to the posted balance less pending withdrawals; it enters the Open teller batch as cash-out. Reviewed-batch posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the member's secured-savings balance.
+
 - [Workflow Document](docs/WORKFLOW.md)

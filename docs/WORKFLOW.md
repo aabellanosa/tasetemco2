@@ -861,6 +861,8 @@ Teller / Cashier records a monthly cash collection batch using one row per Activ
 
 Cash Payment is the required source and an official receipt/reference must be unique across cash-in transactions. After the teller submits the cash count and Bookkeeper reviews the batch, reviewed-batch posting creates a balanced journal: debit Cash on Hand; credit TFEA Payable, Share Capital, and Secured Savings Payable. Posting also creates immutable SUMMO movements and increases each member's CBU/share-capital balance. A locked Regular Capture SUMMO month blocks new or unposted contribution activity. Posted contributions populate TFEA, CBU/S, and Secured Savings in the analytical report and columns U, V, and AE of the controlled client workbook.
 
+Secured Savings Subsidiary v1 keeps `secured_savings_balance` separate from regular member savings. Posted Monthly Contributions increase the secured balance. Teller/Cashier may record a Secured Savings Withdrawal against the posted balance less pending withdrawals; recording reserves availability and adds cash-out to the Open teller batch without reducing the posted balance. Bookkeeper posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases the member secured balance. Member statements and subsidiary reports show Secured Savings separately. Run `npm run pg:migrate` before deployment; no seed or reset is required.
+
 ## 11. Implementation Notes
 
 When backend work begins, the application should treat the general ledger as the source of financial statements. Member savings, share capital, and loans should have subsidiary ledgers that reconcile to their related general ledger control accounts.
