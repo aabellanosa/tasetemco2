@@ -2786,6 +2786,10 @@ function Members({ user }) {
   const statementPreviousLoanTotal = statement
     ? previousLoanRows.reduce((total, row) => addMoney(total, row.outstandingBalance), 0)
     : 0;
+  const statementCurrentLoans = statement?.currentLoans || [];
+  const statementCurrentLoanTotal = statementCurrentLoans
+    .reduce((total, row) => addMoney(total, row.outstandingBalance), 0);
+  const statementCombinedLoanTotal = addMoney(statementPreviousLoanTotal, statementCurrentLoanTotal);
   const previousLoanControl = statement?.previousLoanControl || { status: "Not Set", revision: 0 };
   const previousLoanUnlockRequests = statement?.previousLoanUnlockRequests || [];
   const pendingPreviousLoanUnlockRequest = previousLoanUnlockRequests.find((item) => item.status === "Pending");
@@ -3888,9 +3892,14 @@ function Members({ user }) {
                 {statement.member.id} - {statement.member.name}
               </Text>
             </Box>
-            <Button size="sm" onClick={() => setStatement(null)}>
-              Close
-            </Button>
+            <HStack>
+              <Button size="sm" variant="outline" onClick={() => loadMemberStatement(statement.member.id)}>
+                Refresh Profile
+              </Button>
+              <Button size="sm" onClick={() => setStatement(null)}>
+                Close
+              </Button>
+            </HStack>
           </Flex>
           <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4} mb={5}>
             <Box borderWidth="1px" borderRadius="md" p={4}>
@@ -3917,9 +3926,17 @@ function Members({ user }) {
             </Box>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">
-                Previous / Existing Loans
+                Historical Loans
               </Text>
               <Text fontWeight="bold">{formatMoney(statementPreviousLoanTotal)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Current / System Loans</Text>
+              <Text fontWeight="bold">{formatMoney(statementCurrentLoanTotal)}</Text>
+            </Box>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+              <Text color="gray.500" fontSize="sm">Combined Loan Balance</Text>
+              <Text fontWeight="bold">{formatMoney(statementCombinedLoanTotal)}</Text>
             </Box>
             <Box borderWidth="1px" borderRadius="md" p={4}>
               <Text color="gray.500" fontSize="sm">Cost Center Payables</Text>
@@ -4036,6 +4053,37 @@ function Members({ user }) {
                 </Select>
               </FormControl>
             </Grid>
+          </Box>
+
+          <Box borderWidth="1px" borderRadius="md" p={4} mb={5}>
+            <Heading size="sm">Current / System Loans</Heading>
+            <Text color="gray.600" mt={1} mb={4}>
+              Loans created through the application workflow. Balances reflect recorded collections and cannot be edited here.
+            </Text>
+            <TableContainer>
+              <Table size="sm">
+                <Thead><Tr><Th>Loan</Th><Th>Product</Th><Th>Status</Th><Th>Next Due</Th>
+                  <Th isNumeric>Principal</Th><Th isNumeric>Paid</Th><Th isNumeric>Outstanding</Th></Tr></Thead>
+                <Tbody>
+                  {statementCurrentLoans.map((loan) => (
+                    <Tr key={loan.loanNo}>
+                      <Td><Text fontWeight="bold">{loan.loanNo}</Text>
+                        <Text color="gray.500" fontSize="xs">{loan.applicationNo}</Text></Td>
+                      <Td>{loan.productName || loan.productCode}</Td>
+                      <Td><Badge>{loan.status}</Badge></Td>
+                      <Td>{loan.nextDueDate ? <>{formatDate(loan.nextDueDate)}<br />
+                        <Text color="gray.500" fontSize="xs">{formatMoney(loan.nextDueAmount)}</Text></> : "-"}</Td>
+                      <Td isNumeric>{formatMoney(loan.principal)}</Td>
+                      <Td isNumeric>{formatMoney(loan.amountPaid)}</Td>
+                      <Td isNumeric fontWeight="bold">{formatMoney(loan.outstandingBalance)}</Td>
+                    </Tr>
+                  ))}
+                  {statementCurrentLoans.length === 0 ? (
+                    <Tr><Td colSpan={7} color="gray.500">No system loans recorded.</Td></Tr>
+                  ) : null}
+                </Tbody>
+              </Table>
+            </TableContainer>
           </Box>
 
           <Box

@@ -3041,6 +3041,26 @@ async function run() {
       throw new Error("Loan Officer should save one immutable computation for release.");
     }
 
+    const memberStatementWithSystemLoan = await fetch(`${baseUrl}/api/members/M-000517/statement`, {
+      headers: { Cookie: cookie }
+    });
+    const memberStatementWithSystemLoanBody = await memberStatementWithSystemLoan.json();
+    const profileSystemLoan = memberStatementWithSystemLoanBody.currentLoans?.find(
+      (loan) => loan.loanNo === smokeLoanNo
+    );
+
+    if (
+      !memberStatementWithSystemLoan.ok ||
+      !profileSystemLoan ||
+      profileSystemLoan.applicationNo !== smokeApplicationNo ||
+      profileSystemLoan.status !== "For Release" ||
+      profileSystemLoan.principal !== 13000 ||
+      profileSystemLoan.outstandingBalance !== 14462.52 ||
+      !Array.isArray(memberStatementWithSystemLoanBody.previousLoans)
+    ) {
+      throw new Error("Member profile should show system loans alongside historical loans.");
+    }
+
     const duplicateLoanComputation = await fetch(
       `${baseUrl}/api/loan-applications/${smokeApplicationNo}/computation`,
       {

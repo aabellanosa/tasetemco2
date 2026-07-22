@@ -1829,6 +1829,26 @@ function loanOutstandingBalance(loan) {
   );
 }
 
+function memberSystemLoanSummary(loan) {
+  const outstandingBalance = loanOutstandingBalance(loan);
+  const nextInstallment = nextCollectibleInstallment(loan);
+  return {
+    loanNo: loan.loanNo,
+    applicationNo: loan.applicationNo,
+    productCode: loan.productCode,
+    productName: loan.productName,
+    principal: loan.principal,
+    totalPayable: loan.totalPayable,
+    outstandingBalance,
+    amountPaid: moneyValue(Math.max(0, loan.totalPayable - outstandingBalance)),
+    firstPaymentDate: loan.firstPaymentDate,
+    maturityDate: loan.maturityDate,
+    nextDueDate: nextInstallment?.dueDate || "",
+    nextDueAmount: nextInstallment?.totalRemaining || 0,
+    status: loan.status
+  };
+}
+
 function allocateLoanCollectionPayment(amountReceived, installment) {
   let remainingPayment = moneyValue(amountReceived);
   const interestAmount = Math.min(remainingPayment, moneyValue(installment.interestRemaining ?? installment.interestDue));
@@ -8117,6 +8137,9 @@ async function getMemberStatement(memberId) {
       ));
 
     const previousLoans = await listMemberPreviousLoans(member.id);
+    const currentLoans = (await listLoans())
+      .filter((loan) => loan.memberNo === member.id)
+      .map(memberSystemLoanSummary);
     const previousLoanState = await getMemberPreviousLoanState(member.id);
     const memberCharges = await listMemberChargeMovements({ memberNo: member.id });
     const memberSecuredSavingsWithdrawals = securedSavingsWithdrawals.filter(
@@ -8124,7 +8147,7 @@ async function getMemberStatement(memberId) {
     );
     return { member: { ...member, securedSavings: Number(member.securedSavings || 0) },
       securedSavingsWithdrawals: memberSecuredSavingsWithdrawals,
-      previousLoans, previousLoanControl: previousLoanState.control,
+      previousLoans, currentLoans, previousLoanControl: previousLoanState.control,
       previousLoanUnlockRequests: previousLoanState.unlockRequests, memberCharges,
       memberChargePayableBalance: memberCharges.reduce((sum, item) => addMoney(sum, item.amount), 0), transactions };
   }
@@ -8216,6 +8239,9 @@ async function getMemberStatement(memberId) {
     }));
 
   const previousLoanState = await getMemberPreviousLoanState(memberId);
+  const currentLoans = (await listLoans())
+    .filter((loan) => loan.memberNo === memberId)
+    .map(memberSystemLoanSummary);
   const memberCharges = await listMemberChargeMovements({ memberNo: memberId });
   const memberSecuredSavingsWithdrawals = (await listSecuredSavingsWithdrawals())
     .filter((withdrawal) => withdrawal.memberId === memberId);
@@ -8223,6 +8249,7 @@ async function getMemberStatement(memberId) {
     member,
     securedSavingsWithdrawals: memberSecuredSavingsWithdrawals,
     previousLoans: await listMemberPreviousLoans(memberId),
+    currentLoans,
     previousLoanControl: previousLoanState.control,
     previousLoanUnlockRequests: previousLoanState.unlockRequests,
     memberCharges,
