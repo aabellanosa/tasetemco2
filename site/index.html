@@ -16,6 +16,7 @@
         <div class="navlinks">
           <a href="#roles">Roles</a>
           <a href="#workflows">Workflows</a>
+          <a href="#monthly-contributions">Monthly Contributions</a>
           <a href="#reports">Reports</a>
         </div>
       </nav>
@@ -166,6 +167,8 @@
           member applications, System Administrator is the only role that can approve them,
           Teller / Cashier records the initial member payment, and Accountant / Bookkeeper
           posts teller batch payments to the general ledger.
+          Teller / Cashier also owns the separate Monthly Contributions workspace for payroll-deducted
+          TFEA, CBU, and Secured Savings; these entries do not create member payables or teller cash.
           Initial member payment is one-time only; later member activity uses the normal
           savings deposit, savings withdrawal, or share capital contribution workflows.
           Cash-in OR/reference numbers cannot be reused across initial payments, share capital
@@ -239,6 +242,22 @@
             </ol>
           </article>
 
+          <article id="monthly-contributions">
+            <h3>Monthly Member Contributions</h3>
+            <ol>
+              <li>Teller opens Members → Monthly Contributions.</li>
+              <li>Teller selects the contribution month and enters a unique payroll reference.</li>
+              <li>One member row may contain TFEA, CBU, Secured Savings, or any combination of the three.</li>
+              <li>Saving a Draft has no effect on SUMMO, member balances, member payables, or teller cash.</li>
+              <li>Only the creating Teller may edit and finalize the Draft.</li>
+              <li>Finalization creates immutable monthly contribution movements.</li>
+              <li>Finalized CBU immediately increases the member's CBU/share-capital balance.</li>
+              <li>Finalized TFEA, CBU, and Secured Savings feed the matching SUMMO columns.</li>
+              <li>A locked SUMMO month blocks saving or finalizing affected contribution batches.</li>
+              <li>Cash Payment is reserved for a later release after TFEA and Secured Savings account mappings are approved.</li>
+            </ol>
+          </article>
+
           <article>
             <h3>Loan Application</h3>
             <ol>
@@ -297,6 +316,8 @@
           <span>Loan Portfolio Aging</span>
           <span>Member Statement</span>
           <span>Member Share Capital Ledger</span>
+          <span>SUMMO — TFEA, CBU, and Secured Savings</span>
+          <span>Monthly Contribution Batch History</span>
           <span>Audit Trail</span>
         </div>
       </section>

@@ -28,6 +28,8 @@ function validateSite(directory) {
   assert(index.includes('id="roles"'), "Roles section is missing.");
   assert(index.includes('id="workflows"'), "Workflows section is missing.");
   assert(index.includes('id="reports"'), "Reports section is missing.");
+  assert(index.includes('id="monthly-contributions"'), "Monthly Contributions workflow is missing.");
+  assert(index.includes("TFEA, CBU, and Secured Savings"), "Monthly contribution SUMMO coverage is missing.");
   assert(index.includes("System Administrator"), "Role matrix is missing System Administrator.");
   assert(index.includes("Board / Read-Only Executive"), "Role matrix is missing Board / Read-Only Executive.");
   assert(!/Tabon|tabon|TABON/.test(index), "Old Tabon branding is still present.");

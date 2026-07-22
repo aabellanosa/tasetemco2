@@ -205,7 +205,41 @@ Bookkeeper owns posting.
 Cash variance must be reviewed before closing.
 ```
 
-## 5. Teller Batch Closing
+## 5. Monthly Member Contributions
+
+```text
+[Teller / Cashier]
+  Opens Members -> Monthly Contributions
+  Selects contribution month
+  Enters unique payroll reference
+  Adds Active members with:
+    TFEA
+    CBU
+    Secured Savings
+        |
+        v
+(System) Saves Draft
+  No SUMMO effect
+  No member balance effect
+  No member payable effect
+  No teller cash effect
+        |
+        v
+[Creating Teller]
+  Reviews member rows and monthly totals
+  Finalizes batch
+        |
+        v
+(System)
+  Creates immutable contribution movements
+  Routes TFEA, CBU, and Secured Savings to SUMMO
+  Increases each member's CBU/share-capital balance by finalized CBU
+  Blocks changes when the applicable SUMMO month is locked
+```
+
+Payroll Deduction is the enabled source in the first release. Cash Payment remains reserved until TFEA and Secured Savings account mappings can produce a balanced teller-batch journal.
+
+## 6. Teller Batch Closing
 
 ```text
 [Teller / Cashier]
@@ -249,7 +283,7 @@ Only posted/reconciled batches are closed.
 Closed batch details remain visible for audit.
 ```
 
-## 6. Loan Application And Approval
+## 7. Loan Application And Approval
 
 ```text
 [Loan Officer]
@@ -293,7 +327,7 @@ System keeps product terms and decision evidence.
 Computation does not release cash.
 ```
 
-## 7. Loan Funding And Release
+## 8. Loan Funding And Release
 
 ```text
 (System)
@@ -348,7 +382,7 @@ System blocks release without available cash.
 Bookkeeper posts the accounting entry.
 ```
 
-## 8. Loan Collection
+## 9. Loan Collection
 
 ```text
 [Member/Borrower]
@@ -392,7 +426,7 @@ Bookkeeper posts to GL.
 Loan balances update from posted collection evidence.
 ```
 
-## 9. Reports And Oversight
+## 10. Reports And Oversight
 
 ```text
 [Teller / Cashier]
@@ -433,7 +467,7 @@ Loan Portfolio Aging
 Audit Trail
 ```
 
-## 10. Small-Coop Role Consolidation Discussion
+## 11. Small-Coop Role Consolidation Discussion
 
 If TASETEMCO chooses fewer staff roles, keep the system principle clear:
 
