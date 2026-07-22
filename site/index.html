@@ -295,6 +295,9 @@
               <li>Teller submits the cash count and Bookkeeper reviews the batch.</li>
               <li>Reviewed-batch posting debits Cash on Hand and credits TFEA Payable, Share Capital, and Secured Savings Payable.</li>
               <li>Posting increases member CBU/share capital and fills TFEA, CBU, and Secured Savings in SUMMO.</li>
+              <li>Posted Secured Savings increases a separate member balance and never changes regular savings.</li>
+              <li>Teller may withdraw posted Secured Savings less pending secured withdrawals.</li>
+              <li>The withdrawal is teller cash-out; posting debits Secured Savings Payable, credits Cash on Hand, and reduces only the secured balance.</li>
               <li>Monthly Contributions never aggregate into member payables.</li>
             </ol>
           </article>

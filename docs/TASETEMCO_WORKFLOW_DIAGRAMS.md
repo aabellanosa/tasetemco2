@@ -419,6 +419,35 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
 
 Monthly Contributions do not aggregate member payables. Only Posted contribution movements fill TFEA, CBU, and Secured Savings in SUMMO. A locked Regular Capture month blocks new or unposted activity for affected members.
 
+Secured Savings subsidiary and withdrawal:
+
+```text
+Posted Monthly Contribution
+  increases member Secured Savings
+  never changes Regular Savings
+        |
+        v
+[Teller] Select Secured Savings Withdrawal
+  available = posted secured balance - pending secured withdrawals
+        |
+        v
+(System) Reserve availability and add cash-out to Open teller batch
+  posted secured balance remains unchanged
+        |
+        v
+[Teller] Submit cash count
+        |
+        v
+[Bookkeeper] Review and post teller batch
+        |
+        v
+Debit 2040 Secured Savings Payable
+Credit 1010 Cash on Hand
+        |
+        v
+(System) Decrease member Secured Savings only
+```
+
 ## 12. Cost Center and Other Sources into SUMMO — Regular Members Capture
 
 ```text

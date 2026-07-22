@@ -369,6 +369,8 @@ Cost-center movements are routed by member cluster. The current SUMMO consumes o
 
 Monthly Member Contributions v1 gives Teller/Cashier a separate multi-member Draft for cash-paid TFEA, CBU, and Secured Savings. Saving a Draft has no cash, balance, payable, journal, or SUMMO effect. The creating Teller adds the batch to the current Open teller batch using a unique official receipt/reference; its full total then forms part of expected cashier cash. After cash count and Bookkeeper review, reviewed-batch posting debits `1010 - Cash on Hand`, credits `2030 - TFEA Payable`, `3010 - Share Capital`, and `2040 - Secured Savings Payable`, creates immutable SUMMO movements, and increases each member's CBU/share-capital balance by the posted CBU amount. These contributions never aggregate into member payables.
 
+Secured Savings Subsidiary v1 maintains a member `secured_savings_balance` independently from regular savings. Posted Monthly Contributions increase this secured balance. Teller/Cashier may record a Secured Savings Withdrawal against the posted balance less pending withdrawals. Recording reserves availability and adds a cash-out row to the Open teller batch without reducing the posted balance. Bookkeeper posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the secured balance. Member statements, transaction history, the Member Subsidiary Ledger, and Control Account Reconciliation show Secured Savings separately.
+
 | Cost Center Access | Configure Centers | Encode / Finalize / Reverse | Reconcile / Drill Down |
 | --- | --- | --- | --- |
 | System Administrator | Yes | Yes | Yes |
@@ -629,6 +631,15 @@ Status and correction flow:
 8. Bookkeeper posts the reviewed batch. The system creates one balanced contribution journal, posts system SUMMO movements, and increases each member's CBU/share-capital balance.
 9. A locked Regular Capture SUMMO month blocks new or unposted contribution activity for affected members.
 
+Secured Savings withdrawal continuation:
+
+1. Teller selects an Active member and reviews Regular Savings and Secured Savings as separate balances.
+2. Teller selects Secured Savings Withdrawal and enters the amount plus a unique voucher/reference.
+3. System validates the amount against posted Secured Savings less all pending secured withdrawals.
+4. Recording reserves availability and adds cash-out to the current Open teller batch; the posted balance does not change yet.
+5. Teller submits the cash count and Bookkeeper reviews the batch.
+6. Posting debits Secured Savings Payable, credits Cash on Hand, decreases the member secured balance, and leaves regular savings unchanged.
+
 ### 4.13 Regular Capture SUMMO Preparation and Locking
 
 1. Teller completes and finalizes relevant C1, C2, WRS, and GMAR batches.
@@ -834,6 +845,8 @@ Loan Collection v2 is UI-only and requires no migration. It makes the allocation
 Daily Cost Center Payables v1 adds `cost_centers`, `member_charge_batches`, `member_charge_entries`, and `member_charge_movements`. The SUMMO integration adds a posting-time `summo_column` snapshot to movements and backfills existing movements from their current cost-center configuration. The G-mar extension seeds `GMAR / G-mar Commercial` with SUMMO mapping `G-mar Capital`; run `npm run pg:migrate` so an existing Postgres installation receives that cost center. The later searchable-selector and report-filter UI changes require no schema migration.
 
 Monthly Member Contributions adds `monthly_contribution_batches`, `monthly_contribution_entries`, and `monthly_contribution_movements`, including teller-batch and journal-posting evidence. Run `npm run pg:migrate` before deploying this build. No seed or reset is required.
+
+Secured Savings Subsidiary adds `members.secured_savings_balance` and `secured_savings_withdrawals`. Run `npm run pg:migrate` before deployment. The migration is additive and requires no seed or reset.
 
 ## 7. Audit Trail Requirements
 

@@ -38,6 +38,7 @@ function validateSite(directory) {
   assert(index.includes("SUMMO Monthly Report"), "SUMMO workflow is missing.");
   assert(index.includes('id="monthly-contributions"'), "Monthly Contributions workflow is missing.");
   assert(index.includes("TFEA Payable, Share Capital, and Secured Savings Payable"), "Monthly contribution posting flow is missing.");
+  assert(index.includes("posted Secured Savings less pending secured withdrawals"), "Secured Savings withdrawal controls are missing.");
   assert(index.includes("SUMMO — Regular Members Capture"), "SUMMO report listing is missing.");
   assert(index.includes("Daily Cost-Center Payables"), "Cost-center payable workflow is missing.");
   assert(index.includes("G-mar Commercial purchases supply G-mar Capital"), "System-to-SUMMO G-mar flow is missing.");
@@ -56,6 +57,7 @@ function validateSite(directory) {
 const diagrams = readRequiredFile(join(root, "docs", "TASETEMCO_WORKFLOW_DIAGRAMS.md"));
 assert(diagrams.includes("Cost Center and Other Sources into SUMMO"), "SUMMO diagram is missing.");
 assert(diagrams.includes("Monthly Member Contribution Cash Collection"), "Monthly contribution diagram is missing.");
+assert(diagrams.includes("Secured Savings subsidiary and withdrawal"), "Secured Savings subsidiary diagram is missing.");
 assert(diagrams.includes("Daily Cost-Center Member Payables"), "Cost-center workflow diagram is missing.");
 assert(diagrams.includes("No Dedicated Loan Approver"), "Updated loan decision diagram is missing.");
 assert(diagrams.includes("Flexible Loan Collection"), "Updated collection diagram is missing.");
