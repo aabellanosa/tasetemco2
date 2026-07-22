@@ -857,9 +857,9 @@ This avoids building large fragile screens too early while still keeping the pro
 
 ## 10. Monthly Member Contributions
 
-Teller / Cashier records a monthly payroll-deduction batch using one row per Active member and separate TFEA, CBU, and Secured Savings amounts. Drafts have no operational effect. Finalization creates immutable system SUMMO movements; each finalized CBU amount also increases that member's CBU/share-capital balance. These contributions never enter cost-center or member-payable totals.
+Teller / Cashier records a monthly cash collection batch using one row per Active member and separate TFEA, CBU, and Secured Savings amounts. Drafts have no operational effect. Adding the contribution to the Open teller batch makes its total part of expected cashier cash. These contributions never enter cost-center or member-payable totals.
 
-The first release accepts Payroll Deduction as the source and requires a unique payroll reference for the month. Cash Payment is reserved in the data model but remains disabled until TFEA and Secured Savings accounting mappings are approved, so cash cannot bypass teller-batch balancing. A locked Regular Capture SUMMO month blocks saving or finalizing affected batches. Finalized system contributions populate TFEA, CBU/S, and Secured Savings in the analytical report and columns U, V, and AE of the controlled client workbook.
+Cash Payment is the required source and an official receipt/reference must be unique across cash-in transactions. After the teller submits the cash count and Bookkeeper reviews the batch, reviewed-batch posting creates a balanced journal: debit Cash on Hand; credit TFEA Payable, Share Capital, and Secured Savings Payable. Posting also creates immutable SUMMO movements and increases each member's CBU/share-capital balance. A locked Regular Capture SUMMO month blocks new or unposted contribution activity. Posted contributions populate TFEA, CBU/S, and Secured Savings in the analytical report and columns U, V, and AE of the controlled client workbook.
 
 ## 11. Implementation Notes
 

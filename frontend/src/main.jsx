@@ -690,7 +690,9 @@ function buildTellerBatchSummary(rows) {
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
         savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0),
         loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
-        loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0)
+        loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0),
+        monthlyContributionCount:
+          summary.monthlyContributionCount + (row.batchType === "Monthly Member Contributions" ? 1 : 0)
       };
     },
     {
@@ -702,7 +704,8 @@ function buildTellerBatchSummary(rows) {
       savingsDepositCount: 0,
       savingsWithdrawalCount: 0,
       loanReleaseCount: 0,
-      loanCollectionCount: 0
+      loanCollectionCount: 0,
+      monthlyContributionCount: 0
     }
   );
 }
@@ -1403,6 +1406,7 @@ function TellerBatchCashPosition({
             <Text fontWeight="bold">Withdrawals: {summary.savingsWithdrawalCount}</Text>
             <Text fontWeight="bold">Loan releases: {summary.loanReleaseCount}</Text>
             <Text fontWeight="bold">Loan collections: {summary.loanCollectionCount}</Text>
+            <Text fontWeight="bold">Monthly contributions: {summary.monthlyContributionCount}</Text>
           </VStack>
         </Box>
       </Grid>
@@ -2281,7 +2285,7 @@ function MonthlyContributionCapture({ members, user }) {
   const [batchCreatedBy, setBatchCreatedBy] = useState(user.username);
   const [contributionPeriod, setContributionPeriod] = useState(today.slice(0, 7));
   const [transactionDate, setTransactionDate] = useState(today);
-  const [sourceType, setSourceType] = useState("Payroll Deduction");
+  const [sourceType, setSourceType] = useState("Cash Payment");
   const [sourceReference, setSourceReference] = useState("");
   const [remarks, setRemarks] = useState("");
   const [entries, setEntries] = useState([emptyEntry()]);
@@ -2303,7 +2307,7 @@ function MonthlyContributionCapture({ members, user }) {
   }
   function reset() {
     setBatchNo(""); setBatchStatus("Draft"); setBatchCreatedBy(user.username); setContributionPeriod(today.slice(0, 7));
-    setTransactionDate(today); setSourceType("Payroll Deduction"); setSourceReference(""); setRemarks("");
+    setTransactionDate(today); setSourceType("Cash Payment"); setSourceReference(""); setRemarks("");
     setEntries([emptyEntry()]); setMessage(""); setError("");
   }
   async function openBatch(selectedBatchNo) {
@@ -2327,30 +2331,30 @@ function MonthlyContributionCapture({ members, user }) {
     } catch (requestError) { setError(requestError.message); }
   }
   async function finalizeBatch() {
-    if (!batchNo || !window.confirm(`Finalize ${batchNo}? CBU amounts will immediately increase member CBU balances.`)) return;
+    if (!batchNo || !window.confirm(`Add ${batchNo} to the Open teller batch as a cash collection?`)) return;
     setMessage(""); setError("");
     try {
       const data = await api(`/api/monthly-contribution-batches/${batchNo}/finalize`, { method: "POST" });
       setBatchStatus(data.batch.status);
-      setMessage(`${batchNo} finalized. SUMMO contributions and member CBU balances were updated.`); await load();
+      setMessage(`${batchNo} added to teller batch ${data.batch.tellerBatchNo}. CBU and SUMMO update after accounting posts the reviewed batch.`); await load();
     } catch (requestError) { setError(requestError.message); }
   }
   return <VStack align="stretch" spacing={5}>
     <Box as="form" onSubmit={saveDraft} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Monthly Member Contributions</Heading>
-        <Text color="gray.600">Record payroll-deducted TFEA, CBU, and Secured Savings without creating member payables.</Text></Box>
+        <Text color="gray.600">Collect cash for TFEA, CBU, and Secured Savings without creating member payables.</Text></Box>
         <HStack><Badge colorScheme={batchStatus === "Finalized" ? "green" : "blue"}>{batchNo || "New Draft"} · {batchStatus}</Badge>
           <Button type="button" variant="outline" onClick={reset}>New</Button>
           {canEditDraft ? <Button type="submit" colorScheme="green">Save Draft</Button> : null}
-          {batchNo && batchStatus === "Draft" ? <Button type="button" colorScheme="orange" onClick={finalizeBatch}>Finalize</Button> : null}</HStack></Flex>
+          {batchNo && batchStatus === "Draft" ? <Button type="button" colorScheme="orange" onClick={finalizeBatch}>Add to Teller Batch</Button> : null}</HStack></Flex>
       {message ? <Text color="green.700" mb={3}>{message}</Text> : null}{error ? <Text color="red.700" mb={3}>{error}</Text> : null}
       <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4} mb={4}>
         <FormControl isRequired><FormLabel>Contribution Month</FormLabel><Input isDisabled={!canEditDraft} type="month" value={contributionPeriod}
           onChange={(event) => { setContributionPeriod(event.target.value); setTransactionDate(`${event.target.value}-01`); }} /></FormControl>
         <FormControl isRequired><FormLabel>Transaction Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={today} value={transactionDate} onChange={(event) => setTransactionDate(event.target.value)} /></FormControl>
         <FormControl isRequired><FormLabel>Source</FormLabel><Select isDisabled={!canEditDraft} value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-          <option>Payroll Deduction</option><option disabled>Cash Payment — account mapping required</option></Select></FormControl>
-        <FormControl isRequired><FormLabel>Payroll Reference</FormLabel><Input isDisabled={!canEditDraft} value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} placeholder="e.g. PAYROLL-2026-07" /></FormControl>
+          <option>Cash Payment</option></Select></FormControl>
+        <FormControl isRequired><FormLabel>Official Receipt / Reference</FormLabel><Input isDisabled={!canEditDraft} value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} placeholder="e.g. OR-2026-00125" /></FormControl>
       </Grid>
       <FormControl mb={4}><FormLabel>Batch Remarks</FormLabel><Input isDisabled={!canEditDraft} value={remarks} onChange={(event) => setRemarks(event.target.value)} /></FormControl>
       <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={4}>
@@ -2370,7 +2374,7 @@ function MonthlyContributionCapture({ members, user }) {
       {canEditDraft ? <Button mt={3} type="button" variant="outline" onClick={() => setEntries([...entries, emptyEntry()])}>Add Member</Button> : null}
     </Box>
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Contribution Batch History</Heading>
-      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Month</Th><Th>Payroll Reference</Th><Th>Status</Th><Th isNumeric>Members</Th><Th isNumeric>TFEA</Th><Th isNumeric>CBU</Th><Th isNumeric>Secured Savings</Th><Th /></Tr></Thead>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Month</Th><Th>OR / Reference</Th><Th>Status</Th><Th isNumeric>Members</Th><Th isNumeric>TFEA</Th><Th isNumeric>CBU</Th><Th isNumeric>Secured Savings</Th><Th /></Tr></Thead>
         <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{batch.contributionPeriod}</Td><Td>{batch.sourceReference}</Td>
           <Td><Badge colorScheme={batch.status === "Finalized" ? "green" : "blue"}>{batch.status}</Badge></Td><Td isNumeric>{batch.entryCount}</Td>
           <Td isNumeric>{formatMoney(batch.tfeaTotal)}</Td><Td isNumeric>{formatMoney(batch.cbuTotal)}</Td><Td isNumeric>{formatMoney(batch.securedSavingsTotal)}</Td>
@@ -2571,6 +2575,7 @@ function Members({ user }) {
   const [applications, setApplications] = useState([]);
   const [initialPayments, setInitialPayments] = useState([]);
   const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
+  const [monthlyContributionBatches, setMonthlyContributionBatches] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [loanReleases, setLoanReleases] = useState([]);
@@ -2755,7 +2760,14 @@ function Members({ user }) {
         membershipFeeAmount: 0,
         savingsDepositAmount: 0,
         status: collection.status
-      }))
+      })),
+    ...monthlyContributionBatches
+      .filter((contribution) => contribution.status === "Teller Batch")
+      .map((contribution) => ({ id: contribution.batchNo, batchId: contribution.tellerBatchNo,
+        memberName: `${contribution.entryCount} member${contribution.entryCount === 1 ? "" : "s"}`,
+        batchType: "Monthly Member Contributions", cashReceived: contribution.totalAmount, cashOut: 0,
+        shareCapitalAmount: contribution.cbuTotal, membershipFeeAmount: 0,
+        savingsDepositAmount: contribution.securedSavingsTotal, status: contribution.status }))
   ];
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatchRows);
   const statementPreviousLoanTotal = statement
@@ -2782,6 +2794,7 @@ function Members({ user }) {
           loanReleaseRows,
           loanCollectionRows,
           loanProductRows,
+          monthlyContributionRows,
           cashCountData
         ] =
           await Promise.all([
@@ -2794,6 +2807,7 @@ function Members({ user }) {
           canViewLoanReleases ? api("/api/loan-releases") : [],
           canViewLoanCollections ? api("/api/loan-collections") : [],
           canViewLoanProducts ? api("/api/loan-products") : [],
+          canViewMonthlyContributions ? api("/api/monthly-contribution-batches") : [],
           canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
@@ -2805,6 +2819,7 @@ function Members({ user }) {
         setLoanReleases(loanReleaseRows);
         setLoanCollections(loanCollectionRows);
         setPreviousLoanProducts(loanProductRows);
+        setMonthlyContributionBatches(monthlyContributionRows);
         setActiveBatch(cashCountData.activeBatch);
         setOpeningFunding(Number(cashCountData.expected?.openingFunding || 0));
         setLatestCashCount(cashCountData.latestCashCount);
@@ -2830,6 +2845,7 @@ function Members({ user }) {
       canViewLoanReleases,
       canViewLoanCollections,
       canViewLoanProducts,
+      canViewMonthlyContributions,
       canViewTellerCashCount
     ]
   );

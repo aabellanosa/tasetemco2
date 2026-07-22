@@ -404,6 +404,6 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 
 ## Documentation
 
-The Teller / Cashier now has a **Monthly Contributions** workspace for payroll-deducted TFEA, CBU, and Secured Savings. Finalized batches feed SUMMO directly, and finalized CBU increases the member's share-capital balance; these amounts are not member payables. Cash-source capture is intentionally disabled until the remaining contribution account mappings are configured.
+The Teller / Cashier has a **Monthly Contributions** workspace for cash-paid TFEA, CBU, and Secured Savings. A saved Draft has no financial effect; adding it to the Open teller batch makes the total part of cashier collection and expected cash. After cash count and review, Bookkeeper posting debits Cash on Hand, credits TFEA Payable, Share Capital, and Secured Savings Payable, feeds SUMMO, and increases each member's CBU/share-capital balance. These amounts are not member payables.
 
 - [Workflow Document](docs/WORKFLOW.md)

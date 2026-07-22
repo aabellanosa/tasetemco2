@@ -187,7 +187,7 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
-  monthly_contribution_batches: ["batch_no", "contribution_period", "source_type", "source_reference", "status", "created_by"],
+  monthly_contribution_batches: ["batch_no", "contribution_period", "source_type", "source_reference", "status", "created_by", "teller_batch_no", "posted_entry_no"],
   monthly_contribution_entries: ["batch_no", "member_no", "tfea_amount", "cbu_amount", "secured_savings_amount"],
   monthly_contribution_movements: ["movement_no", "batch_no", "member_no", "contribution_type", "amount"],
   cost_centers: ["code", "name", "cost_center_type", "summo_column", "status"],
@@ -3929,7 +3929,9 @@ function mapMonthlyContributionBatch(row) {
     transactionDate: formatDateOnly(row.transactionDate), sourceType: row.sourceType,
     sourceReference: row.sourceReference || "", remarks: row.remarks || "", status: row.status,
     createdBy: row.createdBy, updatedBy: row.updatedBy || "", finalizedBy: row.finalizedBy || "",
-    finalizedAt: row.finalizedAt || "", createdAt: row.createdAt || "", updatedAt: row.updatedAt || "",
+    finalizedAt: row.finalizedAt || "", tellerBatchNo: row.tellerBatchNo || "",
+    postedBy: row.postedBy || "", postedEntryNo: row.postedEntryNo || "", postedAt: row.postedAt || "",
+    createdAt: row.createdAt || "", updatedAt: row.updatedAt || "",
     entryCount: Number(row.entryCount || 0), tfeaTotal: Number(row.tfeaTotal || 0),
     cbuTotal: Number(row.cbuTotal || 0), securedSavingsTotal: Number(row.securedSavingsTotal || 0),
     totalAmount: addMoney(row.tfeaTotal, row.cbuTotal, row.securedSavingsTotal)
@@ -3959,6 +3961,8 @@ async function listMonthlyContributionBatches() {
             b.transaction_date AS transactionDate, b.source_type AS sourceType,
             b.source_reference AS sourceReference, b.remarks, b.status, b.created_by AS createdBy,
             b.updated_by AS updatedBy, b.finalized_by AS finalizedBy, b.finalized_at AS finalizedAt,
+            b.teller_batch_no AS tellerBatchNo, b.posted_by AS postedBy,
+            b.posted_entry_no AS postedEntryNo, b.posted_at AS postedAt,
             b.created_at AS createdAt, b.updated_at AS updatedAt, COUNT(e.id) AS entryCount,
             COALESCE(SUM(e.tfea_amount), 0) AS tfeaTotal,
             COALESCE(SUM(e.cbu_amount), 0) AS cbuTotal,
@@ -3990,7 +3994,7 @@ async function getMonthlyContributionBatch(batchNo) {
 async function validateMonthlyContributionDraft(body) {
   const contributionPeriod = normalizePeriod(body.contributionPeriod);
   const transactionDate = normalizeOptionalDate(body.transactionDate);
-  const sourceType = String(body.sourceType || "Payroll Deduction").trim();
+  const sourceType = String(body.sourceType || "Cash Payment").trim();
   const sourceReference = String(body.sourceReference || "").trim();
   const remarks = String(body.remarks || "").trim();
   if (!contributionPeriod) return { error: "Contribution month must be YYYY-MM." };
@@ -3998,10 +4002,8 @@ async function validateMonthlyContributionDraft(body) {
     return { error: "Transaction date is required and cannot be in the future." };
   }
   if (transactionDate.slice(0, 7) !== contributionPeriod) return { error: "Transaction date must be within the contribution month." };
-  if (sourceType !== "Payroll Deduction") {
-    return { error: "Cash contribution posting needs TFEA and Secured Savings account mappings and is not enabled yet." };
-  }
-  if (!sourceReference) return { error: "Payroll reference is required." };
+  if (sourceType !== "Cash Payment") return { error: "Monthly member contributions must be recorded as Cash Payment." };
+  if (!sourceReference) return { error: "Official receipt/reference number is required." };
   if (!Array.isArray(body.entries) || !body.entries.length) return { error: "Add at least one member contribution." };
   const activeMembers = (await listMembers()).filter((member) => member.status === "Active");
   const seenMembers = new Set();
@@ -4043,7 +4045,7 @@ async function saveMonthlyContributionDraft(body, user, batchNo = "") {
     const duplicate = monthlyContributionBatches.find((item) => item.batchNo !== nextBatchNo &&
       item.contributionPeriod === input.contributionPeriod && item.sourceType === input.sourceType &&
       item.sourceReference.toLowerCase() === input.sourceReference.toLowerCase());
-    if (duplicate) return { error: "That payroll reference already exists for this contribution month.", statusCode: 409 };
+    if (duplicate) return { error: "That cash receipt/reference already exists for this contribution month.", statusCode: 409 };
     if (!batch) { batch = { batchNo: nextBatchNo, status: "Draft", createdBy: user.username, createdAt: now }; monthlyContributionBatches.push(batch); }
     Object.assign(batch, input, { entries: undefined, updatedBy: user.username, updatedAt: now });
     for (let index = monthlyContributionEntries.length - 1; index >= 0; index -= 1) {
@@ -4060,7 +4062,7 @@ async function saveMonthlyContributionDraft(body, user, batchNo = "") {
        WHERE contribution_period = ? AND source_type = ? AND LOWER(source_reference) = LOWER(?) AND batch_no <> ? LIMIT 1`,
       [input.contributionPeriod, input.sourceType, input.sourceReference, nextBatchNo]
     );
-    if (duplicates[0]) { await connection.rollback(); return { error: "That payroll reference already exists for this contribution month.", statusCode: 409 }; }
+    if (duplicates[0]) { await connection.rollback(); return { error: "That cash receipt/reference already exists for this contribution month.", statusCode: 409 }; }
     if (batchNo) {
       const [rows] = await connection.execute(
         `SELECT status, created_by AS createdBy FROM monthly_contribution_batches WHERE batch_no = ? FOR UPDATE`, [batchNo]
@@ -4096,60 +4098,50 @@ async function saveMonthlyContributionDraft(body, user, batchNo = "") {
 async function finalizeMonthlyContributionBatch(batchNo, user) {
   const source = await getMonthlyContributionBatch(batchNo);
   if (source.error) return source;
-  if (source.batch.status !== "Draft") return { error: "Only Draft batches can be finalized.", statusCode: 409 };
-  if (source.batch.createdBy !== user.username) return { error: "Only the creating Teller may finalize this batch.", statusCode: 403 };
+  if (source.batch.status !== "Draft") return { error: "Only Draft contributions can be added to a teller batch.", statusCode: 409 };
+  if (source.batch.createdBy !== user.username) return { error: "Only the creating Teller may add this contribution to cash collection.", statusCode: 403 };
   const periodControl = await ensureMemberChargePeriodOpen(source.batch.transactionDate, source.entries.map((entry) => entry.memberNo));
   if (periodControl.error) return periodControl;
+  const tellerBatch = await getCurrentTellerBatch(user);
+  if (!tellerBatch || tellerBatch.status !== "Open") {
+    return { error: "An Open teller batch is required before recording this cash collection.", statusCode: 409 };
+  }
   const db = await getPool();
   const now = new Date().toISOString();
-  const types = [["TFEA", "tfeaAmount"], ["CBU", "cbuAmount"], ["SECURED_SAVINGS", "securedSavingsAmount"]];
   if (!db) {
-    const batch = monthlyContributionBatches.find((item) => item.batchNo === batchNo);
-    for (const entry of source.entries) {
-      for (const [contributionType, field] of types) if (entry[field] > 0) monthlyContributionMovements.push({
-        movementNo: `MCO-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, sourceEntryId: entry.id,
-        memberNo: entry.memberNo, contributionPeriod: batch.contributionPeriod, transactionDate: batch.transactionDate,
-        sourceType: batch.sourceType, contributionType, amount: entry[field], createdBy: user.username, createdAt: now
-      });
-      const member = members.find((item) => item.id === entry.memberNo);
-      if (member) member.share = addMoney(member.share, entry.cbuAmount);
+    if (hasCashInReference(source.batch.sourceReference)) {
+      return { error: "That official receipt/reference is already used by another cash-in transaction.", statusCode: 409 };
     }
-    Object.assign(batch, { status: "Finalized", finalizedBy: user.username, finalizedAt: now, updatedBy: user.username, updatedAt: now });
+    const batch = monthlyContributionBatches.find((item) => item.batchNo === batchNo);
+    Object.assign(batch, { status: "Teller Batch", tellerBatchNo: tellerBatch.id, finalizedBy: user.username,
+      finalizedAt: now, updatedBy: user.username, updatedAt: now });
     return getMonthlyContributionBatch(batchNo);
   }
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    if (await hasCashInReferenceInDatabase(connection, source.batch.sourceReference)) {
+      await connection.rollback();
+      return { error: "That official receipt/reference is already used by another cash-in transaction.", statusCode: 409 };
+    }
+    const [tellerRows] = await connection.execute(
+      `SELECT status FROM teller_batches WHERE batch_no = ? FOR UPDATE`, [tellerBatch.id]
+    );
+    if (tellerRows[0]?.status !== "Open") {
+      await connection.rollback(); return { error: "The teller batch is no longer Open.", statusCode: 409 };
+    }
     const [batches] = await connection.execute(
-      `SELECT status, created_by AS createdBy, contribution_period AS contributionPeriod,
-              transaction_date AS transactionDate, source_type AS sourceType
+      `SELECT status, created_by AS createdBy
        FROM monthly_contribution_batches WHERE batch_no = ? FOR UPDATE`, [batchNo]
     );
     const batch = batches[0];
     if (!batch || batch.status !== "Draft" || batch.createdBy !== user.username) {
-      await connection.rollback(); return { error: "Only the creating Teller may finalize this Draft batch.", statusCode: 403 };
-    }
-    const [entries] = await connection.execute(
-      `SELECT id, member_no AS memberNo, tfea_amount AS tfeaAmount, cbu_amount AS cbuAmount,
-              secured_savings_amount AS securedSavingsAmount
-       FROM monthly_contribution_entries WHERE batch_no = ? ORDER BY id FOR UPDATE`, [batchNo]
-    );
-    for (const entry of entries) {
-      for (const [contributionType, field] of types) if (Number(entry[field]) > 0) await connection.execute(
-        `INSERT INTO monthly_contribution_movements
-         (movement_no, batch_no, source_entry_id, member_no, contribution_period, transaction_date,
-          source_type, contribution_type, amount, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [`MCO-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, entry.id, entry.memberNo,
-          batch.contributionPeriod, formatDateOnly(batch.transactionDate), batch.sourceType,
-          contributionType, Number(entry[field]), user.username]
-      );
-      if (Number(entry.cbuAmount) > 0) await connection.execute(
-        `UPDATE members SET share_capital = share_capital + ? WHERE member_no = ?`, [Number(entry.cbuAmount), entry.memberNo]
-      );
+      await connection.rollback(); return { error: "Only the creating Teller may add this Draft to cash collection.", statusCode: 403 };
     }
     await connection.execute(
-      `UPDATE monthly_contribution_batches SET status = 'Finalized', finalized_by = ?, finalized_at = CURRENT_TIMESTAMP,
-       updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE batch_no = ?`, [user.username, user.username, batchNo]
+      `UPDATE monthly_contribution_batches SET status = 'Teller Batch', teller_batch_no = ?, finalized_by = ?,
+       finalized_at = CURRENT_TIMESTAMP, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE batch_no = ?`,
+      [tellerBatch.id, user.username, user.username, batchNo]
     );
     await connection.commit();
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
@@ -6046,7 +6038,9 @@ function buildTellerBatchSummary(rows) {
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
         savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0),
         loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
-        loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0)
+        loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0),
+        monthlyContributionCount:
+          summary.monthlyContributionCount + (row.batchType === "Monthly Member Contributions" ? 1 : 0)
       };
     },
     {
@@ -6059,7 +6053,8 @@ function buildTellerBatchSummary(rows) {
       savingsDepositCount: 0,
       savingsWithdrawalCount: 0,
       loanReleaseCount: 0,
-      loanCollectionCount: 0
+      loanCollectionCount: 0,
+      monthlyContributionCount: 0
     }
   );
 }
@@ -6070,8 +6065,10 @@ function normalizeReferenceNo(referenceNo) {
 
 function hasCashInReference(referenceNo) {
   const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
-  return [...initialPayments, ...savingsDeposits, ...shareCapitalContributions, ...loanCollections].some(
+  return [...initialPayments, ...savingsDeposits, ...shareCapitalContributions, ...loanCollections,
+    ...monthlyContributionBatches.filter((batch) => batch.status !== "Draft")].some(
     (transaction) => normalizeReferenceNo(transaction.referenceNo) === normalizedReferenceNo
+      || normalizeReferenceNo(transaction.sourceReference) === normalizedReferenceNo
   );
 }
 
@@ -6099,8 +6096,12 @@ async function hasCashInReferenceInDatabase(connection, referenceNo) {
      SELECT reference_no AS referenceNo
      FROM loan_collections
      WHERE UPPER(reference_no) = UPPER(?)
+     UNION ALL
+     SELECT source_reference AS referenceNo
+     FROM monthly_contribution_batches
+     WHERE status <> 'Draft' AND UPPER(source_reference) = UPPER(?)
      LIMIT 1`,
-    [referenceNo, referenceNo, referenceNo, referenceNo]
+    [referenceNo, referenceNo, referenceNo, referenceNo, referenceNo]
   );
 
   return rows.length > 0;
@@ -6205,6 +6206,15 @@ function buildShareCapitalContributionJournalLines(contribution) {
       debit: 0,
       credit: contribution.amount
     }
+  ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
+function buildMonthlyContributionJournalLines(contribution) {
+  return [
+    { accountCode: "1010", accountName: "Cash on Hand", debit: contribution.totalAmount, credit: 0 },
+    { accountCode: "2030", accountName: "TFEA Payable", debit: 0, credit: contribution.tfeaTotal },
+    { accountCode: "3010", accountName: "Share Capital", debit: 0, credit: contribution.cbuTotal },
+    { accountCode: "2040", accountName: "Secured Savings Payable", debit: 0, credit: contribution.securedSavingsTotal }
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
 
@@ -6637,6 +6647,16 @@ async function listTellerBatchRows(batchId = "") {
         shareCapitalAmount: 0,
         membershipFeeAmount: 0,
         savingsDepositAmount: 0
+      })),
+    ...(await listMonthlyContributionBatches())
+      .filter((contribution) => contribution.status === "Teller Batch")
+      .map((contribution) => ({
+        id: contribution.batchNo, batchId: contribution.tellerBatchNo,
+        memberName: `${contribution.entryCount} member${contribution.entryCount === 1 ? "" : "s"}`,
+        batchType: "Monthly Member Contributions", cashReceived: contribution.totalAmount, cashOut: 0,
+        shareCapitalAmount: contribution.cbuTotal, membershipFeeAmount: 0,
+        savingsDepositAmount: contribution.securedSavingsTotal, referenceNo: contribution.sourceReference,
+        receivedBy: contribution.finalizedBy, status: contribution.status
       }))
   ];
 
@@ -6700,6 +6720,15 @@ async function listTellerBatchTransactions(batchId) {
       shareCapitalAmount: 0,
       membershipFeeAmount: 0,
       savingsDepositAmount: 0
+    })),
+    ...(await listMonthlyContributionBatches()).filter((contribution) => contribution.status !== "Draft").map((contribution) => ({
+      id: contribution.batchNo, batchId: contribution.tellerBatchNo,
+      memberName: `${contribution.entryCount} member${contribution.entryCount === 1 ? "" : "s"}`,
+      batchType: "Monthly Member Contributions", cashReceived: contribution.totalAmount, cashOut: 0,
+      shareCapitalAmount: contribution.cbuTotal, membershipFeeAmount: 0,
+      savingsDepositAmount: contribution.securedSavingsTotal, referenceNo: contribution.sourceReference,
+      receivedBy: contribution.finalizedBy, status: contribution.status,
+      postedBy: contribution.postedBy, postedEntryNo: contribution.postedEntryNo, postedAt: contribution.postedAt
     }))
   ].filter((row) => row.batchId === batchId);
 }
@@ -6729,7 +6758,8 @@ function countBatchTransactions(batchId) {
     ...shareCapitalContributions,
     ...savingsWithdrawals,
     ...loanReleases,
-    ...loanCollections
+    ...loanCollections,
+    ...monthlyContributionBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo }))
   ].filter((row) => row.batchId === batchId);
 
   return {
@@ -6775,6 +6805,9 @@ async function listTellerBatches() {
                 SELECT batch_no, status, posted_entry_no FROM loan_releases
                 UNION ALL
                 SELECT batch_no, status, posted_entry_no FROM loan_collections
+                UNION ALL
+                SELECT teller_batch_no AS batch_no, status, NULLIF(posted_entry_no, '') AS posted_entry_no
+                FROM monthly_contribution_batches WHERE status <> 'Draft'
               ) posted_rows
               WHERE posted_rows.batch_no = teller_batches.batch_no
                 AND posted_rows.status = 'Posted'
@@ -6794,6 +6827,8 @@ async function listTellerBatches() {
                 SELECT batch_no, status FROM loan_releases
                 UNION ALL
                 SELECT batch_no, status FROM loan_collections
+                UNION ALL
+                SELECT teller_batch_no AS batch_no, status FROM monthly_contribution_batches WHERE status <> 'Draft'
               ) unposted_rows
               WHERE unposted_rows.batch_no = teller_batches.batch_no
                 AND unposted_rows.status = 'Teller Batch'
@@ -7531,7 +7566,7 @@ async function listPendingSummoContributionBatches(period) {
   const memberMap = new Map((await listMembers()).map((member) => [member.id, member]));
   const pending = [];
   for (const batch of (await listMonthlyContributionBatches()).filter((item) =>
-    item.status === "Draft" && item.contributionPeriod === period)) {
+    item.status !== "Posted" && item.contributionPeriod === period)) {
     const details = await getMonthlyContributionBatch(batch.batchNo);
     if (details.entries.some((entry) => memberMap.get(entry.memberNo)?.group === SUMMO_CLUSTER)) pending.push(batch);
   }
@@ -7592,7 +7627,7 @@ async function calculateSummoDraft(period) {
   }
   const pendingContributionBatches = await listPendingSummoContributionBatches(normalizedPeriod);
   if (pendingContributionBatches.length) {
-    predecessorIssues.push(`${pendingContributionBatches.length} monthly contribution batch(es) remain Draft for this period.`);
+    predecessorIssues.push(`${pendingContributionBatches.length} monthly contribution batch(es) remain Draft or unposted for this period.`);
   }
   const supportedCostCenterTypes = new Set(["CANTEEN", "WRS", "GMAR", "TFEA", "CBU", "SECURED_SAVINGS"]);
   const unmappedSystemMovements = systemMovements.filter(
@@ -9579,7 +9614,98 @@ async function postTellerFunding(fundingNo, user) {
   }
 }
 
+async function postMonthlyContributionBatch(batchNo, user) {
+  const source = await getMonthlyContributionBatch(batchNo);
+  if (source.error) return source;
+  if (source.batch.status !== "Teller Batch") {
+    return { error: "Only unposted monthly contribution cash collections can be posted.", statusCode: 409 };
+  }
+  const reviewed = await ensureTellerBatchReviewedForPosting(source.batch.tellerBatchNo);
+  if (reviewed.error) return reviewed;
+  const db = await getPool();
+  const types = [["TFEA", "tfeaAmount"], ["CBU", "cbuAmount"], ["SECURED_SAVINGS", "securedSavingsAmount"]];
+  if (!db) {
+    const batch = monthlyContributionBatches.find((item) => item.batchNo === batchNo);
+    const entry = { id: nextJournalEntryNumber(), sourceType: "Monthly Member Contributions", sourceNo: batchNo,
+      description: `Monthly cash contributions - ${batch.contributionPeriod}`,
+      postedBy: user.username, postedAt: new Date().toISOString(), lines: buildMonthlyContributionJournalLines(source.batch) };
+    for (const contribution of source.entries) {
+      for (const [contributionType, field] of types) if (contribution[field] > 0) monthlyContributionMovements.push({
+        movementNo: `MCO-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, sourceEntryId: contribution.id,
+        memberNo: contribution.memberNo, contributionPeriod: batch.contributionPeriod,
+        transactionDate: batch.transactionDate, sourceType: "Cash Payment", contributionType,
+        amount: contribution[field], createdBy: user.username, createdAt: entry.postedAt
+      });
+      const member = members.find((item) => item.id === contribution.memberNo);
+      if (member) member.share = addMoney(member.share, contribution.cbuAmount);
+    }
+    Object.assign(batch, { status: "Posted", postedBy: user.username, postedEntryNo: entry.id,
+      postedAt: entry.postedAt, updatedBy: user.username, updatedAt: entry.postedAt });
+    journalEntries.unshift(entry);
+    return { batch: mapMonthlyContributionBatch(batch), entry };
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [batchRows] = await connection.execute(
+      `SELECT status, teller_batch_no AS tellerBatchNo, contribution_period AS contributionPeriod,
+              transaction_date AS transactionDate, source_type AS sourceType
+       FROM monthly_contribution_batches WHERE batch_no = ? FOR UPDATE`, [batchNo]
+    );
+    const batch = batchRows[0];
+    if (!batch || batch.status !== "Teller Batch") {
+      await connection.rollback(); return { error: "Monthly contribution cash collection is not available for posting.", statusCode: 409 };
+    }
+    const reviewedInTransaction = await ensureTellerBatchReviewedForPosting(batch.tellerBatchNo, connection);
+    if (reviewedInTransaction.error) { await connection.rollback(); return reviewedInTransaction; }
+    const [entries] = await connection.execute(
+      `SELECT id, member_no AS memberNo, tfea_amount AS tfeaAmount, cbu_amount AS cbuAmount,
+              secured_savings_amount AS securedSavingsAmount
+       FROM monthly_contribution_entries WHERE batch_no = ? ORDER BY id FOR UPDATE`, [batchNo]
+    );
+    const totals = mapMonthlyContributionBatch({ ...source.batch });
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
+    const lines = buildMonthlyContributionJournalLines(totals);
+    await connection.execute(
+      `INSERT INTO journal_entries (entry_no, source_type, source_no, description, posted_by)
+       VALUES (?, 'Monthly Member Contributions', ?, ?, ?)`,
+      [entryNo, batchNo, `Monthly cash contributions - ${batch.contributionPeriod}`, user.username]
+    );
+    for (const line of lines) await connection.execute(
+      `INSERT INTO journal_entry_lines (entry_no, account_code, account_name, debit, credit) VALUES (?, ?, ?, ?, ?)`,
+      [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+    );
+    for (const contribution of entries) {
+      for (const [contributionType, field] of types) if (Number(contribution[field]) > 0) await connection.execute(
+        `INSERT INTO monthly_contribution_movements
+         (movement_no, batch_no, source_entry_id, member_no, contribution_period, transaction_date,
+          source_type, contribution_type, amount, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [`MCO-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, contribution.id, contribution.memberNo,
+          batch.contributionPeriod, formatDateOnly(batch.transactionDate), "Cash Payment",
+          contributionType, Number(contribution[field]), user.username]
+      );
+      if (Number(contribution.cbuAmount) > 0) await connection.execute(
+        `UPDATE members SET share_capital = share_capital + ? WHERE member_no = ?`,
+        [Number(contribution.cbuAmount), contribution.memberNo]
+      );
+    }
+    await connection.execute(
+      `UPDATE monthly_contribution_batches SET status = 'Posted', posted_by = ?, posted_entry_no = ?,
+       posted_at = CURRENT_TIMESTAMP, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE batch_no = ?`,
+      [user.username, entryNo, user.username, batchNo]
+    );
+    await connection.commit();
+    return { batch: { ...source.batch, status: "Posted", postedBy: user.username, postedEntryNo: entryNo },
+      entry: { id: entryNo, sourceType: "Monthly Member Contributions", sourceNo: batchNo,
+        description: `Monthly cash contributions - ${batch.contributionPeriod}`, postedBy: user.username,
+        postedAt: new Date().toISOString(), lines } };
+  } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
+}
+
 async function postTellerBatchRow(row, user) {
+  if (row.batchType === "Monthly Member Contributions") {
+    return postMonthlyContributionBatch(row.id, user);
+  }
   if (row.batchType === "Savings Deposit") {
     return postSavingsDeposit(row.id, user);
   }

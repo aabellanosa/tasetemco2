@@ -211,7 +211,7 @@ Cash variance must be reviewed before closing.
 [Teller / Cashier]
   Opens Members -> Monthly Contributions
   Selects contribution month
-  Enters unique payroll reference
+  Enters unique official receipt/reference
   Adds Active members with:
     TFEA
     CBU
@@ -222,22 +222,30 @@ Cash variance must be reviewed before closing.
   No SUMMO effect
   No member balance effect
   No member payable effect
-  No teller cash effect
+  No teller cash effect yet
         |
         v
 [Creating Teller]
   Reviews member rows and monthly totals
-  Finalizes batch
+  Adds contribution to Open teller batch
         |
         v
 (System)
-  Creates immutable contribution movements
-  Routes TFEA, CBU, and Secured Savings to SUMMO
-  Increases each member's CBU/share-capital balance by finalized CBU
-  Blocks changes when the applicable SUMMO month is locked
+  Includes the full total in expected cashier cash
+        |
+        v
+[Teller submits cash count -> Bookkeeper reviews and posts batch]
+        |
+        v
+(System)
+  Debits Cash on Hand
+  Credits TFEA Payable, Share Capital, and Secured Savings Payable
+  Creates immutable contribution movements and routes them to SUMMO
+  Increases each member's CBU/share-capital balance by posted CBU
+  Blocks new or unposted activity when the applicable SUMMO month is locked
 ```
 
-Payroll Deduction is the enabled source in the first release. Cash Payment remains reserved until TFEA and Secured Savings account mappings can produce a balanced teller-batch journal.
+Cash Payment is the required source. The official receipt/reference is checked against other cash-in transactions so the same collection evidence cannot be reused.
 
 ## 6. Teller Batch Closing
 
