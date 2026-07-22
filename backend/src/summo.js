@@ -8,6 +8,8 @@ export const CLIENT_SUMMO_TEMPLATE_SHEETS = Object.freeze([
 
 const CLIENT_SUMMO_SYSTEM_FILL = Object.freeze({
   memberName: "B",
+  lbpDueDate: "F",
+  lbp: "G",
   gmarCapital: "P",
   canteen: "S",
   wrs: "T",
@@ -33,7 +35,6 @@ export const SUMMO_MOVEMENT_TYPES = Object.freeze({
 });
 
 export const SUMMO_MOVEMENT_LABELS = Object.freeze({
-  LBP: "LBP",
   GMAR: "G-mar Capital",
   CANTEEN: "Canteen",
   WRS: "WRS",
@@ -58,6 +59,7 @@ function normalizeMovementType(value) {
 }
 
 export const SUMMO_PRODUCT_COLUMNS = Object.freeze({
+  LBP: "lbp",
   SALARY: "salaryLoan",
   EMERGENCY: "emergencyLoan",
   APPLIANCE: "applianceLoan",
@@ -646,6 +648,8 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
     if (String(sheet.getCell("S4").text || "").trim().toUpperCase() !== "CANTEEN") {
       issues.push("Expected Canteen header in S4.");
     }
+    if (String(sheet.getCell("F4").text || "").trim().toUpperCase() !== "LBP   DUE  DATE") issues.push("Expected LBP Due Date header in F4.");
+    if (String(sheet.getCell("G4").text || "").trim().toUpperCase() !== "LBP") issues.push("Expected LBP header in G4.");
     if (String(sheet.getCell("P4").text || "").trim().toUpperCase() !== "G-MAR CAPITAL") {
       issues.push("Expected G-mar Capital header in P4.");
     }
@@ -672,6 +676,8 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
     if (!issues.length) {
       for (const rowNumber of memberRows) {
         sheet.getCell(`B${rowNumber}`).value = null;
+        sheet.getCell(`F${rowNumber}`).value = null;
+        sheet.getCell(`G${rowNumber}`).value = null;
         sheet.getCell(`P${rowNumber}`).value = null;
         sheet.getCell(`S${rowNumber}`).value = null;
         sheet.getCell(`T${rowNumber}`).value = null;
@@ -683,6 +689,12 @@ export async function buildClientSummoWorkbook({ templateBuffer, period, rows = 
         String(left.memberNo || "").localeCompare(String(right.memberNo || ""))).forEach((row, index) => {
         const rowNumber = memberRows[index];
         sheet.getCell(`B${rowNumber}`).value = String(row.memberName || "").trim();
+        if (row.lbpDueDate) {
+          const [year, month, day] = String(row.lbpDueDate).split("-").map(Number);
+          sheet.getCell(`F${rowNumber}`).value = new Date(Date.UTC(year, month - 1, day));
+          sheet.getCell(`F${rowNumber}`).numFmt = "mm/dd/yyyy";
+        }
+        sheet.getCell(`G${rowNumber}`).value = Number(row.lbp || 0) || null;
         sheet.getCell(`P${rowNumber}`).value = Number(row.gmarCapital || 0) || null;
         sheet.getCell(`S${rowNumber}`).value = Number(row.canteen || 0) || null;
         sheet.getCell(`T${rowNumber}`).value = Number(row.wrs || 0) || null;

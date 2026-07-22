@@ -191,7 +191,7 @@ Opening Balance Accounting Entries v1d.2 creates one balanced journal when an op
 
 Opening Balance Visibility v1e adds finalized opening balances to each member statement with batch number, cutover date, source reference, amounts, and linked journal number. The Member Subsidiary Ledger separately shows opening share capital and opening savings beside normal transaction movements and current balances.
 
-Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. Manager, Loan Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, Appliance Loan, and Small Business Loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee. This spike adds the `loan_products` Postgres table, so run `npm run pg:migrate` and then `npm run pg:seed-loan-products` before deploying the app build.
+Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. Admin can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. Manager, Loan Officer, Credit Committee / Approver, Teller / Cashier, and Auditor have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, Appliance Loan, Small Business Loan, and LBP Loan. LBP follows the Appliance Loan rules but allows principal up to PHP 500,000; it remains a normal non-revolving loan. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee. Existing Postgres deployments need no schema migration for LBP; run `npm run pg:seed-loan-products` before deploying the app build.
 
 | Loan Product Access | View | Create / Edit |
 | --- | --- | --- |
@@ -405,6 +405,8 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 ## Documentation
 
 The Teller / Cashier has a **Monthly Contributions** workspace for cash-paid TFEA, CBU, and Secured Savings. A saved Draft has no financial effect; adding it to the Open teller batch makes the total part of cashier collection and expected cash. After cash count and review, Bookkeeper posting debits Cash on Hand, credits TFEA Payable, Share Capital, and Secured Savings Payable, feeds SUMMO, and increases each member's CBU/share-capital balance. These amounts are not member payables.
+
+Posted LBP Loan schedules are the native source of the SUMMO LBP amount and due-date columns. New external movement imports do not accept LBP, and a draft containing both legacy imported LBP and a native LBP schedule is blocked from locking to prevent double counting.
 
 Secured Savings is maintained as a separate member subsidiary balance from regular savings. Posted Monthly Contributions increase Secured Savings. Teller may record a Secured Savings Withdrawal up to the posted balance less pending withdrawals; it enters the Open teller batch as cash-out. Reviewed-batch posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the member's secured-savings balance.
 

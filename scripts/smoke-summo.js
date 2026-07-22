@@ -37,16 +37,20 @@ const report = calculateSummo({
   loans: [{
     memberNo: "M-001", memberName: "Capture Member", loanNo: "LN-1", productCode: "SALARY", status: "Posted",
     installments: [{ installmentNo: 1, dueDate: "2026-07-15", totalDue: 2000 }]
+  }, {
+    memberNo: "M-001", memberName: "Capture Member", loanNo: "LN-LBP-1", productCode: "LBP", status: "Posted",
+    installments: [{ installmentNo: 1, dueDate: "2026-07-18", totalDue: 7500 }]
   }],
   collections: [{ memberNo: "M-001", collectionDate: "2026-07-20", amountReceived: 1000, status: "Posted" }]
 });
 
 assert.equal(report.rows.length, 1);
 assert.equal(report.rows[0].salaryLoan, 2000);
+assert.equal(report.rows[0].lbp, 7500);
 assert.equal(report.rows[0].gmarInterest, 20);
 assert.equal(report.rows[0].previousBalanceInterest, 10);
-assert.equal(report.rows[0].grossPayable, 3780);
-assert.equal(report.rows[0].endingBalance, 2780);
+assert.equal(report.rows[0].grossPayable, 11280);
+assert.equal(report.rows[0].endingBalance, 10280);
 
 const creditReport = calculateSummo({
   period: "2026-08", members, loans: [], collections: [], movements: [],
@@ -93,7 +97,7 @@ await originalClientWorkbook.xlsx.load(clientTemplateBuffer);
 const clientWorkbookBuffer = await buildClientSummoWorkbook({
   templateBuffer: clientTemplateBuffer,
   period: "2026-07",
-  rows: [{ memberNo: "M-001", memberName: "Capture Member", gmarCapital: 400, canteen: 250, wrs: 75 }]
+  rows: [{ memberNo: "M-001", memberName: "Capture Member", lbpDueDate: "2026-07-18", lbp: 7500, gmarCapital: 400, canteen: 250, wrs: 75 }]
 });
 const clientWorkbook = new ExcelJS.Workbook();
 await clientWorkbook.xlsx.load(clientWorkbookBuffer);
@@ -101,6 +105,8 @@ assert.deepEqual(clientWorkbook.worksheets.map((sheet) => sheet.name), [...CLIEN
 const clientSheet = clientWorkbook.getWorksheet("REG_MEM_CAP");
 const originalClientSheet = originalClientWorkbook.getWorksheet("REG_MEM_CAP");
 assert.equal(clientSheet.getCell("B7").value, "Capture Member");
+assert.equal(clientSheet.getCell("F7").value.toISOString().slice(0, 10), "2026-07-18");
+assert.equal(clientSheet.getCell("G7").value, 7500);
 assert.equal(clientSheet.getCell("P7").value, 400);
 assert.equal(clientSheet.getCell("S7").value, 250);
 assert.equal(clientSheet.getCell("T7").value, 75);

@@ -243,6 +243,11 @@ Cash variance must be reviewed before closing.
   Creates immutable contribution movements and routes them to SUMMO
   Increases each member's CBU/share-capital balance by posted CBU
   Blocks new or unposted activity when the applicable SUMMO month is locked
+
+LBP Loan (non-revolving, maximum PHP 500,000)
+  -> Uses Appliance Loan rates, deductions, term limits, and accounting mappings
+  -> Posted installments populate SUMMO LBP Due Date (F) and LBP Amount (G)
+  -> Native schedules replace new external LBP imports; overlap with legacy imports blocks locking
 ```
 
 Cash Payment is the required source. The official receipt/reference is checked against other cash-in transactions so the same collection evidence cannot be reused.

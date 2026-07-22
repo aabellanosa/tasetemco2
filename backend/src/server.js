@@ -7707,6 +7707,11 @@ async function calculateSummoDraft(period) {
     productColumns: rules.productColumns
   });
   if (report.error) return { error: report.error, statusCode: 400 };
+  const hasImportedLbp = importedMovements.some((movement) => movement.movementType === "LBP");
+  const hasScheduledLbp = report.loanDetails.some((detail) => detail.productCode === "LBP");
+  if (hasImportedLbp && hasScheduledLbp) {
+    predecessorIssues.push("LBP exists in both finalized external imports and system loan schedules; remove the duplicate external source before locking.");
+  }
   report.issues = [...predecessorIssues, ...report.issues];
   report.sourceSummary = {
     importedMovementCount: importedMovements.length,
@@ -7728,9 +7733,15 @@ async function calculateSummoDraft(period) {
 
 function buildClientSummoCostCenterRows(report) {
   const rows = new Map((report.rows || []).map((row) => [row.memberNo, {
-    memberNo: row.memberNo, memberName: row.memberName, gmarCapital: 0, canteen: 0, wrs: 0,
+    memberNo: row.memberNo, memberName: row.memberName, lbp: Number(row.lbp || 0), lbpDueDate: "",
+    gmarCapital: 0, canteen: 0, wrs: 0,
     tfea: 0, cbu: 0, securedSavings: 0
   }]));
+  for (const detail of (report.loanDetails || []).filter((item) => item.productCode === "LBP")) {
+    const row = rows.get(detail.memberNo);
+    if (!row) continue;
+    if (!row.lbpDueDate || detail.dueDate < row.lbpDueDate) row.lbpDueDate = detail.dueDate;
+  }
   const movements = report.systemMovementDetails || [];
   const originals = new Map(movements.filter((movement) => movement.movementType !== "REVERSAL")
     .map((movement) => [movement.referenceNo, movement]));

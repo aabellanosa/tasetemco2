@@ -94,6 +94,12 @@ INSERT INTO loan_products (
     5000, 100000, 6, 60, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
     150, 200, 100, TRUE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
     '4040', '1010', 'Active'
+  ),
+  (
+    'LBP', 'LBP Loan', 'LBP loan with Appliance Loan rules and a PHP 500,000 maximum principal.',
+    5000, 500000, 6, 60, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
+    150, 200, 100, TRUE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
+    '4040', '1010', 'Active'
   )
 ON CONFLICT (product_code) DO UPDATE SET
   product_name = EXCLUDED.product_name,
@@ -333,6 +339,7 @@ INSERT INTO summo_rules (cluster_name, rule_key, effective_from, value_text) VAL
   ('REGULAR MEMBERS CAPTURE', 'PRODUCT_SALARY', '2000-01', 'salaryLoan'),
   ('REGULAR MEMBERS CAPTURE', 'PRODUCT_EMERGENCY', '2000-01', 'emergencyLoan'),
   ('REGULAR MEMBERS CAPTURE', 'PRODUCT_APPLIANCE', '2000-01', 'applianceLoan'),
+  ('REGULAR MEMBERS CAPTURE', 'PRODUCT_LBP', '2000-01', 'lbp'),
   ('REGULAR MEMBERS CAPTURE', 'PRODUCT_EDUCATIONAL', '2000-01', 'educationalLoan'),
   ('REGULAR MEMBERS CAPTURE', 'PRODUCT_PETTY-CASH', '2000-01', 'pettyCash')
 ON CONFLICT (cluster_name, rule_key, effective_from) DO NOTHING;

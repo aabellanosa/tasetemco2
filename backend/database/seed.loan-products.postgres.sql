@@ -42,6 +42,12 @@ INSERT INTO loan_products (
     5000, 100000, 6, 60, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
     150, 200, 100, TRUE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
     '4040', '1010', 'Active'
+  ),
+  (
+    'LBP', 'LBP Loan', 'LBP loan with Appliance Loan rules and a PHP 500,000 maximum principal.',
+    5000, 500000, 6, 60, 3000, 'Diminishing Balance', 'Monthly', 0, 450,
+    150, 200, 100, TRUE, 200, '1050', '4010', '4030', '4050', '3010', '2020',
+    '4040', '1010', 'Active'
   )
 ON CONFLICT (product_code) DO UPDATE SET
   product_name = EXCLUDED.product_name,

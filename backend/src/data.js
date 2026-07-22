@@ -473,6 +473,35 @@ export const loanProducts = [
     penaltyIncomeAccount: "4040",
     cashAccount: "1010",
     status: "Active"
+  },
+  {
+    id: 7,
+    code: "LBP",
+    name: "LBP Loan",
+    description: "LBP loan with Appliance Loan rules and a PHP 500,000 maximum principal.",
+    minimumPrincipal: 5000,
+    maximumPrincipal: 500000,
+    minimumTermMonths: 6,
+    maximumTermMonths: 60,
+    annualInterestRateBps: 3000,
+    interestMethod: "Diminishing Balance",
+    paymentFrequency: "Monthly",
+    processingFee: 0,
+    serviceFeeRateBps: 450,
+    insuranceFeeRateBps: 150,
+    cbuRateBps: 200,
+    savingsRetentionRateBps: 100,
+    cbuOptional: true,
+    penaltyRateBps: 200,
+    loansReceivableAccount: "1050",
+    interestIncomeAccount: "4010",
+    processingFeeAccount: "4030",
+    insuranceIncomeAccount: "4050",
+    shareCapitalAccount: "3010",
+    savingsAccount: "2020",
+    penaltyIncomeAccount: "4040",
+    cashAccount: "1010",
+    status: "Active"
   }
 ];
 
