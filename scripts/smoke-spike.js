@@ -696,8 +696,8 @@ async function run() {
 
     const costCenterResponse = await fetch(`${baseUrl}/api/cost-centers`, { headers: { Cookie: tellerCookie } });
     const costCenterRows = await costCenterResponse.json();
-    if (!costCenterResponse.ok || !costCenterRows.some((row) => row.code === "C1" && row.summoColumn === "Canteen") ||
-      !costCenterRows.some((row) => row.code === "C2" && row.summoColumn === "Canteen") ||
+    if (!costCenterResponse.ok || !costCenterRows.some((row) => row.code === "C1" && row.name === "Canteen A" && row.summoColumn === "Canteen") ||
+      !costCenterRows.some((row) => row.code === "C2" && row.name === "Canteen B" && row.summoColumn === "Canteen") ||
       !costCenterRows.some((row) => row.code === "WRS" && row.summoColumn === "WRS") ||
       !costCenterRows.some((row) => row.code === "GMAR" && row.name === "G-mar Commercial" &&
         row.summoColumn === "G-mar Capital")) {
@@ -709,6 +709,39 @@ async function run() {
       body: JSON.stringify({ code: "TEST-CC", name: "Test Cost Center", type: "Other", summoColumn: "Other", status: "Active" })
     });
     if (!adminCostCenterCreate.ok) throw new Error("Admin should maintain cost-center definitions.");
+
+    const adminRemittanceSourceCreate = await fetch(`${baseUrl}/api/remittance-sources`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: JSON.stringify({ code: "SMOKE-OTHER", name: "Smoke Other Collection", reportingGroup: "Other Collections",
+        costCenterCode: "", incomeAccountCode: "4080", incomeAccountName: "Other Operating Income",
+        displayOrder: 999, status: "Active" })
+    });
+    if (!adminRemittanceSourceCreate.ok) throw new Error("Admin should configure additional Daily Remittance sources.");
+
+    const remittanceDate = new Date().toISOString().slice(0, 10);
+    const dailyRemittanceDraft = await fetch(`${baseUrl}/api/daily-remittance-batches`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ remittanceDate, cashReceivedDate: remittanceDate,
+        sourceReference: "OR-DAILY-REMITTANCE-SMOKE", remarks: "Daily Remittance smoke check", entries: [
+          { sourceCode: "CANTEEN-A", amount: 100, remarks: "Canteen cash" },
+          { sourceCode: "WATER-BOTTLE-A", amount: 50, remarks: "WRS cash" },
+          { sourceCode: "SMOKE-OTHER", amount: 25, remarks: "Configured other cash" }
+        ] })
+    });
+    const dailyRemittanceDraftBody = await dailyRemittanceDraft.json();
+    if (!dailyRemittanceDraft.ok || dailyRemittanceDraftBody.batch.totalAmount !== 175 ||
+      dailyRemittanceDraftBody.entries.length !== 3) {
+      throw new Error("Teller should save a multi-source Daily Remittance Draft.");
+    }
+    const dailyRemittanceBatchNo = dailyRemittanceDraftBody.batch.batchNo;
+    const dailyRemittanceFinalize = await fetch(
+      `${baseUrl}/api/daily-remittance-batches/${dailyRemittanceBatchNo}/finalize`,
+      { method: "POST", headers: { Cookie: tellerCookie } }
+    );
+    const dailyRemittanceFinalizeBody = await dailyRemittanceFinalize.json();
+    if (!dailyRemittanceFinalize.ok || dailyRemittanceFinalizeBody.batch.status !== "Teller Batch") {
+      throw new Error("Daily Remittance should become part of the Open teller batch.");
+    }
 
     const summoPeriod = new Date().toISOString().slice(0, 7);
     const summoDate = new Date().toISOString().slice(0, 10);
@@ -1668,6 +1701,18 @@ async function run() {
       throw new Error("Batch posting result did not include the savings deposit.");
     }
 
+    const postedDailyRemittanceResult = postedFirstBatchBody.results.find(
+      (result) => result.id === dailyRemittanceBatchNo && result.batchType === "Daily Remittance"
+    );
+    const dailyLines = postedDailyRemittanceResult?.entry.lines || [];
+    if (!postedDailyRemittanceResult ||
+      dailyLines.find((line) => line.accountCode === "1010")?.debit !== 175 ||
+      dailyLines.find((line) => line.accountCode === "4060")?.credit !== 100 ||
+      dailyLines.find((line) => line.accountCode === "4070")?.credit !== 50 ||
+      dailyLines.find((line) => line.accountCode === "4080")?.credit !== 25) {
+      throw new Error("Daily Remittance posting should debit cash and credit configured income accounts.");
+    }
+
     const savingsDebitTotal = postedSavingsDepositResult.entry.lines.reduce((sum, line) => sum + line.debit, 0);
     const savingsCreditTotal = postedSavingsDepositResult.entry.lines.reduce((sum, line) => sum + line.credit, 0);
 
@@ -2209,11 +2254,11 @@ async function run() {
       !statementSavingsAccount ||
       !statementShareCapitalAccount ||
       !currentPeriodSurplus ||
-      statementOfFinancialConditionBody.summary.totalAssets !== 16500 ||
+      statementOfFinancialConditionBody.summary.totalAssets !== 16675 ||
       statementOfFinancialConditionBody.summary.totalLiabilities !== 3300 ||
-      statementOfFinancialConditionBody.summary.totalEquity !== 13200 ||
-      statementOfFinancialConditionBody.summary.totalLiabilitiesAndEquity !== 16500 ||
-      statementOfFinancialConditionBody.summary.currentPeriodSurplus !== 200 ||
+      statementOfFinancialConditionBody.summary.totalEquity !== 13375 ||
+      statementOfFinancialConditionBody.summary.totalLiabilitiesAndEquity !== 16675 ||
+      statementOfFinancialConditionBody.summary.currentPeriodSurplus !== 375 ||
       statementOfFinancialConditionBody.summary.difference !== 0 ||
       statementOfFinancialConditionBody.summary.status !== "Balanced"
     ) {

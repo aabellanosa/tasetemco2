@@ -865,6 +865,12 @@ Posted LBP Loan installments populate the native LBP amount and earliest due dat
 
 Secured Savings Subsidiary v1 keeps `secured_savings_balance` separate from regular member savings. Posted Monthly Contributions increase the secured balance. Teller/Cashier may record a Secured Savings Withdrawal against the posted balance less pending withdrawals; recording reserves availability and adds cash-out to the Open teller batch without reducing the posted balance. Bookkeeper posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases the member secured balance. Member statements and subsidiary reports show Secured Savings separately. Run `npm run pg:migrate` before deployment; no seed or reset is required.
 
+## 10A. Daily Remittance
+
+Teller / Cashier records cash turned over by cooperative operations using a Remittance Date, Cash Received Date, globally unique receipt/reference, and one or more configured source amounts. The operational date may be backdated but cannot follow the cash date. Drafts have no cash, journal, member-payable, or SUMMO effect. Adding the Draft to the Open teller batch includes its total in expected cashier cash.
+
+After cash count and Bookkeeper review, posting debits `1010 - Cash on Hand` and credits the income account snapshotted from each source definition. Canteen A/B post to Canteen income and remain tied to cost centers C1/C2. WRS and Water Bottle A/B roll up to WRS income while retaining source detail. Standalone sources and Admin-configured additional definitions retain their reporting group, optional cost center, income account, order, and active status. Run `npm run pg:migrate` before deployment.
+
 ## 11. Implementation Notes
 
 When backend work begins, the application should treat the general ledger as the source of financial statements. Member savings, share capital, and loans should have subsidiary ledgers that reconcile to their related general ledger control accounts.

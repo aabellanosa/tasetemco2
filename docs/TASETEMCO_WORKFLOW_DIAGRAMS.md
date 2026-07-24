@@ -207,6 +207,18 @@ Cash variance must be reviewed before closing.
 
 ## 5. Monthly Member Contributions
 
+### Daily Remittance cash collection
+
+Admin configures source -> reporting group -> optional cost center -> income account
+
+Teller records Remittance Date, Cash Received Date, unique OR/reference, and source amounts
+  -> Draft: no cash, journal, member payable, or SUMMO effect
+  -> Add to Open teller batch: total becomes expected cashier cash
+  -> Cash count and Bookkeeper review
+  -> Post: Debit Cash on Hand; Credit snapshotted source income accounts
+
+Canteen A/B retain separate cost centers. WRS and Water Bottle A/B retain source detail and roll up under WRS.
+
 ```text
 [Teller / Cashier]
   Opens Members -> Monthly Contributions

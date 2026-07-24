@@ -694,7 +694,9 @@ function buildTellerBatchSummary(rows) {
         loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
         loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0),
         monthlyContributionCount:
-          summary.monthlyContributionCount + (row.batchType === "Monthly Member Contributions" ? 1 : 0)
+          summary.monthlyContributionCount + (row.batchType === "Monthly Member Contributions" ? 1 : 0),
+        dailyRemittanceCount:
+          summary.dailyRemittanceCount + (row.batchType === "Daily Remittance" ? 1 : 0)
       };
     },
     {
@@ -708,7 +710,8 @@ function buildTellerBatchSummary(rows) {
       securedSavingsWithdrawalCount: 0,
       loanReleaseCount: 0,
       loanCollectionCount: 0,
-      monthlyContributionCount: 0
+      monthlyContributionCount: 0,
+      dailyRemittanceCount: 0
     }
   );
 }
@@ -1411,6 +1414,7 @@ function TellerBatchCashPosition({
             <Text fontWeight="bold">Loan releases: {summary.loanReleaseCount}</Text>
             <Text fontWeight="bold">Loan collections: {summary.loanCollectionCount}</Text>
             <Text fontWeight="bold">Monthly contributions: {summary.monthlyContributionCount}</Text>
+            <Text fontWeight="bold">Daily remittances: {summary.dailyRemittanceCount}</Text>
           </VStack>
         </Box>
       </Grid>
@@ -2279,6 +2283,48 @@ function CostCenterAdministration({ user }) {
   </Box>;
 }
 
+function RemittanceSourceAdministration({ user }) {
+  const blank = { code: "", name: "", reportingGroup: "", costCenterCode: "", incomeAccountCode: "4080",
+    incomeAccountName: "Other Operating Income", displayOrder: 100, status: "Active" };
+  const [rows, setRows] = useState([]); const [centers, setCenters] = useState([]); const [drafts, setDrafts] = useState({});
+  const [form, setForm] = useState(blank); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const canManage = user.permissions.includes("remittance-sources:manage");
+  const load = useCallback(async () => {
+    try { const [sourceRows, centerRows] = await Promise.all([api("/api/remittance-sources"), api("/api/cost-centers")]);
+      setRows(sourceRows); setCenters(centerRows); setDrafts(Object.fromEntries(sourceRows.map((row) => [row.code, { ...row }]))); setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  async function create(event) { event.preventDefault(); setError(""); setMessage("");
+    try { await api("/api/remittance-sources", { method: "POST", body: JSON.stringify(form) }); setForm(blank);
+      setMessage("Remittance source created."); await load(); } catch (requestError) { setError(requestError.message); } }
+  async function save(code) { try { await api(`/api/remittance-sources/${code}`, { method: "PATCH", body: JSON.stringify(drafts[code]) });
+    setMessage(`${code} updated.`); await load(); } catch (requestError) { setError(requestError.message); } }
+  return <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}><Heading size="md">Daily Remittance Sources</Heading>
+    <Text color="gray.600" mt={1} mb={4}>Configure teller choices, reporting rollups, cost-center destinations, and direct income accounts.</Text>
+    {message ? <Text color="green.700" mb={3}>{message}</Text> : null}{error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+    {canManage ? <Grid as="form" onSubmit={create} templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={5}>
+      <FormControl isRequired><FormLabel>Code</FormLabel><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} /></FormControl>
+      <FormControl isRequired><FormLabel>Name</FormLabel><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></FormControl>
+      <FormControl isRequired><FormLabel>Reporting Group</FormLabel><Input value={form.reportingGroup} onChange={(e) => setForm({ ...form, reportingGroup: e.target.value })} /></FormControl>
+      <FormControl><FormLabel>Cost Center</FormLabel><Select value={form.costCenterCode} onChange={(e) => setForm({ ...form, costCenterCode: e.target.value })}><option value="">Standalone</option>{centers.map((center) => <option key={center.code} value={center.code}>{center.name}</option>)}</Select></FormControl>
+      <FormControl isRequired><FormLabel>Income Account Code</FormLabel><Input value={form.incomeAccountCode} onChange={(e) => setForm({ ...form, incomeAccountCode: e.target.value })} /></FormControl>
+      <FormControl isRequired><FormLabel>Income Account Name</FormLabel><Input value={form.incomeAccountName} onChange={(e) => setForm({ ...form, incomeAccountName: e.target.value })} /></FormControl>
+      <FormControl><FormLabel>Display Order</FormLabel><NumberInput min={0} value={form.displayOrder} onChange={(value) => setForm({ ...form, displayOrder: Number(value || 0) })}><NumberInputField /></NumberInput></FormControl>
+      <Button alignSelf="end" type="submit" colorScheme="green">Add Source</Button>
+    </Grid> : null}
+    <TableContainer><Table size="sm"><Thead><Tr><Th>Source</Th><Th>Reporting Group</Th><Th>Cost Center</Th><Th>Income Account</Th><Th>Order</Th><Th>Status</Th><Th /></Tr></Thead>
+      <Tbody>{rows.map((row) => { const draft = drafts[row.code] || row; return <Tr key={row.code}><Td>{row.code}<br />{canManage ? <Input size="sm" value={draft.name} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, name: e.target.value } })} /> : row.name}</Td>
+        <Td>{canManage ? <Input size="sm" value={draft.reportingGroup} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, reportingGroup: e.target.value } })} /> : row.reportingGroup}</Td>
+        <Td>{canManage ? <Select size="sm" value={draft.costCenterCode} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, costCenterCode: e.target.value } })}><option value="">Standalone</option>{centers.map((center) => <option key={center.code} value={center.code}>{center.name}</option>)}</Select> : row.costCenterCode || "Standalone"}</Td>
+        <Td>{canManage ? <HStack><Input size="sm" maxW="80px" value={draft.incomeAccountCode} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, incomeAccountCode: e.target.value } })} /><Input size="sm" value={draft.incomeAccountName} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, incomeAccountName: e.target.value } })} /></HStack> : `${row.incomeAccountCode} - ${row.incomeAccountName}`}</Td>
+        <Td>{canManage ? <NumberInput size="sm" min={0} value={draft.displayOrder} onChange={(value) => setDrafts({ ...drafts, [row.code]: { ...draft, displayOrder: Number(value || 0) } })}><NumberInputField /></NumberInput> : row.displayOrder}</Td>
+        <Td>{canManage ? <Select size="sm" value={draft.status} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, status: e.target.value } })}><option>Active</option><option>Inactive</option></Select> : <Badge>{row.status}</Badge>}</Td>
+        <Td>{canManage ? <Button size="sm" onClick={() => save(row.code)}>Save</Button> : null}</Td></Tr>; })}</Tbody>
+    </Table></TableContainer>
+  </Box>;
+}
+
 function MonthlyContributionCapture({ members, user }) {
   const today = new Date().toISOString().slice(0, 10);
   const emptyEntry = () => ({ id: `new-${Date.now()}-${Math.random()}`, memberNo: "", tfeaAmount: 0,
@@ -2382,6 +2428,96 @@ function MonthlyContributionCapture({ members, user }) {
         <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{batch.contributionPeriod}</Td><Td>{batch.sourceReference}</Td>
           <Td><Badge colorScheme={batch.status === "Finalized" ? "green" : "blue"}>{batch.status}</Badge></Td><Td isNumeric>{batch.entryCount}</Td>
           <Td isNumeric>{formatMoney(batch.tfeaTotal)}</Td><Td isNumeric>{formatMoney(batch.cbuTotal)}</Td><Td isNumeric>{formatMoney(batch.securedSavingsTotal)}</Td>
+          <Td><Button size="sm" onClick={() => openBatch(batch.batchNo)}>{batch.status === "Draft" && batch.createdBy === user.username ? "Edit" : "View"}</Button></Td></Tr>)}</Tbody>
+      </Table></TableContainer></Box>
+  </VStack>;
+}
+
+function DailyRemittanceCapture({ user }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [sources, setSources] = useState([]); const [batches, setBatches] = useState([]);
+  const [batchNo, setBatchNo] = useState(""); const [batchStatus, setBatchStatus] = useState("Draft");
+  const [batchCreatedBy, setBatchCreatedBy] = useState(user.username);
+  const [remittanceDate, setRemittanceDate] = useState(today); const [cashReceivedDate, setCashReceivedDate] = useState(today);
+  const [sourceReference, setSourceReference] = useState(""); const [remarks, setRemarks] = useState("");
+  const [entries, setEntries] = useState([]); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const canEncode = user.permissions.includes("daily-remittances:encode");
+  const canEditDraft = canEncode && batchStatus === "Draft" && batchCreatedBy === user.username;
+  const total = entries.reduce((sum, entry) => addMoney(sum, entry.amount), 0);
+  function gridEntries(sourceRows, savedEntries = []) {
+    const savedByCode = new Map(savedEntries.map((entry) => [entry.sourceCode, entry]));
+    const visibleSources = [...sourceRows.filter((source) => source.status === "Active")];
+    for (const entry of savedEntries) if (!visibleSources.some((source) => source.code === entry.sourceCode)) {
+      visibleSources.push({ code: entry.sourceCode, name: entry.sourceName, reportingGroup: entry.reportingGroup,
+        costCenterCode: entry.costCenterCode, incomeAccountCode: entry.incomeAccountCode,
+        incomeAccountName: entry.incomeAccountName, displayOrder: 9999, status: "Inactive" });
+    }
+    return visibleSources.map((source) => ({ id: savedByCode.get(source.code)?.id || `grid-${source.code}`,
+      sourceCode: source.code, sourceName: source.name, reportingGroup: source.reportingGroup,
+      costCenterCode: source.costCenterCode, incomeAccountCode: source.incomeAccountCode,
+      incomeAccountName: source.incomeAccountName, amount: Number(savedByCode.get(source.code)?.amount || 0),
+      remarks: savedByCode.get(source.code)?.remarks || "" }));
+  }
+  const load = useCallback(async () => {
+    try { const [sourceRows, batchRows] = await Promise.all([api("/api/remittance-sources"), api("/api/daily-remittance-batches")]);
+      setSources(sourceRows); setBatches(batchRows); setError(""); } catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!batchNo && sources.length) setEntries(gridEntries(sources)); }, [sources, batchNo]);
+  function reset() { setBatchNo(""); setBatchStatus("Draft"); setBatchCreatedBy(user.username); setRemittanceDate(today);
+    setCashReceivedDate(today); setSourceReference(""); setRemarks(""); setEntries(gridEntries(sources)); setMessage(""); setError(""); }
+  function updateEntry(index, field, value) { setEntries((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row)); }
+  async function openBatch(selected) {
+    try { const data = await api(`/api/daily-remittance-batches/${selected}`); setBatchNo(data.batch.batchNo);
+      setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy); setRemittanceDate(data.batch.remittanceDate);
+      setCashReceivedDate(data.batch.cashReceivedDate); setSourceReference(data.batch.sourceReference);
+      setRemarks(data.batch.remarks); setEntries(data.batch.status === "Draft" ? gridEntries(sources, data.entries) : data.entries);
+      setMessage(""); setError(""); } catch (requestError) { setError(requestError.message); }
+  }
+  async function saveDraft(event) {
+    event.preventDefault(); setMessage(""); setError("");
+    try { const data = await api(batchNo ? `/api/daily-remittance-batches/${batchNo}` : "/api/daily-remittance-batches", {
+      method: batchNo ? "PUT" : "POST", body: JSON.stringify({ remittanceDate, cashReceivedDate, sourceReference, remarks,
+        entries: entries.filter((entry) => Number(entry.amount || 0) > 0) }) });
+      setBatchNo(data.batch.batchNo); setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy);
+      setEntries(gridEntries(sources, data.entries)); setMessage(`${data.batch.batchNo} saved as Draft.`); await load(); } catch (requestError) { setError(requestError.message); }
+  }
+  async function addToBatch() {
+    if (!batchNo || !window.confirm(`Add ${batchNo} to the Open teller batch as cash collection?`)) return;
+    try { const data = await api(`/api/daily-remittance-batches/${batchNo}/finalize`, { method: "POST" });
+      setBatchStatus(data.batch.status); setMessage(`${batchNo} added to teller batch ${data.batch.tellerBatchNo}. Income posts after review.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  return <VStack align="stretch" spacing={5}>
+    <Box as="form" onSubmit={saveDraft} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Daily Remittance</Heading>
+        <Text color="gray.600">Record cash turned over by cooperative operations and service units.</Text></Box>
+        <HStack><Badge>{batchNo || "New Draft"} · {batchStatus}</Badge><Button type="button" variant="outline" onClick={reset}>New</Button>
+          {canEditDraft ? <Button type="submit" colorScheme="green">Save Draft</Button> : null}
+          {batchNo && canEditDraft ? <Button type="button" colorScheme="orange" onClick={addToBatch}>Add to Teller Batch</Button> : null}</HStack></Flex>
+      {message ? <Text color="green.700" mb={3}>{message}</Text> : null}{error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+      <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4} mb={4}>
+        <FormControl isRequired><FormLabel>Remittance Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={cashReceivedDate} value={remittanceDate} onChange={(e) => setRemittanceDate(e.target.value)} /></FormControl>
+        <FormControl isRequired><FormLabel>Cash Received Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={today} value={cashReceivedDate} onChange={(e) => setCashReceivedDate(e.target.value)} /></FormControl>
+        <FormControl isRequired><FormLabel>Official Receipt / Reference</FormLabel><Input isDisabled={!canEditDraft} value={sourceReference} onChange={(e) => setSourceReference(e.target.value)} /></FormControl>
+        <FormControl><FormLabel>Batch Remarks</FormLabel><Input isDisabled={!canEditDraft} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></FormControl>
+      </Grid>
+      <Box borderWidth="1px" borderRadius="md" p={3} mb={4}><Text color="gray.500" fontSize="sm">Total Cash Remittance</Text><Text fontWeight="bold" fontSize="xl">{formatMoney(total)}</Text></Box>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Source</Th><Th>Reporting Destination</Th><Th>Income Account</Th><Th isNumeric>Amount</Th><Th>Remarks</Th></Tr></Thead>
+        <Tbody>{entries.map((entry, index) => { const source = sources.find((row) => row.code === entry.sourceCode) || entry; return <Tr key={entry.id || index}>
+          <Td minW="220px"><Text fontWeight="semibold">{source.name || entry.sourceName}</Text>
+            <Text color="gray.500" fontSize="xs">{entry.sourceCode}</Text></Td>
+          <Td>{source.reportingGroup || "-"}{source.costCenterCode ? ` (${source.costCenterCode})` : ""}</Td>
+          <Td>{source.incomeAccountCode ? `${source.incomeAccountCode} - ${source.incomeAccountName}` : "-"}</Td>
+          <Td minW="140px">{canEditDraft ? <NumberInput min={0} precision={2} value={entry.amount} onChange={(value) => updateEntry(index, "amount", Number(value || 0))}><NumberInputField textAlign="right" /></NumberInput> : formatMoney(entry.amount)}</Td>
+          <Td>{canEditDraft ? <Input size="sm" value={entry.remarks || ""} onChange={(e) => updateEntry(index, "remarks", e.target.value)} /> : entry.remarks || "-"}</Td>
+        </Tr>; })}</Tbody></Table></TableContainer>
+      {canEditDraft ? <Text mt={3} color="gray.600" fontSize="sm">Only sources with a positive amount are saved. Admin-configured active sources appear here automatically.</Text> : null}
+    </Box>
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Daily Remittance History</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Remittance Date</Th><Th>Cash Received</Th><Th>Reference</Th><Th>Status</Th><Th isNumeric>Sources</Th><Th isNumeric>Total</Th><Th /></Tr></Thead>
+        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{formatDate(batch.remittanceDate)}</Td><Td>{formatDate(batch.cashReceivedDate)}</Td>
+          <Td>{batch.sourceReference}</Td><Td><Badge>{batch.status}</Badge></Td><Td isNumeric>{batch.entryCount}</Td><Td isNumeric>{formatMoney(batch.totalAmount)}</Td>
           <Td><Button size="sm" onClick={() => openBatch(batch.batchNo)}>{batch.status === "Draft" && batch.createdBy === user.username ? "Edit" : "View"}</Button></Td></Tr>)}</Tbody>
       </Table></TableContainer></Box>
   </VStack>;
@@ -2580,6 +2716,7 @@ function Members({ user }) {
   const [initialPayments, setInitialPayments] = useState([]);
   const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
   const [monthlyContributionBatches, setMonthlyContributionBatches] = useState([]);
+  const [dailyRemittanceBatches, setDailyRemittanceBatches] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [securedSavingsWithdrawals, setSecuredSavingsWithdrawals] = useState([]);
@@ -2673,6 +2810,7 @@ function Members({ user }) {
   const canEncodeMemberCharges = user.permissions.includes("member-charges:encode");
   const canViewMemberCharges = user.permissions.includes("member-charges:view");
   const canViewMonthlyContributions = user.permissions.includes("monthly-contributions:view");
+  const canViewDailyRemittances = user.permissions.includes("daily-remittances:view");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
   const memberDirectoryQuery = memberDirectorySearch.trim().toLowerCase();
@@ -2781,6 +2919,12 @@ function Members({ user }) {
         batchType: "Monthly Member Contributions", cashReceived: contribution.totalAmount, cashOut: 0,
         shareCapitalAmount: contribution.cbuTotal, membershipFeeAmount: 0,
         savingsDepositAmount: contribution.securedSavingsTotal, status: contribution.status }))
+    ,...dailyRemittanceBatches
+      .filter((batch) => batch.status === "Teller Batch")
+      .map((batch) => ({ id: batch.batchNo, batchId: batch.tellerBatchNo,
+        memberName: `${batch.entryCount} remittance source${batch.entryCount === 1 ? "" : "s"}`,
+        batchType: "Daily Remittance", cashReceived: batch.totalAmount, cashOut: 0,
+        shareCapitalAmount: 0, membershipFeeAmount: 0, savingsDepositAmount: 0, status: batch.status }))
   ];
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatchRows);
   const statementPreviousLoanTotal = statement
@@ -2813,6 +2957,7 @@ function Members({ user }) {
           loanCollectionRows,
           loanProductRows,
           monthlyContributionRows,
+          dailyRemittanceRows,
           cashCountData
         ] =
           await Promise.all([
@@ -2827,6 +2972,7 @@ function Members({ user }) {
           canViewLoanCollections ? api("/api/loan-collections") : [],
           canViewLoanProducts ? api("/api/loan-products") : [],
           canViewMonthlyContributions ? api("/api/monthly-contribution-batches") : [],
+          canViewDailyRemittances ? api("/api/daily-remittance-batches") : [],
           canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
@@ -2840,6 +2986,7 @@ function Members({ user }) {
         setLoanCollections(loanCollectionRows);
         setPreviousLoanProducts(loanProductRows);
         setMonthlyContributionBatches(monthlyContributionRows);
+        setDailyRemittanceBatches(dailyRemittanceRows);
         setActiveBatch(cashCountData.activeBatch);
         setOpeningFunding(Number(cashCountData.expected?.openingFunding || 0));
         setLatestCashCount(cashCountData.latestCashCount);
@@ -2866,6 +3013,7 @@ function Members({ user }) {
       canViewLoanCollections,
       canViewLoanProducts,
       canViewMonthlyContributions,
+      canViewDailyRemittances,
       canViewTellerCashCount
     ]
   );
@@ -3270,6 +3418,7 @@ function Members({ user }) {
           {canUseTellerWorkspace ? <Tab flexShrink={0}>Teller Transactions</Tab> : null}
           {canViewMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
           {canViewMonthlyContributions ? <Tab flexShrink={0}>Monthly Contributions</Tab> : null}
+          {canViewDailyRemittances ? <Tab flexShrink={0}>Daily Remittance</Tab> : null}
           <Tab flexShrink={0}>Member Directory</Tab>
           {(canViewInitialPayments ||
             canViewShareCapitalContributions ||
@@ -3756,6 +3905,10 @@ function Members({ user }) {
 
           {canViewMonthlyContributions ? (
             <TabPanel px={0}><MonthlyContributionCapture members={members} user={user} /></TabPanel>
+          ) : null}
+
+          {canViewDailyRemittances ? (
+            <TabPanel px={0}><DailyRemittanceCapture user={user} /></TabPanel>
           ) : null}
 
           <TabPanel px={0}>
@@ -10319,6 +10472,7 @@ function Shell({ user, onLogout }) {
       return (
         <VStack align="stretch" spacing={5}>
           <CostCenterAdministration user={user} />
+          <RemittanceSourceAdministration user={user} />
           <AdminUserManagement user={user} />
           <AdminDemoMaintenance user={user} />
         </VStack>

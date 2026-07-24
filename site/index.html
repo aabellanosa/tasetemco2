@@ -17,6 +17,7 @@
           <a href="#roles">Roles</a>
           <a href="#workflows">Workflows</a>
           <a href="#monthly-contributions">Monthly Contributions</a>
+          <a href="#daily-remittance">Daily Remittance</a>
           <a href="#reports">Reports</a>
         </div>
       </nav>
@@ -257,6 +258,19 @@
               <li>Teller may withdraw available Secured Savings; pending withdrawals reserve availability.</li>
               <li>Withdrawal posting debits Secured Savings Payable, credits Cash on Hand, and reduces the separate secured balance.</li>
               <li>A locked SUMMO month blocks new or unposted contribution activity.</li>
+            </ol>
+          </article>
+
+          <article id="daily-remittance">
+            <h3>Daily Remittance</h3>
+            <ol>
+              <li>Teller records a backdated operational Remittance Date, the actual Cash Received Date, and a unique receipt/reference.</li>
+              <li>Standard sources include Canteen A/B, WRS, Water Bottle A/B, Piso WiFi A/B, Printing &amp; Photocopy, Water Vendo A/B, and Catering.</li>
+              <li>Admin may configure additional sources with a reporting group, optional cost center, income account, display order, and status.</li>
+              <li>Saving a Draft has no cash, journal, member payable, or SUMMO effect.</li>
+              <li>Adding the Draft to the Open teller batch includes the full amount in expected cashier cash.</li>
+              <li>Reviewed-batch posting debits Cash on Hand and credits each source's snapshotted income account.</li>
+              <li>Canteen A/B retain separate cost centers; WRS and Water Bottle A/B roll up under WRS while retaining source detail.</li>
             </ol>
           </article>
 

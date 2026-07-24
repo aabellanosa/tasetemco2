@@ -123,7 +123,10 @@ export const rolePermissions = {
     "member-charges:view",
     "member-charges:encode",
     "member-charges:finalize",
-    "member-charges:reverse"
+    "member-charges:reverse",
+    "remittance-sources:view",
+    "remittance-sources:manage",
+    "daily-remittances:view"
   ],
   "General Manager": [
     "members:view",
@@ -145,7 +148,9 @@ export const rolePermissions = {
     "teller-fundings:view",
     "teller-fundings:approve",
     "cost-centers:view",
-    "member-charges:view"
+    "member-charges:view",
+    "remittance-sources:view",
+    "daily-remittances:view"
   ],
   "Accountant / Bookkeeper": [
     "ledger:view",
@@ -160,7 +165,9 @@ export const rolePermissions = {
     "teller-fundings:view",
     "teller-fundings:prepare",
     "cost-centers:view",
-    "member-charges:view"
+    "member-charges:view",
+    "remittance-sources:view",
+    "daily-remittances:view"
   ],
   "Loan Officer": [
     "members:view",
@@ -204,7 +211,11 @@ export const rolePermissions = {
     "member-charges:reverse",
     "monthly-contributions:view",
     "monthly-contributions:encode",
-    "monthly-contributions:finalize"
+    "monthly-contributions:finalize",
+    "remittance-sources:view",
+    "daily-remittances:view",
+    "daily-remittances:encode",
+    "daily-remittances:finalize"
   ],
   "Membership Officer": [
     "members:view",
@@ -234,7 +245,9 @@ export const rolePermissions = {
     "loans:collections:view",
     "teller-fundings:view",
     "cost-centers:view",
-    "member-charges:view"
+    "member-charges:view",
+    "remittance-sources:view",
+    "daily-remittances:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
 };
@@ -610,14 +623,28 @@ export const memberPreviousLoans = [];
 export const memberPreviousLoanControls = [];
 export const memberPreviousLoanUnlockRequests = [];
 export const costCenters = [
-  { code: "C1", name: "Canteen 1", type: "Canteen", summoColumn: "Canteen", status: "Active" },
-  { code: "C2", name: "Canteen 2", type: "Canteen", summoColumn: "Canteen", status: "Active" },
+  { code: "C1", name: "Canteen A", type: "Canteen", summoColumn: "Canteen", status: "Active" },
+  { code: "C2", name: "Canteen B", type: "Canteen", summoColumn: "Canteen", status: "Active" },
   { code: "WRS", name: "Water Refilling Station", type: "Water Station", summoColumn: "WRS", status: "Active" },
   { code: "GMAR", name: "G-mar Commercial", type: "Commercial Store", summoColumn: "G-mar Capital", status: "Active" }
 ];
 export const memberChargeBatches = [];
 export const memberChargeEntries = [];
 export const memberChargeMovements = [];
+export const remittanceSources = [
+  { code: "CANTEEN-A", name: "Canteen A", reportingGroup: "Canteen A", costCenterCode: "C1", incomeAccountCode: "4060", incomeAccountName: "Canteen Income", displayOrder: 10, status: "Active" },
+  { code: "CANTEEN-B", name: "Canteen B", reportingGroup: "Canteen B", costCenterCode: "C2", incomeAccountCode: "4060", incomeAccountName: "Canteen Income", displayOrder: 20, status: "Active" },
+  { code: "WRS", name: "WRS", reportingGroup: "WRS", costCenterCode: "WRS", incomeAccountCode: "4070", incomeAccountName: "Water Refilling Income", displayOrder: 30, status: "Active" },
+  { code: "WATER-BOTTLE-A", name: "Water Bottle A", reportingGroup: "WRS", costCenterCode: "WRS", incomeAccountCode: "4070", incomeAccountName: "Water Refilling Income", displayOrder: 40, status: "Active" },
+  { code: "WATER-BOTTLE-B", name: "Water Bottle B", reportingGroup: "WRS", costCenterCode: "WRS", incomeAccountCode: "4070", incomeAccountName: "Water Refilling Income", displayOrder: 50, status: "Active" },
+  ...["Piso WiFi A", "Piso WiFi B", "Printing & Photocopy", "Water Vendo A", "Water Vendo B", "Catering"].map((name, index) => ({
+    code: name.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/(^-|-$)/g, ""), name,
+    reportingGroup: name, costCenterCode: "", incomeAccountCode: "4080",
+    incomeAccountName: "Other Operating Income", displayOrder: 60 + index * 10, status: "Active"
+  }))
+];
+export const dailyRemittanceBatches = [];
+export const dailyRemittanceEntries = [];
 
 export const loans = [
   {

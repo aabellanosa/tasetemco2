@@ -29,6 +29,8 @@ function validateSite(directory) {
   assert(index.includes('id="workflows"'), "Workflows section is missing.");
   assert(index.includes('id="reports"'), "Reports section is missing.");
   assert(index.includes('id="monthly-contributions"'), "Monthly Contributions workflow is missing.");
+  assert(index.includes('id="daily-remittance"'), "Daily Remittance workflow is missing.");
+  assert(index.includes("snapshotted income account"), "Daily Remittance accounting treatment is missing.");
   assert(index.includes("TFEA, CBU, and Secured Savings"), "Monthly contribution SUMMO coverage is missing.");
   assert(index.includes("PHP 500,000 maximum principal"), "LBP Loan maximum is missing.");
   assert(index.includes("Native LBP Due Date and Amount"), "Native LBP SUMMO coverage is missing.");
