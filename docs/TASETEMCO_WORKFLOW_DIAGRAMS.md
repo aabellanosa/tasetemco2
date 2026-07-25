@@ -461,7 +461,7 @@ Monthly Contributions do not aggregate member payables. Only Posted contribution
   Preserve source, reporting group, and cost-center attribution
 ```
 
-Canteen A and Canteen B remain separate cost centers. WRS, Water Bottle A, and Water Bottle B retain source detail and roll up under WRS. Admin and oversight roles have read-only transaction access; operational buttons appear only for Teller/Cashier.
+Canteen A and Canteen B remain separate cost centers. WRS, Water Bottle A, and Water Bottle B retain source detail and roll up under WRS. GCASH and LOADER are standalone, non-cost-center sources and post to 4080 - Other Operating Income. Admin and oversight roles have read-only transaction access; operational buttons appear only for Teller/Cashier.
 
 Secured Savings subsidiary and withdrawal:
 

@@ -42,6 +42,8 @@ function validateSite(directory) {
   assert(index.includes('id="daily-remittance"'), "Daily Remittance workflow is missing.");
   assert(index.includes("fixed grid containing every Active configured source"), "Daily Remittance grid guidance is missing.");
   assert(index.includes("snapshotted income account"), "Daily Remittance posting guidance is missing.");
+  assert(index.includes("GCASH and LOADER"), "GCASH and LOADER Daily Remittance sources are missing.");
+  assert(index.includes("4080 - Other Operating Income"), "GCASH and LOADER account treatment is missing.");
   assert(index.includes("Admin configures centers and reviews activity"), "Cost-center role separation is missing.");
   assert(index.includes("TFEA Payable, Share Capital, and Secured Savings Payable"), "Monthly contribution posting flow is missing.");
   assert(index.includes("posted Secured Savings less pending secured withdrawals"), "Secured Savings withdrawal controls are missing.");
