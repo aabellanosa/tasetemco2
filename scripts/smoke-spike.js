@@ -187,6 +187,14 @@ async function run() {
       throw new Error("Admin should have member application approval permission.");
     }
 
+    if (
+      adminBody.user.permissions.includes("member-charges:encode") ||
+      adminBody.user.permissions.includes("member-charges:finalize") ||
+      adminBody.user.permissions.includes("member-charges:reverse")
+    ) {
+      throw new Error("Admin should configure and review cost centers without operating member-charge batches.");
+    }
+
     const managerDashboard = await fetch(`${baseUrl}/api/dashboard`, {
       headers: { Cookie: managerCookie }
     });
@@ -709,6 +717,15 @@ async function run() {
       body: JSON.stringify({ code: "TEST-CC", name: "Test Cost Center", type: "Other", summoColumn: "Other", status: "Active" })
     });
     if (!adminCostCenterCreate.ok) throw new Error("Admin should maintain cost-center definitions.");
+
+    const forbiddenAdminChargeDraft = await fetch(`${baseUrl}/api/member-charge-batches`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: JSON.stringify({ costCenterCode: "C1", transactionDate: new Date().toISOString().slice(0, 10),
+        entries: [{ memberNo: "M-000482", amount: 10, referenceNo: "ADMIN-NOT-TELLER", remarks: "" }] })
+    });
+    if (forbiddenAdminChargeDraft.status !== 403) {
+      throw new Error("Admin should not encode Cost Center Payable batches without a Teller additional role.");
+    }
 
     const adminRemittanceSourceCreate = await fetch(`${baseUrl}/api/remittance-sources`, {
       method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie },

@@ -121,9 +121,6 @@ export const rolePermissions = {
     "cost-centers:view",
     "cost-centers:manage",
     "member-charges:view",
-    "member-charges:encode",
-    "member-charges:finalize",
-    "member-charges:reverse",
     "remittance-sources:view",
     "remittance-sources:manage",
     "daily-remittances:view"
