@@ -207,6 +207,7 @@
           <article><h3>Teller Receipts</h3><p>Members -> Teller Transactions for initial payments, share capital, savings deposits, and savings withdrawals.</p></article>
           <article><h3>Monthly Contributions</h3><p>Members -> Monthly Contributions for cash-paid TFEA, CBU, and Secured Savings entered by Teller/Cashier.</p></article>
           <article><h3>Daily Remittance</h3><p>Members -> Daily Remittance for fixed-grid cash turnover from operating units and Admin-configured sources.</p></article>
+          <article><h3>Daily Disbursement</h3><p>Members -> Daily Disbursement for fixed-grid cash expenses attributed to cost centers or cooperative operations.</p></article>
           <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily Canteen A, Canteen B, Water Refilling Station, G-mar Commercial, and future configured member payables.</p></article>
           <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
           <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
@@ -315,6 +316,21 @@
               <li>Canteen A/B remain separate; WRS and Water Bottle A/B retain detail while rolling up under WRS.</li>
               <li>GCASH and LOADER are standalone, non-cost-center sources that post to 4080 - Other Operating Income.</li>
               <li>Piso WiFi, printing and photocopy, water vendo, catering, and additional configured sources retain their reporting definitions.</li>
+            </ol>
+          </article>
+
+          <article id="daily-disbursement">
+            <h3>Daily Disbursement</h3>
+            <ol>
+              <li>Admin configures category name, reporting group, optional cost center, 5xxx expense account, display order, and status.</li>
+              <li>Initial categories are Canteen A, Canteen B, WRS, Building and renovations, Travel, and Other expenses.</li>
+              <li>Teller enters a backdateable Disbursement Date, actual Cash Disbursed Date, unique voucher/reference, positive amounts, and optional remarks.</li>
+              <li>Zero-value rows are not saved. A Draft has no cash or journal effect.</li>
+              <li>The creating Teller adds the Draft to the Open teller batch, including its total in cash-out and expected ending cash.</li>
+              <li>Teller and Admin monitor the same active batch ID, so their transaction counts and rows reconcile.</li>
+              <li>After cash count and Bookkeeper review, posting debits the snapshotted expense accounts and credits 1010 - Cash on Hand.</li>
+              <li>Canteen A/B retain C1/C2 and WRS retains WRS; Building and renovations, Travel, and Other expenses belong to cooperative operations.</li>
+              <li>Admin may configure additional categories as new expenses are identified.</li>
             </ol>
           </article>
 

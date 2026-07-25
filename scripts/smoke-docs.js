@@ -44,6 +44,10 @@ function validateSite(directory) {
   assert(index.includes("snapshotted income account"), "Daily Remittance posting guidance is missing.");
   assert(index.includes("GCASH and LOADER"), "GCASH and LOADER Daily Remittance sources are missing.");
   assert(index.includes("4080 - Other Operating Income"), "GCASH and LOADER account treatment is missing.");
+  assert(index.includes('id="daily-disbursement"'), "Daily Disbursement workflow is missing.");
+  assert(index.includes("Building and renovations, Travel, and Other expenses"), "Daily Disbursement categories are missing.");
+  assert(index.includes("same active batch ID"), "Teller/Admin active-batch reconciliation guidance is missing.");
+  assert(index.includes("credits 1010 - Cash on Hand"), "Daily Disbursement posting guidance is missing.");
   assert(index.includes("Admin configures centers and reviews activity"), "Cost-center role separation is missing.");
   assert(index.includes("TFEA Payable, Share Capital, and Secured Savings Payable"), "Monthly contribution posting flow is missing.");
   assert(index.includes("posted Secured Savings less pending secured withdrawals"), "Secured Savings withdrawal controls are missing.");
@@ -67,6 +71,9 @@ assert(diagrams.includes("Cost Center and Other Sources into SUMMO"), "SUMMO dia
 assert(diagrams.includes("Monthly Member Contribution Cash Collection"), "Monthly contribution diagram is missing.");
 assert(diagrams.includes("Secured Savings subsidiary and withdrawal"), "Secured Savings subsidiary diagram is missing.");
 assert(diagrams.includes("Daily Cost-Center Member Payables"), "Cost-center workflow diagram is missing.");
+assert(diagrams.includes("Daily Disbursement Cash Payment"), "Daily Disbursement diagram is missing.");
+assert(diagrams.includes("Teller view and Admin Heads Up use the same active batch ID"),
+  "Teller/Admin active-batch consistency diagram is missing.");
 assert(diagrams.includes("No Dedicated Loan Approver"), "Updated loan decision diagram is missing.");
 assert(diagrams.includes("Flexible Loan Collection"), "Updated collection diagram is missing.");
 assert(diagrams.includes("Client-format workbook flow"), "Client-format SUMMO workflow diagram is missing.");

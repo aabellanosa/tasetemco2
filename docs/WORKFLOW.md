@@ -373,6 +373,8 @@ Secured Savings Subsidiary v1 maintains a member `secured_savings_balance` indep
 
 Daily Remittance v1 gives Teller/Cashier a fixed-grid cash Draft for money turned over by cooperative operations and service units. Every Active Admin-configured definition appears automatically; zero-value rows remain visual only and are not saved. The Teller records a Remittance Date, Cash Received Date, globally unique receipt/reference, positive source amounts, and optional remarks. The operational date may be backdated but cannot follow the cash date. Adding the Draft to the Open teller batch includes its total in expected cashier cash. After cash count and Bookkeeper review, posting debits `1010 - Cash on Hand` and credits the income account snapshotted from each source definition. Canteen A/B retain separate cost centers. WRS and Water Bottle A/B roll up under WRS while preserving source detail. GCASH and LOADER are standalone, non-cost-center sources; each retains its own reporting group and posts to `4080 - Other Operating Income`. Piso WiFi A/B, Printing & Photocopy, Water Vendo A/B, Catering, and additional Admin-configured sources retain their own reporting definitions. Daily Remittance creates no member payable and has no SUMMO effect.
 
+Daily Disbursement v1 mirrors Daily Remittance as a fixed-grid cash-out Draft. Admin configures category name, reporting group, optional cost center, `5xxx` expense account, display order, and status. The initial categories are Canteen A, Canteen B, WRS, Building and renovations, Travel, and Other expenses. Canteen A/B and WRS retain cost-center attribution; the other initial categories belong to cooperative operations. Teller records a backdateable Disbursement Date, actual Cash Disbursed Date, globally unique voucher/reference, positive category amounts, and optional remarks. Adding the Draft to the Open teller batch includes its total in cash-out. After cash count and Bookkeeper review, posting debits the snapshotted expense accounts and credits `1010 - Cash on Hand`. The Teller cash position and Admin Outstanding Teller Batch use the same active batch ID and therefore must show matching transaction rows and counts.
+
 | Cost Center Access | Configure Centers | Encode / Finalize / Reverse | Reconcile / Drill Down |
 | --- | --- | --- | --- |
 | System Administrator | Yes | No | Yes |
@@ -655,7 +657,20 @@ Secured Savings withdrawal continuation:
 9. GCASH and LOADER remain standalone, have no cost center, and post to `4080 - Other Operating Income`.
 10. Admin, management, accounting, and audit users have read-only transaction access. Only Teller/Cashier sees New, Save Draft, and Add to Teller Batch.
 
-### 4.14 Regular Capture SUMMO Preparation and Locking
+### 4.14 Daily Disbursement Cash Capture
+
+1. Admin maintains category definitions: name, reporting group, optional cost center, expense account, display order, and Active/Inactive status.
+2. Teller opens Members -> Daily Disbursement. Every Active category appears in a fixed grid.
+3. Teller enters a Disbursement Date, actual Cash Disbursed Date, unique voucher/reference, positive amounts, and optional remarks. The operational date may be backdated but cannot follow the actual cash date.
+4. Only positive rows are saved. A Draft has no cash or journal effect.
+5. The creating Teller adds the Draft to the current Open teller batch, making its total part of cash-out and expected ending cash.
+6. Teller and Admin monitor the same active batch ID; their batch transaction counts and rows must reconcile.
+7. Teller submits the cash count and Bookkeeper reviews the batch.
+8. Bookkeeper posts the reviewed batch. The journal debits the snapshotted `5xxx` expense accounts and credits `1010 - Cash on Hand`.
+9. Canteen A/B retain cost centers C1/C2, WRS retains cost center WRS, and Building and renovations, Travel, and Other expenses remain attributed to cooperative operations.
+10. Admin may add future categories or revise unposted category definitions. Saved entries retain their expense-account and cost-center snapshots.
+
+### 4.15 Regular Capture SUMMO Preparation and Locking
 
 1. Teller completes and finalizes relevant C1, C2, WRS, and GMAR batches.
 2. Bookkeeper uses XLSX only for categories still outside system capture.
@@ -864,6 +879,8 @@ Monthly Member Contributions adds `monthly_contribution_batches`, `monthly_contr
 Secured Savings Subsidiary adds `members.secured_savings_balance` and `secured_savings_withdrawals`. Run `npm run pg:migrate` before deployment. The migration is additive and requires no seed or reset.
 
 Daily Remittance adds `remittance_sources`, `daily_remittance_batches`, and `daily_remittance_entries`. The migration seeds the standard source definitions and renames cost-center display names Canteen 1/2 to Canteen A/B while retaining codes C1/C2 and existing SUMMO mappings. Run `npm run pg:migrate` before deployment. No full seed or reset is required.
+
+Daily Disbursement adds `disbursement_categories`, `daily_disbursement_batches`, and `daily_disbursement_entries`. The migration seeds Canteen A, Canteen B, WRS, Building and renovations, Travel, and Other expenses using `ON CONFLICT DO NOTHING`. Run `npm run pg:migrate` after deploying the application build. No separate `pg:seed` or database reset is required.
 
 ## 7. Audit Trail Requirements
 

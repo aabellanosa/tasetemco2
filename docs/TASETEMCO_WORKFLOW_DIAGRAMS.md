@@ -13,6 +13,8 @@ These diagrams describe the implemented React, Node/Express, and Postgres protot
 | Collect monthly TFEA, CBU, and Secured Savings | Teller / Cashier | Members -> Monthly Contributions |
 | Receive operating-unit cash remittances | Teller / Cashier | Members -> Daily Remittance |
 | Configure Daily Remittance sources | System Administrator | Admin -> Daily Remittance Sources |
+| Pay cost-center or cooperative-operation expenses | Teller / Cashier | Members -> Daily Disbursement |
+| Configure Daily Disbursement categories | System Administrator | Admin -> Daily Disbursement Categories |
 | Review cost-center totals or one member | General Manager / Bookkeeper / Auditor | Ledger or Members -> Cost Center Charges |
 | Create and submit a loan application | Loan Officer | Loans -> Applications |
 | Decide a submitted loan | System Administrator | Loans -> Applications |
@@ -462,6 +464,45 @@ Monthly Contributions do not aggregate member payables. Only Posted contribution
 ```
 
 Canteen A and Canteen B remain separate cost centers. WRS, Water Bottle A, and Water Bottle B retain source detail and roll up under WRS. GCASH and LOADER are standalone, non-cost-center sources and post to 4080 - Other Operating Income. Admin and oversight roles have read-only transaction access; operational buttons appear only for Teller/Cashier.
+
+## 11B. Daily Disbursement Cash Payment
+
+```text
+[System Administrator]
+  Configure category -> reporting group -> optional cost center
+                     -> 5xxx expense account -> order -> status
+        |
+        v
+[Teller / Cashier]
+  Open Members -> Daily Disbursement
+  Enter backdateable Disbursement Date, actual Cash Disbursed Date,
+  unique voucher/reference, positive category amounts, and remarks
+        |
+        v
+(System) Save Draft
+  Zero-value rows are ignored; no cash or journal effect
+        |
+        v
+[Creating Teller] Add to current Open teller batch
+        |
+        v
+(System) Include full total in cash-out and expected ending cash
+  Teller view and Admin Heads Up use the same active batch ID
+        |
+        v
+[Teller] Submit cash count
+        |
+        v
+[Bookkeeper] Review and post teller batch
+        |
+        v
+(System)
+  Debit snapshotted 5xxx expense accounts
+  Credit 1010 - Cash on Hand
+  Preserve category, reporting group, and cost-center attribution
+```
+
+Canteen A/B retain C1/C2, and WRS retains WRS. Building and renovations, Travel, and Other expenses are cooperative-operation categories. Admin may configure additional future expense categories.
 
 Secured Savings subsidiary and withdrawal:
 
