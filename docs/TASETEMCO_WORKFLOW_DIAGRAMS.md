@@ -9,8 +9,10 @@ These diagrams describe the implemented React, Node/Express, and Postgres protot
 | Work | Primary role | UI location |
 | --- | --- | --- |
 | Receive initial/share/savings payments or release savings | Teller / Cashier | Members -> Teller Transactions |
-| Encode C1, C2, WRS, or G-mar Commercial member payables | Teller / Cashier | Members -> Cost Center Charges |
+| Encode Canteen A, Canteen B, WRS, or G-mar Commercial member payables | Teller / Cashier | Members -> Cost Center Charges |
 | Collect monthly TFEA, CBU, and Secured Savings | Teller / Cashier | Members -> Monthly Contributions |
+| Receive operating-unit cash remittances | Teller / Cashier | Members -> Daily Remittance |
+| Configure Daily Remittance sources | System Administrator | Admin -> Daily Remittance Sources |
 | Review cost-center totals or one member | General Manager / Bookkeeper / Auditor | Ledger or Members -> Cost Center Charges |
 | Create and submit a loan application | Loan Officer | Loans -> Applications |
 | Decide a submitted loan | System Administrator | Loans -> Applications |
@@ -327,7 +329,7 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
 [System Administrator]
   Maintain cost centers and future SUMMO mapping
   Seeded mappings:
-    C1/C2 -> Canteen
+    Canteen A/B (C1/C2) -> Canteen
     WRS   -> WRS
     GMAR  -> G-mar Capital
         |
@@ -343,7 +345,7 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
         +---- Teller edits own Draft or adds skipped-day input
         |
         v
-[Creating Teller or Admin] Finalize batch
+[Creating Teller] Finalize batch
         |
         v
 (System)
@@ -351,7 +353,7 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
   Snapshot cost-center-to-SUMMO mapping at finalization
   Show movement on member statement and reconciliation
         |
-        +---- Incorrect charge ----> [Creating Teller or Admin]
+        +---- Incorrect charge ----> [Creating Teller]
         |                              Enter required reversal reason
         |                                    |
         |                                    v
@@ -366,6 +368,8 @@ Loan Officer cannot decide, release cash, or post the resulting journal.
 ```
 
 Cost-center controls:
+
+Admin configures cost centers and reviews activity but cannot encode, finalize, or reverse member-payable batches unless explicitly assigned an additional Teller role.
 
 ```text
 Draft                         editable only by its creating Teller
@@ -418,6 +422,46 @@ Member-filtered reconciliation recalculates row counts and amounts for only the 
 ```
 
 Monthly Contributions do not aggregate member payables. Only Posted contribution movements fill TFEA, CBU, and Secured Savings in SUMMO. A locked Regular Capture month blocks new or unposted activity for affected members.
+
+## 11A. Daily Remittance Cash Collection
+
+```text
+[System Administrator]
+  Configure source name, reporting group, optional cost center,
+  income account, display order, and status
+        |
+        v
+[Teller / Cashier]
+  Open Members -> Daily Remittance
+  Fixed grid displays every Active configured source
+  Enter Remittance Date, Cash Received Date, unique OR/reference,
+  positive amounts, and optional remarks
+        |
+        v
+(System) Save Draft
+  zero-value grid rows are ignored
+  no cash, journal, member-payable, or SUMMO effect
+        |
+        v
+[Creating Teller] Add to current Open teller batch
+        |
+        v
+(System) Include full total in expected cashier cash
+        |
+        v
+[Teller] Submit cash count
+        |
+        v
+[Bookkeeper] Review and post teller batch
+        |
+        v
+(System)
+  Debit Cash on Hand
+  Credit each snapshotted source income account
+  Preserve source, reporting group, and cost-center attribution
+```
+
+Canteen A and Canteen B remain separate cost centers. WRS, Water Bottle A, and Water Bottle B retain source detail and roll up under WRS. Admin and oversight roles have read-only transaction access; operational buttons appear only for Teller/Cashier.
 
 Secured Savings subsidiary and withdrawal:
 

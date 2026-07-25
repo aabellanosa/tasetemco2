@@ -361,7 +361,7 @@ Client-format SUMMO Workbook v1 preserves the cooperative's exact six-sheet work
 | Auditor / Compliance Officer | Yes | No | No |
 | Board / Read-Only Executive | Yes | No | No |
 
-Daily Cost Center Payables v1 gives Teller/Cashier a multi-member Draft batch for C1, C2, WRS, GMAR / G-mar Commercial, and future configured centers. GMAR is seeded with type `Commercial Store` and SUMMO mapping `G-mar Capital`. A transaction date may be backdated for a skipped input day. Drafts have no payable effect and only the creating Teller may edit them. Finalization creates immutable member payable movements and snapshots the cost center's SUMMO mapping so a later configuration change cannot rewrite historical reports. Correction is a linked negative reversal with a required reason, followed by a corrected row in a new Draft.
+Daily Cost Center Payables v1 gives Teller/Cashier a multi-member Draft batch for Canteen A, Canteen B, WRS, GMAR / G-mar Commercial, and future configured centers. Canteen A/B retain codes C1/C2 and both map to SUMMO Canteen. GMAR is seeded with type `Commercial Store` and SUMMO mapping `G-mar Capital`. A transaction date may be backdated for a skipped input day. Drafts have no payable effect and only the creating Teller may edit them. Finalization creates immutable member payable movements and snapshots the cost center's SUMMO mapping so a later configuration change cannot rewrite historical reports. Correction is a linked negative reversal with a required reason, followed by a corrected row in a new Draft. Admin configures centers and reviews activity but does not encode, finalize, or reverse payable batches unless explicitly assigned an additional Teller role.
 
 General Manager, Accountant / Bookkeeper, and Auditor can reconcile cost-center activity by date, center, status, or member and drill down through batch, source entry, movement, actor, and reason. A member filter recalculates totals and row counts for only that member, including the member's portion of a mixed-member batch.
 
@@ -371,9 +371,11 @@ Monthly Member Contributions v1 gives Teller/Cashier a separate multi-member Dra
 
 Secured Savings Subsidiary v1 maintains a member `secured_savings_balance` independently from regular savings. Posted Monthly Contributions increase this secured balance. Teller/Cashier may record a Secured Savings Withdrawal against the posted balance less pending withdrawals. Recording reserves availability and adds a cash-out row to the Open teller batch without reducing the posted balance. Bookkeeper posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the secured balance. Member statements, transaction history, the Member Subsidiary Ledger, and Control Account Reconciliation show Secured Savings separately.
 
+Daily Remittance v1 gives Teller/Cashier a fixed-grid cash Draft for money turned over by cooperative operations and service units. Every Active Admin-configured definition appears automatically; zero-value rows remain visual only and are not saved. The Teller records a Remittance Date, Cash Received Date, globally unique receipt/reference, positive source amounts, and optional remarks. The operational date may be backdated but cannot follow the cash date. Adding the Draft to the Open teller batch includes its total in expected cashier cash. After cash count and Bookkeeper review, posting debits `1010 - Cash on Hand` and credits the income account snapshotted from each source definition. Canteen A/B retain separate cost centers. WRS and Water Bottle A/B roll up under WRS while preserving source detail. Piso WiFi A/B, Printing & Photocopy, Water Vendo A/B, Catering, and additional Admin-configured sources retain their own reporting definitions. Daily Remittance creates no member payable and has no SUMMO effect.
+
 | Cost Center Access | Configure Centers | Encode / Finalize / Reverse | Reconcile / Drill Down |
 | --- | --- | --- | --- |
-| System Administrator | Yes | Yes | Yes |
+| System Administrator | Yes | No | Yes |
 | Teller / Cashier | No | Yes, own Draft/finalized sources | Batch history and movement audit |
 | General Manager | No | No | Yes |
 | Accountant / Bookkeeper | No | No | Yes |
@@ -640,7 +642,19 @@ Secured Savings withdrawal continuation:
 5. Teller submits the cash count and Bookkeeper reviews the batch.
 6. Posting debits Secured Savings Payable, credits Cash on Hand, decreases the member secured balance, and leaves regular savings unchanged.
 
-### 4.13 Regular Capture SUMMO Preparation and Locking
+### 4.13 Daily Remittance Cash Capture
+
+1. Admin maintains remittance-source definitions: name, reporting group, optional cost center, income account, display order, and Active/Inactive status.
+2. Teller opens Members -> Daily Remittance. The fixed grid displays every Active configured source automatically.
+3. Teller enters the operational Remittance Date, actual Cash Received Date, globally unique receipt/reference, source amounts, and optional remarks.
+4. Only positive grid rows are saved. The Draft has no cash, journal, member-payable, or SUMMO effect.
+5. The creating Teller adds the Draft to the current Open teller batch, making its total part of expected cashier cash.
+6. Teller submits the cash count; Bookkeeper reviews the batch and records any required variance note.
+7. Bookkeeper posts the reviewed batch. The journal debits Cash on Hand and credits the snapshotted income accounts.
+8. Canteen A/B remain separately attributable. WRS and Water Bottle A/B retain source detail while rolling up under WRS.
+9. Admin, management, accounting, and audit users have read-only transaction access. Only Teller/Cashier sees New, Save Draft, and Add to Teller Batch.
+
+### 4.14 Regular Capture SUMMO Preparation and Locking
 
 1. Teller completes and finalizes relevant C1, C2, WRS, and GMAR batches.
 2. Bookkeeper uses XLSX only for categories still outside system capture.
@@ -847,6 +861,8 @@ Daily Cost Center Payables v1 adds `cost_centers`, `member_charge_batches`, `mem
 Monthly Member Contributions adds `monthly_contribution_batches`, `monthly_contribution_entries`, and `monthly_contribution_movements`, including teller-batch and journal-posting evidence. Run `npm run pg:migrate` before deploying this build. No seed or reset is required.
 
 Secured Savings Subsidiary adds `members.secured_savings_balance` and `secured_savings_withdrawals`. Run `npm run pg:migrate` before deployment. The migration is additive and requires no seed or reset.
+
+Daily Remittance adds `remittance_sources`, `daily_remittance_batches`, and `daily_remittance_entries`. The migration seeds the standard source definitions and renames cost-center display names Canteen 1/2 to Canteen A/B while retaining codes C1/C2 and existing SUMMO mappings. Run `npm run pg:migrate` before deployment. No full seed or reset is required.
 
 ## 7. Audit Trail Requirements
 

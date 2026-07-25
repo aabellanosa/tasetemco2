@@ -206,7 +206,8 @@
         <div class="capability-grid">
           <article><h3>Teller Receipts</h3><p>Members -> Teller Transactions for initial payments, share capital, savings deposits, and savings withdrawals.</p></article>
           <article><h3>Monthly Contributions</h3><p>Members -> Monthly Contributions for cash-paid TFEA, CBU, and Secured Savings entered by Teller/Cashier.</p></article>
-          <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily Canteen 1, Canteen 2, Water Refilling Station, G-mar Commercial, and future configured member payables.</p></article>
+          <article><h3>Daily Remittance</h3><p>Members -> Daily Remittance for fixed-grid cash turnover from operating units and Admin-configured sources.</p></article>
+          <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily Canteen A, Canteen B, Water Refilling Station, G-mar Commercial, and future configured member payables.</p></article>
           <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
           <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
           <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, analytical XLSX export, and the exact client-format six-sheet workbook.</p></article>
@@ -272,11 +273,11 @@
           <article>
             <h3>Daily Cost-Center Payables</h3>
             <ol>
-              <li>System Administrator maintains cost centers and their SUMMO mapping: Canteen 1/2 to Canteen, Water Refilling Station to WRS, and G-mar Commercial to G-mar Capital.</li>
+              <li>System Administrator maintains cost centers and their SUMMO mapping: Canteen A/B to Canteen, Water Refilling Station to WRS, and G-mar Commercial to G-mar Capital.</li>
               <li>Teller chooses a cost center and actual transaction date; skipped days may be entered later.</li>
               <li>Teller searches members and enters amount, source reference, and optional remarks in a multi-member Draft.</li>
               <li>Drafts have no payable effect and only the creating Teller may edit them.</li>
-              <li>Creating Teller or Admin finalizes the batch into immutable member payable movements.</li>
+              <li>Only Teller/Cashier finalizes the batch into immutable member payable movements; Admin configures centers and reviews activity.</li>
               <li>Each movement snapshots its SUMMO mapping so later configuration changes cannot rewrite history.</li>
               <li>An incorrect charge is corrected by a linked negative reversal with a mandatory reason, then a new Draft.</li>
               <li>Manager, Bookkeeper, and Auditor reconcile by date, center, status, or member and drill down to source and audit evidence.</li>
@@ -299,6 +300,20 @@
               <li>Teller may withdraw posted Secured Savings less pending secured withdrawals.</li>
               <li>The withdrawal is teller cash-out; posting debits Secured Savings Payable, credits Cash on Hand, and reduces only the secured balance.</li>
               <li>Monthly Contributions never aggregate into member payables.</li>
+            </ol>
+          </article>
+
+          <article id="daily-remittance">
+            <h3>Daily Remittance</h3>
+            <ol>
+              <li>Admin configures source name, reporting group, optional cost center, income account, display order, and status.</li>
+              <li>Teller opens a fixed grid containing every Active configured source; Admin and oversight users see a read-only screen.</li>
+              <li>Teller enters the operational Remittance Date, actual Cash Received Date, unique receipt/reference, positive amounts, and optional remarks.</li>
+              <li>Zero-value rows are not saved. A Draft has no cash, journal, member-payable, or SUMMO effect.</li>
+              <li>The creating Teller adds the Draft to the Open teller batch, including its total in expected cashier cash.</li>
+              <li>After cash count and Bookkeeper review, posting debits Cash on Hand and credits each source's snapshotted income account.</li>
+              <li>Canteen A/B remain separate; WRS and Water Bottle A/B retain detail while rolling up under WRS.</li>
+              <li>Piso WiFi, printing and photocopy, water vendo, catering, and additional configured sources retain their reporting definitions.</li>
             </ol>
           </article>
 
@@ -367,7 +382,7 @@
           <article>
             <h3>SUMMO Monthly Report</h3>
             <ol>
-              <li>Finalized Canteen 1/2 purchases automatically supply Canteen, Water Refilling Station purchases supply WRS, G-mar Commercial purchases supply G-mar Capital, and posted Monthly Contributions supply TFEA, CBU, and Secured Savings.</li>
+              <li>Finalized Canteen A/B purchases automatically supply Canteen, Water Refilling Station purchases supply WRS, G-mar Commercial purchases supply G-mar Capital, and posted Monthly Contributions supply TFEA, CBU, and Secured Savings.</li>
               <li>Bookkeeper uses the standard XLSX only for categories not yet captured by system transactions.</li>
               <li>System validates reporting month, member, category, amount, reference, and reversals.</li>
               <li>Bookkeeper reviews and finalizes a valid import batch; it does not post journals.</li>
