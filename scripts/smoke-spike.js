@@ -734,6 +734,17 @@ async function run() {
         displayOrder: 999, status: "Active" })
     });
     if (!adminRemittanceSourceCreate.ok) throw new Error("Admin should configure additional Daily Remittance sources.");
+    const remittanceSourcesResponse = await fetch(`${baseUrl}/api/remittance-sources`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const remittanceSourceRows = await remittanceSourcesResponse.json();
+    if (!remittanceSourcesResponse.ok || !["GCASH", "LOADER"].every((code) =>
+      remittanceSourceRows.some((row) => row.code === code && row.name === code &&
+        row.reportingGroup === code && row.costCenterCode === "" &&
+        row.incomeAccountCode === "4080" && row.incomeAccountName === "Other Operating Income" &&
+        row.status === "Active"))) {
+      throw new Error("GCASH and LOADER should be active non-cost-center Daily Remittance sources.");
+    }
 
     const remittanceDate = new Date().toISOString().slice(0, 10);
     const dailyRemittanceDraft = await fetch(`${baseUrl}/api/daily-remittance-batches`, {
