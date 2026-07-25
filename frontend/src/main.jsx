@@ -2492,7 +2492,8 @@ function DailyRemittanceCapture({ user }) {
     <Box as="form" onSubmit={saveDraft} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Daily Remittance</Heading>
         <Text color="gray.600">Record cash turned over by cooperative operations and service units.</Text></Box>
-        <HStack><Badge>{batchNo || "New Draft"} · {batchStatus}</Badge><Button type="button" variant="outline" onClick={reset}>New</Button>
+        <HStack><Badge>{batchNo || (canEncode ? "New Draft" : "Read Only")} · {batchStatus}</Badge>
+          {canEncode ? <Button type="button" variant="outline" onClick={reset}>New</Button> : null}
           {canEditDraft ? <Button type="submit" colorScheme="green">Save Draft</Button> : null}
           {batchNo && canEditDraft ? <Button type="button" colorScheme="orange" onClick={addToBatch}>Add to Teller Batch</Button> : null}</HStack></Flex>
       {message ? <Text color="green.700" mb={3}>{message}</Text> : null}{error ? <Text color="red.700" mb={3}>{error}</Text> : null}
