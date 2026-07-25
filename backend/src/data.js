@@ -123,7 +123,10 @@ export const rolePermissions = {
     "member-charges:view",
     "remittance-sources:view",
     "remittance-sources:manage",
-    "daily-remittances:view"
+    "daily-remittances:view",
+    "disbursement-categories:view",
+    "disbursement-categories:manage",
+    "daily-disbursements:view"
   ],
   "General Manager": [
     "members:view",
@@ -147,7 +150,9 @@ export const rolePermissions = {
     "cost-centers:view",
     "member-charges:view",
     "remittance-sources:view",
-    "daily-remittances:view"
+    "daily-remittances:view",
+    "disbursement-categories:view",
+    "daily-disbursements:view"
   ],
   "Accountant / Bookkeeper": [
     "ledger:view",
@@ -164,7 +169,9 @@ export const rolePermissions = {
     "cost-centers:view",
     "member-charges:view",
     "remittance-sources:view",
-    "daily-remittances:view"
+    "daily-remittances:view",
+    "disbursement-categories:view",
+    "daily-disbursements:view"
   ],
   "Loan Officer": [
     "members:view",
@@ -212,7 +219,11 @@ export const rolePermissions = {
     "remittance-sources:view",
     "daily-remittances:view",
     "daily-remittances:encode",
-    "daily-remittances:finalize"
+    "daily-remittances:finalize",
+    "disbursement-categories:view",
+    "daily-disbursements:view",
+    "daily-disbursements:encode",
+    "daily-disbursements:finalize"
   ],
   "Membership Officer": [
     "members:view",
@@ -244,7 +255,9 @@ export const rolePermissions = {
     "cost-centers:view",
     "member-charges:view",
     "remittance-sources:view",
-    "daily-remittances:view"
+    "daily-remittances:view",
+    "disbursement-categories:view",
+    "daily-disbursements:view"
   ],
   "Board / Read-Only Executive": ["reports:view"]
 };
@@ -642,6 +655,22 @@ export const remittanceSources = [
 ];
 export const dailyRemittanceBatches = [];
 export const dailyRemittanceEntries = [];
+export const disbursementCategories = [
+  { code: "CANTEEN-A", name: "Canteen A", reportingGroup: "Canteen A", costCenterCode: "C1",
+    expenseAccountCode: "5010", expenseAccountName: "Canteen Operating Expense", displayOrder: 10, status: "Active" },
+  { code: "CANTEEN-B", name: "Canteen B", reportingGroup: "Canteen B", costCenterCode: "C2",
+    expenseAccountCode: "5010", expenseAccountName: "Canteen Operating Expense", displayOrder: 20, status: "Active" },
+  { code: "WRS", name: "WRS", reportingGroup: "WRS", costCenterCode: "WRS",
+    expenseAccountCode: "5020", expenseAccountName: "Water Refilling Operating Expense", displayOrder: 30, status: "Active" },
+  { code: "BUILDING-RENOVATIONS", name: "Building and renovations", reportingGroup: "Building and renovations",
+    costCenterCode: "", expenseAccountCode: "5030", expenseAccountName: "Building and Renovation Expense", displayOrder: 40, status: "Active" },
+  { code: "TRAVEL", name: "Travel", reportingGroup: "Travel", costCenterCode: "",
+    expenseAccountCode: "5040", expenseAccountName: "Travel Expense", displayOrder: 50, status: "Active" },
+  { code: "OTHER-EXPENSES", name: "Other expenses", reportingGroup: "Other expenses", costCenterCode: "",
+    expenseAccountCode: "5090", expenseAccountName: "Other Operating Expenses", displayOrder: 60, status: "Active" }
+];
+export const dailyDisbursementBatches = [];
+export const dailyDisbursementEntries = [];
 
 export const loans = [
   {

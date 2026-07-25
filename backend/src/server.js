@@ -12,6 +12,9 @@ import {
   remittanceSources,
   dailyRemittanceBatches,
   dailyRemittanceEntries,
+  disbursementCategories,
+  dailyDisbursementBatches,
+  dailyDisbursementEntries,
   defaultPassword,
   initialPayments,
   journalEntries,
@@ -151,6 +154,9 @@ const sessions = new Map();
 let pool = null;
 
 const persistedTables = [
+  "daily_disbursement_entries",
+  "daily_disbursement_batches",
+  "disbursement_categories",
   "daily_remittance_entries",
   "daily_remittance_batches",
   "remittance_sources",
@@ -195,6 +201,9 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  disbursement_categories: ["code", "name", "reporting_group", "expense_account_code", "status"],
+  daily_disbursement_batches: ["batch_no", "disbursement_date", "cash_disbursed_date", "source_reference", "status", "teller_batch_no", "posted_entry_no"],
+  daily_disbursement_entries: ["batch_no", "category_code", "category_name", "expense_account_code", "amount"],
   remittance_sources: ["code", "name", "reporting_group", "income_account_code", "status"],
   daily_remittance_batches: ["batch_no", "remittance_date", "cash_received_date", "source_reference", "status", "teller_batch_no", "posted_entry_no"],
   daily_remittance_entries: ["batch_no", "source_code", "source_name", "income_account_code", "amount"],
@@ -4213,6 +4222,299 @@ async function finalizeDailyRemittanceBatch(batchNo, user) {
   return getDailyRemittanceBatch(batchNo);
 }
 
+function mapDisbursementCategory(row) {
+  return { code: row.code, name: row.name, reportingGroup: row.reportingGroup || "",
+    costCenterCode: row.costCenterCode || "", expenseAccountCode: row.expenseAccountCode || "",
+    expenseAccountName: row.expenseAccountName || "", displayOrder: Number(row.displayOrder || 0),
+    status: row.status || "Active" };
+}
+
+async function listDisbursementCategories() {
+  const db = await getPool();
+  if (!db) return disbursementCategories.map(mapDisbursementCategory)
+    .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
+  const [rows] = await db.execute(
+    `SELECT code, name, reporting_group AS reportingGroup, cost_center_code AS costCenterCode,
+            expense_account_code AS expenseAccountCode, expense_account_name AS expenseAccountName,
+            display_order AS displayOrder, status FROM disbursement_categories ORDER BY display_order, name`
+  );
+  return rows.map(mapDisbursementCategory);
+}
+
+function validateDisbursementCategory(body, fixedCode = "") {
+  const code = String(fixedCode || body.code || "").trim().toUpperCase().replace(/[^A-Z0-9-]+/g, "-");
+  const name = String(body.name || "").trim();
+  const reportingGroup = String(body.reportingGroup || name).trim();
+  const costCenterCode = String(body.costCenterCode || "").trim().toUpperCase();
+  const expenseAccountCode = String(body.expenseAccountCode || "").trim();
+  const expenseAccountName = String(body.expenseAccountName || "").trim();
+  const displayOrder = Number(body.displayOrder || 100);
+  const status = body.status === "Inactive" ? "Inactive" : "Active";
+  if (!code || !name || !reportingGroup || !expenseAccountCode || !expenseAccountName) {
+    return { error: "Code, name, reporting group, and expense account are required." };
+  }
+  if (!expenseAccountCode.startsWith("5")) return { error: "Expense account code must begin with 5." };
+  if (!Number.isInteger(displayOrder) || displayOrder < 0) return { error: "Display order must be a non-negative whole number." };
+  return { value: { code, name, reportingGroup, costCenterCode,
+    expenseAccountCode, expenseAccountName, displayOrder, status } };
+}
+
+async function saveDisbursementCategory(input, user, update = false) {
+  const db = await getPool();
+  if (!db) {
+    const existing = disbursementCategories.find((row) => row.code === input.code);
+    if (!update && existing) return { error: "Disbursement category code already exists.", statusCode: 409 };
+    if (update && !existing) return { error: "Disbursement category was not found.", statusCode: 404 };
+    if (existing) Object.assign(existing, input); else disbursementCategories.push(input);
+    return { category: mapDisbursementCategory(existing || input) };
+  }
+  if (update) {
+    const [result] = await db.execute(
+      `UPDATE disbursement_categories SET name = ?, reporting_group = ?, cost_center_code = ?,
+       expense_account_code = ?, expense_account_name = ?, display_order = ?, status = ?,
+       updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE code = ?`,
+      [input.name, input.reportingGroup, input.costCenterCode, input.expenseAccountCode,
+        input.expenseAccountName, input.displayOrder, input.status, user.username, input.code]
+    );
+    if (!result.affectedRows) return { error: "Disbursement category was not found.", statusCode: 404 };
+  } else {
+    try {
+      await db.execute(
+        `INSERT INTO disbursement_categories (code, name, reporting_group, cost_center_code,
+         expense_account_code, expense_account_name, display_order, status, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [input.code, input.name, input.reportingGroup, input.costCenterCode, input.expenseAccountCode,
+          input.expenseAccountName, input.displayOrder, input.status, user.username, user.username]
+      );
+    } catch (error) {
+      if (String(error.code) === "23505") return { error: "Disbursement category code already exists.", statusCode: 409 };
+      throw error;
+    }
+  }
+  return { category: (await listDisbursementCategories()).find((row) => row.code === input.code) };
+}
+
+function mapDailyDisbursementBatch(row) {
+  return { batchNo: row.batchNo, disbursementDate: formatDateOnly(row.disbursementDate),
+    cashDisbursedDate: formatDateOnly(row.cashDisbursedDate), sourceReference: row.sourceReference || "",
+    remarks: row.remarks || "", status: row.status || "Draft", createdBy: row.createdBy || "",
+    updatedBy: row.updatedBy || "", finalizedBy: row.finalizedBy || "", finalizedAt: row.finalizedAt || "",
+    tellerBatchNo: row.tellerBatchNo || "", postedBy: row.postedBy || "",
+    postedEntryNo: row.postedEntryNo || "", postedAt: row.postedAt || "",
+    entryCount: Number(row.entryCount || 0), totalAmount: Number(row.totalAmount || 0) };
+}
+
+function mapDailyDisbursementEntry(row) {
+  return { id: Number(row.id || 0), batchNo: row.batchNo, categoryCode: row.categoryCode,
+    categoryName: row.categoryName, reportingGroup: row.reportingGroup, costCenterCode: row.costCenterCode || "",
+    expenseAccountCode: row.expenseAccountCode, expenseAccountName: row.expenseAccountName,
+    amount: Number(row.amount || 0), remarks: row.remarks || "" };
+}
+
+async function listDailyDisbursementBatches() {
+  const db = await getPool();
+  if (!db) return dailyDisbursementBatches.map((batch) => {
+    const entries = dailyDisbursementEntries.filter((entry) => entry.batchNo === batch.batchNo);
+    return mapDailyDisbursementBatch({ ...batch, entryCount: entries.length,
+      totalAmount: sumMoney(entries.map((entry) => entry.amount)) });
+  }).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const [rows] = await db.execute(
+    `SELECT b.batch_no AS batchNo, b.disbursement_date AS disbursementDate,
+            b.cash_disbursed_date AS cashDisbursedDate, b.source_reference AS sourceReference,
+            b.remarks, b.status, b.created_by AS createdBy, b.updated_by AS updatedBy,
+            b.finalized_by AS finalizedBy, b.finalized_at AS finalizedAt,
+            b.teller_batch_no AS tellerBatchNo, b.posted_by AS postedBy,
+            b.posted_entry_no AS postedEntryNo, b.posted_at AS postedAt,
+            b.created_at AS createdAt, b.updated_at AS updatedAt,
+            COUNT(e.id) AS entryCount, COALESCE(SUM(e.amount), 0) AS totalAmount
+     FROM daily_disbursement_batches b
+     LEFT JOIN daily_disbursement_entries e ON e.batch_no = b.batch_no
+     GROUP BY b.id ORDER BY b.updated_at DESC, b.id DESC`
+  );
+  return rows.map(mapDailyDisbursementBatch);
+}
+
+async function getDailyDisbursementBatch(batchNo) {
+  const batch = (await listDailyDisbursementBatches()).find((row) => row.batchNo === batchNo);
+  if (!batch) return { error: "Daily disbursement batch was not found.", statusCode: 404 };
+  const db = await getPool();
+  if (!db) return { batch,
+    entries: dailyDisbursementEntries.filter((row) => row.batchNo === batchNo).map(mapDailyDisbursementEntry) };
+  const [rows] = await db.execute(
+    `SELECT id, batch_no AS batchNo, category_code AS categoryCode, category_name AS categoryName,
+            reporting_group AS reportingGroup, cost_center_code AS costCenterCode,
+            expense_account_code AS expenseAccountCode, expense_account_name AS expenseAccountName,
+            amount, remarks FROM daily_disbursement_entries WHERE batch_no = ? ORDER BY id`, [batchNo]
+  );
+  return { batch, entries: rows.map(mapDailyDisbursementEntry) };
+}
+
+async function validateDailyDisbursementDraft(body) {
+  const disbursementDate = normalizeOptionalDate(body.disbursementDate);
+  const cashDisbursedDate = normalizeOptionalDate(body.cashDisbursedDate);
+  const today = new Date().toISOString().slice(0, 10);
+  const sourceReference = String(body.sourceReference || "").trim();
+  if (!disbursementDate || !cashDisbursedDate) return { error: "Disbursement date and cash disbursed date are required." };
+  if (cashDisbursedDate > today) return { error: "Cash disbursed date cannot be in the future." };
+  if (disbursementDate > cashDisbursedDate) return { error: "Disbursement date cannot be after the cash disbursed date." };
+  if (!sourceReference) return { error: "Voucher/reference number is required." };
+  if (!Array.isArray(body.entries) || !body.entries.length) return { error: "Add at least one disbursement category." };
+  const categories = await listDisbursementCategories();
+  const seen = new Set(); const entries = [];
+  for (const [index, row] of body.entries.entries()) {
+    const category = categories.find((item) =>
+      item.code === String(row.categoryCode || "").trim() && item.status === "Active");
+    const amount = Number(row.amount || 0);
+    if (!category) return { error: `Row ${index + 1} needs an active disbursement category.` };
+    if (seen.has(category.code)) return { error: `${category.name} is duplicated in this batch.` };
+    if (!isMoney(amount, { positive: true })) return { error: `Row ${index + 1} needs a positive valid amount.` };
+    seen.add(category.code);
+    entries.push({ categoryCode: category.code, categoryName: category.name,
+      reportingGroup: category.reportingGroup, costCenterCode: category.costCenterCode,
+      expenseAccountCode: category.expenseAccountCode, expenseAccountName: category.expenseAccountName,
+      amount: moneyValue(amount), remarks: String(row.remarks || "").trim() });
+  }
+  return { value: { disbursementDate, cashDisbursedDate, sourceReference,
+    remarks: String(body.remarks || "").trim(), entries } };
+}
+
+async function saveDailyDisbursementDraft(body, user, batchNo = "") {
+  const validation = await validateDailyDisbursementDraft(body);
+  if (validation.error) return { error: validation.error, statusCode: 400 };
+  const input = validation.value; const db = await getPool(); const now = new Date().toISOString();
+  const nextBatchNo = batchNo || `DD-${input.disbursementDate.replaceAll("-", "")}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  if (!db) {
+    let batch = dailyDisbursementBatches.find((row) => row.batchNo === nextBatchNo);
+    if (batch && (batch.status !== "Draft" || batch.createdBy !== user.username)) {
+      return { error: "Only the creating Teller may edit this Draft.", statusCode: 403 };
+    }
+    if (dailyDisbursementBatches.some((row) => row.batchNo !== nextBatchNo &&
+      normalizeReferenceNo(row.sourceReference) === normalizeReferenceNo(input.sourceReference))) {
+      return { error: "That voucher/reference already exists for Daily Disbursement.", statusCode: 409 };
+    }
+    if (!batch) {
+      batch = { batchNo: nextBatchNo, status: "Draft", createdBy: user.username, createdAt: now };
+      dailyDisbursementBatches.push(batch);
+    }
+    Object.assign(batch, input, { entries: undefined, updatedBy: user.username, updatedAt: now });
+    for (let i = dailyDisbursementEntries.length - 1; i >= 0; i -= 1) {
+      if (dailyDisbursementEntries[i].batchNo === nextBatchNo) dailyDisbursementEntries.splice(i, 1);
+    }
+    input.entries.forEach((entry) => dailyDisbursementEntries.push({
+      id: dailyDisbursementEntries.length + 1, batchNo: nextBatchNo, ...entry
+    }));
+    return getDailyDisbursementBatch(nextBatchNo);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [duplicates] = await connection.execute(
+      `SELECT batch_no FROM daily_disbursement_batches
+       WHERE UPPER(source_reference) = UPPER(?) AND batch_no <> ? LIMIT 1`,
+      [input.sourceReference, nextBatchNo]
+    );
+    if (duplicates[0]) {
+      await connection.rollback();
+      return { error: "That voucher/reference already exists for Daily Disbursement.", statusCode: 409 };
+    }
+    if (batchNo) {
+      const [rows] = await connection.execute(
+        `SELECT status, created_by AS createdBy FROM daily_disbursement_batches WHERE batch_no = ? FOR UPDATE`,
+        [batchNo]
+      );
+      if (!rows[0] || rows[0].status !== "Draft" || rows[0].createdBy !== user.username) {
+        await connection.rollback();
+        return { error: "Only the creating Teller may edit this Draft.", statusCode: 403 };
+      }
+      await connection.execute(
+        `UPDATE daily_disbursement_batches SET disbursement_date = ?, cash_disbursed_date = ?,
+         source_reference = ?, remarks = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE batch_no = ?`,
+        [input.disbursementDate, input.cashDisbursedDate, input.sourceReference,
+          input.remarks, user.username, batchNo]
+      );
+      await connection.execute(`DELETE FROM daily_disbursement_entries WHERE batch_no = ?`, [batchNo]);
+    } else {
+      await connection.execute(
+        `INSERT INTO daily_disbursement_batches
+         (batch_no, disbursement_date, cash_disbursed_date, source_reference, remarks, status, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, 'Draft', ?, ?)`,
+        [nextBatchNo, input.disbursementDate, input.cashDisbursedDate, input.sourceReference,
+          input.remarks, user.username, user.username]
+      );
+    }
+    for (const entry of input.entries) await connection.execute(
+      `INSERT INTO daily_disbursement_entries
+       (batch_no, category_code, category_name, reporting_group, cost_center_code,
+        expense_account_code, expense_account_name, amount, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nextBatchNo, entry.categoryCode, entry.categoryName, entry.reportingGroup, entry.costCenterCode,
+        entry.expenseAccountCode, entry.expenseAccountName, entry.amount, entry.remarks]
+    );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback(); throw error;
+  } finally {
+    connection.release();
+  }
+  return getDailyDisbursementBatch(nextBatchNo);
+}
+
+async function finalizeDailyDisbursementBatch(batchNo, user) {
+  const source = await getDailyDisbursementBatch(batchNo);
+  if (source.error) return source;
+  if (source.batch.status !== "Draft" || source.batch.createdBy !== user.username) {
+    return { error: "Only the creating Teller may add this Draft to cash disbursements.", statusCode: 403 };
+  }
+  const tellerBatch = await getCurrentTellerBatch(user);
+  if (!tellerBatch || tellerBatch.status !== "Open") {
+    return { error: "An Open teller batch is required before recording this cash disbursement.", statusCode: 409 };
+  }
+  const db = await getPool(); const now = new Date().toISOString();
+  if (!db) {
+    if (hasWithdrawalReference(source.batch.sourceReference)) {
+      return { error: "That voucher/reference is already used by another cash-out transaction.", statusCode: 409 };
+    }
+    const batch = dailyDisbursementBatches.find((row) => row.batchNo === batchNo);
+    Object.assign(batch, { status: "Teller Batch", tellerBatchNo: tellerBatch.id,
+      finalizedBy: user.username, finalizedAt: now, updatedBy: user.username, updatedAt: now });
+    return getDailyDisbursementBatch(batchNo);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (await hasWithdrawalReferenceInDatabase(connection, source.batch.sourceReference)) {
+      await connection.rollback();
+      return { error: "That voucher/reference is already used by another cash-out transaction.", statusCode: 409 };
+    }
+    const [duplicates] = await connection.execute(
+      `SELECT batch_no FROM daily_disbursement_batches
+       WHERE status <> 'Draft' AND UPPER(source_reference) = UPPER(?) AND batch_no <> ? LIMIT 1`,
+      [source.batch.sourceReference, batchNo]
+    );
+    if (duplicates[0]) {
+      await connection.rollback();
+      return { error: "That voucher/reference is already used by another Daily Disbursement.", statusCode: 409 };
+    }
+    const [tellers] = await connection.execute(
+      `SELECT status FROM teller_batches WHERE batch_no = ? FOR UPDATE`, [tellerBatch.id]
+    );
+    if (tellers[0]?.status !== "Open") {
+      await connection.rollback(); return { error: "The teller batch is no longer Open.", statusCode: 409 };
+    }
+    await connection.execute(
+      `UPDATE daily_disbursement_batches SET status = 'Teller Batch', teller_batch_no = ?, finalized_by = ?,
+       finalized_at = CURRENT_TIMESTAMP, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE batch_no = ? AND status = 'Draft' AND created_by = ?`,
+      [tellerBatch.id, user.username, user.username, batchNo, user.username]
+    );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback(); throw error;
+  } finally {
+    connection.release();
+  }
+  return getDailyDisbursementBatch(batchNo);
+}
+
 async function listMonthlyContributionBatches() {
   const db = await getPool();
   if (!db) return monthlyContributionBatches.map((batch) => {
@@ -6310,7 +6612,9 @@ function buildTellerBatchSummary(rows) {
         monthlyContributionCount:
           summary.monthlyContributionCount + (row.batchType === "Monthly Member Contributions" ? 1 : 0),
         dailyRemittanceCount:
-          summary.dailyRemittanceCount + (row.batchType === "Daily Remittance" ? 1 : 0)
+          summary.dailyRemittanceCount + (row.batchType === "Daily Remittance" ? 1 : 0),
+        dailyDisbursementCount:
+          summary.dailyDisbursementCount + (row.batchType === "Daily Disbursement" ? 1 : 0)
       };
     },
     {
@@ -6326,7 +6630,8 @@ function buildTellerBatchSummary(rows) {
       loanReleaseCount: 0,
       loanCollectionCount: 0,
       monthlyContributionCount: 0,
-      dailyRemittanceCount: 0
+      dailyRemittanceCount: 0,
+      dailyDisbursementCount: 0
     }
   );
 }
@@ -6352,8 +6657,9 @@ function nextSecuredSavingsWithdrawalNumber() {
 
 function hasWithdrawalReference(referenceNo) {
   const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
-  return [...savingsWithdrawals, ...securedSavingsWithdrawals, ...loanReleases].some(
-    (transaction) => normalizeReferenceNo(transaction.referenceNo) === normalizedReferenceNo
+  return [...savingsWithdrawals, ...securedSavingsWithdrawals, ...loanReleases,
+    ...dailyDisbursementBatches.filter((batch) => batch.status !== "Draft")].some(
+    (transaction) => normalizeReferenceNo(transaction.referenceNo || transaction.sourceReference) === normalizedReferenceNo
   );
 }
 
@@ -6402,8 +6708,12 @@ async function hasWithdrawalReferenceInDatabase(connection, referenceNo) {
      SELECT reference_no AS referenceNo
      FROM secured_savings_withdrawals
      WHERE UPPER(reference_no) = UPPER(?)
+     UNION ALL
+     SELECT source_reference AS referenceNo
+     FROM daily_disbursement_batches
+     WHERE status <> 'Draft' AND UPPER(source_reference) = UPPER(?)
      LIMIT 1`,
-    [referenceNo, referenceNo, referenceNo]
+    [referenceNo, referenceNo, referenceNo, referenceNo]
   );
 
   return rows.length > 0;
@@ -6516,6 +6826,21 @@ function buildDailyRemittanceJournalLines(batch, entries) {
       const [accountCode, accountName] = key.split("\u0000");
       return { accountCode, accountName, debit: 0, credit: amount };
     })
+  ];
+}
+
+function buildDailyDisbursementJournalLines(batch, entries) {
+  const debits = new Map();
+  for (const entry of entries) {
+    const key = `${entry.expenseAccountCode}\u0000${entry.expenseAccountName}`;
+    debits.set(key, addMoney(debits.get(key) || 0, entry.amount));
+  }
+  return [
+    ...[...debits.entries()].map(([key, amount]) => {
+      const [accountCode, accountName] = key.split("\u0000");
+      return { accountCode, accountName, debit: amount, credit: 0 };
+    }),
+    { accountCode: "1010", accountName: "Cash on Hand", debit: 0, credit: batch.totalAmount }
   ];
 }
 
@@ -6972,6 +7297,15 @@ async function listTellerBatchRows(batchId = "") {
         batchType: "Daily Remittance", cashReceived: batch.totalAmount, cashOut: 0,
         shareCapitalAmount: 0, membershipFeeAmount: 0, savingsDepositAmount: 0,
         referenceNo: batch.sourceReference, receivedBy: batch.finalizedBy, status: batch.status
+      })),
+    ...(await listDailyDisbursementBatches())
+      .filter((batch) => batch.status === "Teller Batch")
+      .map((batch) => ({
+        id: batch.batchNo, batchId: batch.tellerBatchNo,
+        memberName: `${batch.entryCount} disbursement categor${batch.entryCount === 1 ? "y" : "ies"}`,
+        batchType: "Daily Disbursement", cashReceived: 0, cashOut: batch.totalAmount,
+        shareCapitalAmount: 0, membershipFeeAmount: 0, savingsDepositAmount: 0,
+        referenceNo: batch.sourceReference, receivedBy: batch.finalizedBy, status: batch.status
       }))
   ];
 
@@ -7057,6 +7391,14 @@ async function listTellerBatchTransactions(batchId) {
       shareCapitalAmount: 0, membershipFeeAmount: 0, savingsDepositAmount: 0,
       referenceNo: batch.sourceReference, receivedBy: batch.finalizedBy, status: batch.status,
       postedBy: batch.postedBy, postedEntryNo: batch.postedEntryNo, postedAt: batch.postedAt
+    })),
+    ...(await listDailyDisbursementBatches()).filter((batch) => batch.status !== "Draft").map((batch) => ({
+      id: batch.batchNo, batchId: batch.tellerBatchNo,
+      memberName: `${batch.entryCount} disbursement categor${batch.entryCount === 1 ? "y" : "ies"}`,
+      batchType: "Daily Disbursement", cashReceived: 0, cashOut: batch.totalAmount,
+      shareCapitalAmount: 0, membershipFeeAmount: 0, savingsDepositAmount: 0,
+      referenceNo: batch.sourceReference, receivedBy: batch.finalizedBy, status: batch.status,
+      postedBy: batch.postedBy, postedEntryNo: batch.postedEntryNo, postedAt: batch.postedAt
     }))
   ].filter((row) => row.batchId === batchId);
 }
@@ -7089,7 +7431,8 @@ function countBatchTransactions(batchId) {
     ...loanReleases,
     ...loanCollections,
     ...monthlyContributionBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo })),
-    ...dailyRemittanceBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo }))
+    ...dailyRemittanceBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo })),
+    ...dailyDisbursementBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo }))
   ].filter((row) => row.batchId === batchId);
 
   return {
@@ -7143,6 +7486,9 @@ async function listTellerBatches() {
                 UNION ALL
                 SELECT teller_batch_no AS batch_no, status, NULLIF(posted_entry_no, '') AS posted_entry_no
                 FROM daily_remittance_batches WHERE status <> 'Draft'
+                UNION ALL
+                SELECT teller_batch_no AS batch_no, status, NULLIF(posted_entry_no, '') AS posted_entry_no
+                FROM daily_disbursement_batches WHERE status <> 'Draft'
               ) posted_rows
               WHERE posted_rows.batch_no = teller_batches.batch_no
                 AND posted_rows.status = 'Posted'
@@ -7168,6 +7514,8 @@ async function listTellerBatches() {
                 SELECT teller_batch_no AS batch_no, status FROM monthly_contribution_batches WHERE status <> 'Draft'
                 UNION ALL
                 SELECT teller_batch_no AS batch_no, status FROM daily_remittance_batches WHERE status <> 'Draft'
+                UNION ALL
+                SELECT teller_batch_no AS batch_no, status FROM daily_disbursement_batches WHERE status <> 'Draft'
               ) unposted_rows
               WHERE unposted_rows.batch_no = teller_batches.batch_no
                 AND unposted_rows.status = 'Teller Batch'
@@ -10050,6 +10398,70 @@ async function postDailyRemittanceBatch(batchNo, user) {
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
 }
 
+async function postDailyDisbursementBatch(batchNo, user) {
+  const source = await getDailyDisbursementBatch(batchNo);
+  if (source.error) return source;
+  if (source.batch.status !== "Teller Batch") {
+    return { error: "Only unposted Daily Disbursement cash payments can be posted.", statusCode: 409 };
+  }
+  const reviewed = await ensureTellerBatchReviewedForPosting(source.batch.tellerBatchNo);
+  if (reviewed.error) return reviewed;
+  const db = await getPool();
+  const lines = buildDailyDisbursementJournalLines(source.batch, source.entries);
+  if (!db) {
+    const batch = dailyDisbursementBatches.find((row) => row.batchNo === batchNo);
+    const entry = { id: nextJournalEntryNumber(), sourceType: "Daily Disbursement", sourceNo: batchNo,
+      description: `Daily disbursement - ${batch.disbursementDate}`, postedBy: user.username,
+      postedAt: new Date().toISOString(), lines };
+    Object.assign(batch, { status: "Posted", postedBy: user.username, postedEntryNo: entry.id,
+      postedAt: entry.postedAt, updatedBy: user.username, updatedAt: entry.postedAt });
+    journalEntries.unshift(entry);
+    return { batch: mapDailyDisbursementBatch(batch), entry };
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT status, teller_batch_no AS tellerBatchNo, disbursement_date AS disbursementDate
+       FROM daily_disbursement_batches WHERE batch_no = ? FOR UPDATE`, [batchNo]
+    );
+    const batch = rows[0];
+    if (!batch || batch.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Daily Disbursement is not available for posting.", statusCode: 409 };
+    }
+    const reviewedInTransaction = await ensureTellerBatchReviewedForPosting(batch.tellerBatchNo, connection);
+    if (reviewedInTransaction.error) {
+      await connection.rollback(); return reviewedInTransaction;
+    }
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
+    await connection.execute(
+      `INSERT INTO journal_entries (entry_no, source_type, source_no, description, posted_by)
+       VALUES (?, 'Daily Disbursement', ?, ?, ?)`,
+      [entryNo, batchNo, `Daily disbursement - ${formatDateOnly(batch.disbursementDate)}`, user.username]
+    );
+    for (const line of lines) await connection.execute(
+      `INSERT INTO journal_entry_lines (entry_no, account_code, account_name, debit, credit)
+       VALUES (?, ?, ?, ?, ?)`,
+      [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+    );
+    await connection.execute(
+      `UPDATE daily_disbursement_batches SET status = 'Posted', posted_by = ?, posted_entry_no = ?,
+       posted_at = CURRENT_TIMESTAMP, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE batch_no = ?`,
+      [user.username, entryNo, user.username, batchNo]
+    );
+    await connection.commit();
+    return { batch: { ...source.batch, status: "Posted", postedBy: user.username, postedEntryNo: entryNo },
+      entry: { id: entryNo, sourceType: "Daily Disbursement", sourceNo: batchNo,
+        description: `Daily disbursement - ${formatDateOnly(batch.disbursementDate)}`,
+        postedBy: user.username, postedAt: new Date().toISOString(), lines } };
+  } catch (error) {
+    await connection.rollback(); throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function postMonthlyContributionBatch(batchNo, user) {
   const source = await getMonthlyContributionBatch(batchNo);
   if (source.error) return source;
@@ -10291,6 +10703,9 @@ function buildSecuredSavingsWithdrawalJournalLines(withdrawal) {
 }
 
 async function postTellerBatchRow(row, user) {
+  if (row.batchType === "Daily Disbursement") {
+    return postDailyDisbursementBatch(row.id, user);
+  }
   if (row.batchType === "Daily Remittance") {
     return postDailyRemittanceBatch(row.id, user);
   }
@@ -11928,6 +12343,88 @@ app.post("/api/daily-remittance-batches/:batchNo/finalize", async (request, resp
   if (!user) return response.status(401).json({ error: "Login required" });
   if (!hasPermission(user, "daily-remittances:finalize")) return response.status(403).json({ error: "Teller / Cashier access required" });
   const result = await finalizeDailyRemittanceBatch(request.params.batchNo, user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.get("/api/disbursement-categories", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "disbursement-categories:view")) return response.status(403).json({ error: "Access denied" });
+  return response.json(await listDisbursementCategories());
+});
+
+app.post("/api/disbursement-categories", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "disbursement-categories:manage")) {
+    return response.status(403).json({ error: "Admin access required" });
+  }
+  const validation = validateDisbursementCategory(request.body);
+  if (validation.error) return response.status(400).json({ error: validation.error });
+  const result = await saveDisbursementCategory(validation.value, user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.status(201).json(result);
+});
+
+app.patch("/api/disbursement-categories/:code", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "disbursement-categories:manage")) {
+    return response.status(403).json({ error: "Admin access required" });
+  }
+  const validation = validateDisbursementCategory(request.body, request.params.code);
+  if (validation.error) return response.status(400).json({ error: validation.error });
+  const result = await saveDisbursementCategory(validation.value, user, true);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.get("/api/daily-disbursement-batches", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "daily-disbursements:view")) return response.status(403).json({ error: "Access denied" });
+  return response.json(await listDailyDisbursementBatches());
+});
+
+app.get("/api/daily-disbursement-batches/:batchNo", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "daily-disbursements:view")) return response.status(403).json({ error: "Access denied" });
+  const result = await getDailyDisbursementBatch(request.params.batchNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.post("/api/daily-disbursement-batches", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "daily-disbursements:encode")) {
+    return response.status(403).json({ error: "Teller / Cashier access required" });
+  }
+  const result = await saveDailyDisbursementDraft(request.body, user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.status(201).json(result);
+});
+
+app.put("/api/daily-disbursement-batches/:batchNo", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "daily-disbursements:encode")) {
+    return response.status(403).json({ error: "Teller / Cashier access required" });
+  }
+  const result = await saveDailyDisbursementDraft(request.body, user, request.params.batchNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.json(result);
+});
+
+app.post("/api/daily-disbursement-batches/:batchNo/finalize", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "daily-disbursements:finalize")) {
+    return response.status(403).json({ error: "Teller / Cashier access required" });
+  }
+  const result = await finalizeDailyDisbursementBatch(request.params.batchNo, user);
   if (result.error) return response.status(result.statusCode).json({ error: result.error });
   return response.json(result);
 });

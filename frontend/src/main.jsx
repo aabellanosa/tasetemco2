@@ -696,7 +696,9 @@ function buildTellerBatchSummary(rows) {
         monthlyContributionCount:
           summary.monthlyContributionCount + (row.batchType === "Monthly Member Contributions" ? 1 : 0),
         dailyRemittanceCount:
-          summary.dailyRemittanceCount + (row.batchType === "Daily Remittance" ? 1 : 0)
+          summary.dailyRemittanceCount + (row.batchType === "Daily Remittance" ? 1 : 0),
+        dailyDisbursementCount:
+          summary.dailyDisbursementCount + (row.batchType === "Daily Disbursement" ? 1 : 0)
       };
     },
     {
@@ -711,7 +713,8 @@ function buildTellerBatchSummary(rows) {
       loanReleaseCount: 0,
       loanCollectionCount: 0,
       monthlyContributionCount: 0,
-      dailyRemittanceCount: 0
+      dailyRemittanceCount: 0,
+      dailyDisbursementCount: 0
     }
   );
 }
@@ -1415,6 +1418,7 @@ function TellerBatchCashPosition({
             <Text fontWeight="bold">Loan collections: {summary.loanCollectionCount}</Text>
             <Text fontWeight="bold">Monthly contributions: {summary.monthlyContributionCount}</Text>
             <Text fontWeight="bold">Daily remittances: {summary.dailyRemittanceCount}</Text>
+            <Text fontWeight="bold">Daily disbursements: {summary.dailyDisbursementCount}</Text>
           </VStack>
         </Box>
       </Grid>
@@ -2325,6 +2329,65 @@ function RemittanceSourceAdministration({ user }) {
   </Box>;
 }
 
+function DisbursementCategoryAdministration({ user }) {
+  const blank = { code: "", name: "", reportingGroup: "", costCenterCode: "", expenseAccountCode: "5090",
+    expenseAccountName: "Other Operating Expenses", displayOrder: 100, status: "Active" };
+  const [rows, setRows] = useState([]); const [centers, setCenters] = useState([]); const [drafts, setDrafts] = useState({});
+  const [form, setForm] = useState(blank); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const canManage = user.permissions.includes("disbursement-categories:manage");
+  const load = useCallback(async () => {
+    try {
+      const [categoryRows, centerRows] = await Promise.all([api("/api/disbursement-categories"), api("/api/cost-centers")]);
+      setRows(categoryRows); setCenters(centerRows);
+      setDrafts(Object.fromEntries(categoryRows.map((row) => [row.code, { ...row }])));
+      setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  async function create(event) {
+    event.preventDefault(); setError(""); setMessage("");
+    try {
+      await api("/api/disbursement-categories", { method: "POST", body: JSON.stringify(form) });
+      setForm(blank); setMessage("Disbursement category created."); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function save(code) {
+    try {
+      await api(`/api/disbursement-categories/${code}`, {
+        method: "PATCH", body: JSON.stringify(drafts[code])
+      });
+      setMessage(`${code} updated.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  return <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+    <Heading size="md">Daily Disbursement Categories</Heading>
+    <Text color="gray.600" mt={1} mb={4}>Configure cash-out choices, reporting rollups, optional cost centers, and expense accounts.</Text>
+    {message ? <Text color="green.700" mb={3}>{message}</Text> : null}
+    {error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+    {canManage ? <Grid as="form" onSubmit={create} templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={5}>
+      <FormControl isRequired><FormLabel>Code</FormLabel><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} /></FormControl>
+      <FormControl isRequired><FormLabel>Name</FormLabel><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></FormControl>
+      <FormControl isRequired><FormLabel>Reporting Group</FormLabel><Input value={form.reportingGroup} onChange={(e) => setForm({ ...form, reportingGroup: e.target.value })} /></FormControl>
+      <FormControl><FormLabel>Cost Center</FormLabel><Select value={form.costCenterCode} onChange={(e) => setForm({ ...form, costCenterCode: e.target.value })}><option value="">Coop Operations</option>{centers.map((center) => <option key={center.code} value={center.code}>{center.name}</option>)}</Select></FormControl>
+      <FormControl isRequired><FormLabel>Expense Account Code</FormLabel><Input value={form.expenseAccountCode} onChange={(e) => setForm({ ...form, expenseAccountCode: e.target.value })} /></FormControl>
+      <FormControl isRequired><FormLabel>Expense Account Name</FormLabel><Input value={form.expenseAccountName} onChange={(e) => setForm({ ...form, expenseAccountName: e.target.value })} /></FormControl>
+      <FormControl><FormLabel>Display Order</FormLabel><NumberInput min={0} value={form.displayOrder} onChange={(value) => setForm({ ...form, displayOrder: Number(value || 0) })}><NumberInputField /></NumberInput></FormControl>
+      <Button alignSelf="end" type="submit" colorScheme="green">Add Category</Button>
+    </Grid> : null}
+    <TableContainer><Table size="sm"><Thead><Tr><Th>Category</Th><Th>Reporting Group</Th><Th>Cost Center</Th><Th>Expense Account</Th><Th>Order</Th><Th>Status</Th><Th /></Tr></Thead>
+      <Tbody>{rows.map((row) => { const draft = drafts[row.code] || row; return <Tr key={row.code}>
+        <Td>{row.code}<br />{canManage ? <Input size="sm" value={draft.name} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, name: e.target.value } })} /> : row.name}</Td>
+        <Td>{canManage ? <Input size="sm" value={draft.reportingGroup} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, reportingGroup: e.target.value } })} /> : row.reportingGroup}</Td>
+        <Td>{canManage ? <Select size="sm" value={draft.costCenterCode} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, costCenterCode: e.target.value } })}><option value="">Coop Operations</option>{centers.map((center) => <option key={center.code} value={center.code}>{center.name}</option>)}</Select> : row.costCenterCode || "Coop Operations"}</Td>
+        <Td>{canManage ? <HStack><Input size="sm" maxW="80px" value={draft.expenseAccountCode} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, expenseAccountCode: e.target.value } })} /><Input size="sm" value={draft.expenseAccountName} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, expenseAccountName: e.target.value } })} /></HStack> : `${row.expenseAccountCode} - ${row.expenseAccountName}`}</Td>
+        <Td>{canManage ? <NumberInput size="sm" min={0} value={draft.displayOrder} onChange={(value) => setDrafts({ ...drafts, [row.code]: { ...draft, displayOrder: Number(value || 0) } })}><NumberInputField /></NumberInput> : row.displayOrder}</Td>
+        <Td>{canManage ? <Select size="sm" value={draft.status} onChange={(e) => setDrafts({ ...drafts, [row.code]: { ...draft, status: e.target.value } })}><option>Active</option><option>Inactive</option></Select> : <Badge>{row.status}</Badge>}</Td>
+        <Td>{canManage ? <Button size="sm" onClick={() => save(row.code)}>Save</Button> : null}</Td>
+      </Tr>; })}</Tbody>
+    </Table></TableContainer>
+  </Box>;
+}
+
 function MonthlyContributionCapture({ members, user }) {
   const today = new Date().toISOString().slice(0, 10);
   const emptyEntry = () => ({ id: `new-${Date.now()}-${Math.random()}`, memberNo: "", tfeaAmount: 0,
@@ -2524,6 +2587,127 @@ function DailyRemittanceCapture({ user }) {
   </VStack>;
 }
 
+function DailyDisbursementCapture({ user }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [categories, setCategories] = useState([]); const [batches, setBatches] = useState([]);
+  const [batchNo, setBatchNo] = useState(""); const [batchStatus, setBatchStatus] = useState("Draft");
+  const [batchCreatedBy, setBatchCreatedBy] = useState(user.username);
+  const [disbursementDate, setDisbursementDate] = useState(today);
+  const [cashDisbursedDate, setCashDisbursedDate] = useState(today);
+  const [sourceReference, setSourceReference] = useState(""); const [remarks, setRemarks] = useState("");
+  const [entries, setEntries] = useState([]); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const canEncode = user.permissions.includes("daily-disbursements:encode");
+  const canEditDraft = canEncode && batchStatus === "Draft" && batchCreatedBy === user.username;
+  const total = entries.reduce((sum, entry) => addMoney(sum, entry.amount), 0);
+  function gridEntries(categoryRows, savedEntries = []) {
+    const savedByCode = new Map(savedEntries.map((entry) => [entry.categoryCode, entry]));
+    const visibleCategories = [...categoryRows.filter((category) => category.status === "Active")];
+    for (const entry of savedEntries) if (!visibleCategories.some((category) => category.code === entry.categoryCode)) {
+      visibleCategories.push({ code: entry.categoryCode, name: entry.categoryName,
+        reportingGroup: entry.reportingGroup, costCenterCode: entry.costCenterCode,
+        expenseAccountCode: entry.expenseAccountCode, expenseAccountName: entry.expenseAccountName,
+        displayOrder: 9999, status: "Inactive" });
+    }
+    return visibleCategories.map((category) => ({
+      id: savedByCode.get(category.code)?.id || `grid-${category.code}`,
+      categoryCode: category.code, categoryName: category.name, reportingGroup: category.reportingGroup,
+      costCenterCode: category.costCenterCode, expenseAccountCode: category.expenseAccountCode,
+      expenseAccountName: category.expenseAccountName,
+      amount: Number(savedByCode.get(category.code)?.amount || 0),
+      remarks: savedByCode.get(category.code)?.remarks || ""
+    }));
+  }
+  const load = useCallback(async () => {
+    try {
+      const [categoryRows, batchRows] = await Promise.all([
+        api("/api/disbursement-categories"), api("/api/daily-disbursement-batches")
+      ]);
+      setCategories(categoryRows); setBatches(batchRows); setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!batchNo && categories.length) setEntries(gridEntries(categories)); }, [categories, batchNo]);
+  function reset() {
+    setBatchNo(""); setBatchStatus("Draft"); setBatchCreatedBy(user.username);
+    setDisbursementDate(today); setCashDisbursedDate(today); setSourceReference(""); setRemarks("");
+    setEntries(gridEntries(categories)); setMessage(""); setError("");
+  }
+  function updateEntry(index, field, value) {
+    setEntries((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+  }
+  async function openBatch(selected) {
+    try {
+      const data = await api(`/api/daily-disbursement-batches/${selected}`);
+      setBatchNo(data.batch.batchNo); setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy);
+      setDisbursementDate(data.batch.disbursementDate); setCashDisbursedDate(data.batch.cashDisbursedDate);
+      setSourceReference(data.batch.sourceReference); setRemarks(data.batch.remarks);
+      setEntries(data.batch.status === "Draft" ? gridEntries(categories, data.entries) : data.entries);
+      setMessage(""); setError("");
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function saveDraft(event) {
+    event.preventDefault(); setMessage(""); setError("");
+    try {
+      const data = await api(batchNo ? `/api/daily-disbursement-batches/${batchNo}` : "/api/daily-disbursement-batches", {
+        method: batchNo ? "PUT" : "POST",
+        body: JSON.stringify({ disbursementDate, cashDisbursedDate, sourceReference, remarks,
+          entries: entries.filter((entry) => Number(entry.amount || 0) > 0) })
+      });
+      setBatchNo(data.batch.batchNo); setBatchStatus(data.batch.status); setBatchCreatedBy(data.batch.createdBy);
+      setEntries(gridEntries(categories, data.entries)); setMessage(`${data.batch.batchNo} saved as Draft.`); await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  async function addToBatch() {
+    if (!batchNo || !window.confirm(`Add ${batchNo} to the Open teller batch as a cash disbursement?`)) return;
+    try {
+      const data = await api(`/api/daily-disbursement-batches/${batchNo}/finalize`, { method: "POST" });
+      setBatchStatus(data.batch.status);
+      setMessage(`${batchNo} added to teller batch ${data.batch.tellerBatchNo}. Expenses post after review.`);
+      await load();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  return <VStack align="stretch" spacing={5}>
+    <Box as="form" onSubmit={saveDraft} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Daily Disbursement</Heading>
+        <Text color="gray.600">Record cash expenses for cost centers and cooperative operations.</Text></Box>
+        <HStack><Badge>{batchNo || (canEncode ? "New Draft" : "Read Only")} · {batchStatus}</Badge>
+          {canEncode ? <Button type="button" variant="outline" onClick={reset}>New</Button> : null}
+          {canEditDraft ? <Button type="submit" colorScheme="green">Save Draft</Button> : null}
+          {batchNo && canEditDraft ? <Button type="button" colorScheme="orange" onClick={addToBatch}>Add to Teller Batch</Button> : null}</HStack></Flex>
+      {message ? <Text color="green.700" mb={3}>{message}</Text> : null}
+      {error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+      <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "repeat(4, 1fr)" }} gap={4} mb={4}>
+        <FormControl isRequired><FormLabel>Disbursement Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={cashDisbursedDate} value={disbursementDate} onChange={(e) => setDisbursementDate(e.target.value)} /></FormControl>
+        <FormControl isRequired><FormLabel>Cash Disbursed Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={today} value={cashDisbursedDate} onChange={(e) => setCashDisbursedDate(e.target.value)} /></FormControl>
+        <FormControl isRequired><FormLabel>Voucher / Reference</FormLabel><Input isDisabled={!canEditDraft} value={sourceReference} onChange={(e) => setSourceReference(e.target.value)} /></FormControl>
+        <FormControl><FormLabel>Batch Remarks</FormLabel><Input isDisabled={!canEditDraft} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></FormControl>
+      </Grid>
+      <Box borderWidth="1px" borderRadius="md" p={3} mb={4}><Text color="gray.500" fontSize="sm">Total Cash Disbursement</Text><Text fontWeight="bold" fontSize="xl">{formatMoney(total)}</Text></Box>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Category</Th><Th>Reporting Destination</Th><Th>Expense Account</Th><Th isNumeric>Amount</Th><Th>Remarks</Th></Tr></Thead>
+        <Tbody>{entries.map((entry, index) => {
+          const category = categories.find((row) => row.code === entry.categoryCode) || entry;
+          return <Tr key={entry.id || index}>
+            <Td minW="220px"><Text fontWeight="semibold">{category.name || entry.categoryName}</Text><Text color="gray.500" fontSize="xs">{entry.categoryCode}</Text></Td>
+            <Td>{category.reportingGroup || "-"}{category.costCenterCode ? ` (${category.costCenterCode})` : " (Coop Operations)"}</Td>
+            <Td>{category.expenseAccountCode ? `${category.expenseAccountCode} - ${category.expenseAccountName}` : "-"}</Td>
+            <Td minW="140px">{canEditDraft ? <NumberInput min={0} precision={2} value={entry.amount} onChange={(value) => updateEntry(index, "amount", Number(value || 0))}><NumberInputField textAlign="right" /></NumberInput> : formatMoney(entry.amount)}</Td>
+            <Td>{canEditDraft ? <Input size="sm" value={entry.remarks || ""} onChange={(e) => updateEntry(index, "remarks", e.target.value)} /> : entry.remarks || "-"}</Td>
+          </Tr>;
+        })}</Tbody>
+      </Table></TableContainer>
+      {canEditDraft ? <Text mt={3} color="gray.600" fontSize="sm">Only categories with a positive amount are saved. Admin-configured active categories appear here automatically.</Text> : null}
+    </Box>
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Daily Disbursement History</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Disbursement Date</Th><Th>Cash Disbursed</Th><Th>Reference</Th><Th>Status</Th><Th isNumeric>Categories</Th><Th isNumeric>Total</Th><Th /></Tr></Thead>
+        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{formatDate(batch.disbursementDate)}</Td><Td>{formatDate(batch.cashDisbursedDate)}</Td>
+          <Td>{batch.sourceReference}</Td><Td><Badge>{batch.status}</Badge></Td><Td isNumeric>{batch.entryCount}</Td><Td isNumeric>{formatMoney(batch.totalAmount)}</Td>
+          <Td><Button size="sm" onClick={() => openBatch(batch.batchNo)}>{batch.status === "Draft" && batch.createdBy === user.username ? "Edit" : "View"}</Button></Td>
+        </Tr>)}</Tbody>
+      </Table></TableContainer>
+    </Box>
+  </VStack>;
+}
+
 function MemberChargeCapture({ members, user }) {
   const today = new Date().toISOString().slice(0, 10);
   const emptyEntry = () => ({ id: `new-${Date.now()}-${Math.random()}`, memberNo: "", amount: 0, referenceNo: "", remarks: "" });
@@ -2718,6 +2902,7 @@ function Members({ user }) {
   const [shareCapitalContributions, setShareCapitalContributions] = useState([]);
   const [monthlyContributionBatches, setMonthlyContributionBatches] = useState([]);
   const [dailyRemittanceBatches, setDailyRemittanceBatches] = useState([]);
+  const [dailyDisbursementBatches, setDailyDisbursementBatches] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [securedSavingsWithdrawals, setSecuredSavingsWithdrawals] = useState([]);
@@ -2812,6 +2997,7 @@ function Members({ user }) {
   const canViewMemberCharges = user.permissions.includes("member-charges:view");
   const canViewMonthlyContributions = user.permissions.includes("monthly-contributions:view");
   const canViewDailyRemittances = user.permissions.includes("daily-remittances:view");
+  const canViewDailyDisbursements = user.permissions.includes("daily-disbursements:view");
   const pendingApplications = applications.filter((application) => application.status === "Pending Approval");
   const activeMembers = members.filter((member) => member.status === "Active");
   const memberDirectoryQuery = memberDirectorySearch.trim().toLowerCase();
@@ -2926,7 +3112,13 @@ function Members({ user }) {
         memberName: `${batch.entryCount} remittance source${batch.entryCount === 1 ? "" : "s"}`,
         batchType: "Daily Remittance", cashReceived: batch.totalAmount, cashOut: 0,
         shareCapitalAmount: 0, membershipFeeAmount: 0, savingsDepositAmount: 0, status: batch.status }))
-  ];
+    ,...dailyDisbursementBatches
+      .filter((batch) => batch.status === "Teller Batch")
+      .map((batch) => ({ id: batch.batchNo, batchId: batch.tellerBatchNo,
+        memberName: `${batch.entryCount} disbursement categor${batch.entryCount === 1 ? "y" : "ies"}`,
+        batchType: "Daily Disbursement", cashReceived: 0, cashOut: batch.totalAmount,
+        shareCapitalAmount: 0, membershipFeeAmount: 0, savingsDepositAmount: 0, status: batch.status }))
+  ].filter((row) => row.batchId === activeBatch?.id);
   const tellerBatchSummary = buildTellerBatchSummary(tellerBatchRows);
   const statementPreviousLoanTotal = statement
     ? previousLoanRows.reduce((total, row) => addMoney(total, row.outstandingBalance), 0)
@@ -2959,6 +3151,7 @@ function Members({ user }) {
           loanProductRows,
           monthlyContributionRows,
           dailyRemittanceRows,
+          dailyDisbursementRows,
           cashCountData
         ] =
           await Promise.all([
@@ -2974,6 +3167,7 @@ function Members({ user }) {
           canViewLoanProducts ? api("/api/loan-products") : [],
           canViewMonthlyContributions ? api("/api/monthly-contribution-batches") : [],
           canViewDailyRemittances ? api("/api/daily-remittance-batches") : [],
+          canViewDailyDisbursements ? api("/api/daily-disbursement-batches") : [],
           canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
@@ -2988,6 +3182,7 @@ function Members({ user }) {
         setPreviousLoanProducts(loanProductRows);
         setMonthlyContributionBatches(monthlyContributionRows);
         setDailyRemittanceBatches(dailyRemittanceRows);
+        setDailyDisbursementBatches(dailyDisbursementRows);
         setActiveBatch(cashCountData.activeBatch);
         setOpeningFunding(Number(cashCountData.expected?.openingFunding || 0));
         setLatestCashCount(cashCountData.latestCashCount);
@@ -3015,6 +3210,7 @@ function Members({ user }) {
       canViewLoanProducts,
       canViewMonthlyContributions,
       canViewDailyRemittances,
+      canViewDailyDisbursements,
       canViewTellerCashCount
     ]
   );
@@ -3420,6 +3616,7 @@ function Members({ user }) {
           {canViewMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
           {canViewMonthlyContributions ? <Tab flexShrink={0}>Monthly Contributions</Tab> : null}
           {canViewDailyRemittances ? <Tab flexShrink={0}>Daily Remittance</Tab> : null}
+          {canViewDailyDisbursements ? <Tab flexShrink={0}>Daily Disbursement</Tab> : null}
           <Tab flexShrink={0}>Member Directory</Tab>
           {(canViewInitialPayments ||
             canViewShareCapitalContributions ||
@@ -3910,6 +4107,10 @@ function Members({ user }) {
 
           {canViewDailyRemittances ? (
             <TabPanel px={0}><DailyRemittanceCapture user={user} /></TabPanel>
+          ) : null}
+
+          {canViewDailyDisbursements ? (
+            <TabPanel px={0}><DailyDisbursementCapture user={user} /></TabPanel>
           ) : null}
 
           <TabPanel px={0}>
@@ -10474,6 +10675,7 @@ function Shell({ user, onLogout }) {
         <VStack align="stretch" spacing={5}>
           <CostCenterAdministration user={user} />
           <RemittanceSourceAdministration user={user} />
+          <DisbursementCategoryAdministration user={user} />
           <AdminUserManagement user={user} />
           <AdminDemoMaintenance user={user} />
         </VStack>

@@ -771,6 +771,43 @@ async function run() {
       throw new Error("Daily Remittance should become part of the Open teller batch.");
     }
 
+    const disbursementCategoriesResponse = await fetch(`${baseUrl}/api/disbursement-categories`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const disbursementCategoryRows = await disbursementCategoriesResponse.json();
+    if (!disbursementCategoriesResponse.ok ||
+      !disbursementCategoryRows.some((row) => row.code === "CANTEEN-A" && row.costCenterCode === "C1" &&
+        row.expenseAccountCode === "5010") ||
+      !disbursementCategoryRows.some((row) => row.code === "BUILDING-RENOVATIONS" &&
+        row.costCenterCode === "" && row.expenseAccountCode === "5030") ||
+      !disbursementCategoryRows.some((row) => row.code === "OTHER-EXPENSES" &&
+        row.costCenterCode === "" && row.status === "Active")) {
+      throw new Error("Daily Disbursement should seed cost-center and cooperative-operation categories.");
+    }
+    const dailyDisbursementDraft = await fetch(`${baseUrl}/api/daily-disbursement-batches`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ disbursementDate: remittanceDate, cashDisbursedDate: remittanceDate,
+        sourceReference: "CV-DAILY-DISBURSEMENT-SMOKE", remarks: "Daily Disbursement smoke check", entries: [
+          { categoryCode: "CANTEEN-A", amount: 80, remarks: "Canteen supplies" },
+          { categoryCode: "BUILDING-RENOVATIONS", amount: 120, remarks: "Building repair" },
+          { categoryCode: "TRAVEL", amount: 50, remarks: "Official travel" }
+        ] })
+    });
+    const dailyDisbursementDraftBody = await dailyDisbursementDraft.json();
+    if (!dailyDisbursementDraft.ok || dailyDisbursementDraftBody.batch.totalAmount !== 250 ||
+      dailyDisbursementDraftBody.entries.length !== 3) {
+      throw new Error("Teller should save a multi-category Daily Disbursement Draft.");
+    }
+    const dailyDisbursementBatchNo = dailyDisbursementDraftBody.batch.batchNo;
+    const dailyDisbursementFinalize = await fetch(
+      `${baseUrl}/api/daily-disbursement-batches/${dailyDisbursementBatchNo}/finalize`,
+      { method: "POST", headers: { Cookie: tellerCookie } }
+    );
+    const dailyDisbursementFinalizeBody = await dailyDisbursementFinalize.json();
+    if (!dailyDisbursementFinalize.ok || dailyDisbursementFinalizeBody.batch.status !== "Teller Batch") {
+      throw new Error("Daily Disbursement should become cash-out in the Open teller batch.");
+    }
+
     const summoPeriod = new Date().toISOString().slice(0, 7);
     const summoDate = new Date().toISOString().slice(0, 10);
     const createAndFinalizeSystemCharge = async (costCenterCode, amount, referenceNo) => {
@@ -1045,6 +1082,33 @@ async function run() {
 
     if (!initialPayment.ok || initialPaymentBody.payment.status !== "Teller Batch") {
       throw new Error("Teller initial member payment was not recorded in teller batch.");
+    }
+
+    const tellerPositionAfterInitialPayment = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const tellerPositionAfterInitialPaymentBody = await tellerPositionAfterInitialPayment.json();
+    const adminDashboardAfterInitialPayment = await fetch(`${baseUrl}/api/dashboard`, {
+      headers: { Cookie: adminCookie }
+    });
+    const adminDashboardAfterInitialPaymentBody = await adminDashboardAfterInitialPayment.json();
+    const adminOutstandingRows = adminDashboardAfterInitialPaymentBody.outstandingBatch?.rows || [];
+    if (!tellerPositionAfterInitialPayment.ok || !adminDashboardAfterInitialPayment.ok ||
+      tellerPositionAfterInitialPaymentBody.activeBatch.id !==
+        adminDashboardAfterInitialPaymentBody.outstandingBatch?.activeBatch?.id ||
+      tellerPositionAfterInitialPaymentBody.expected.initialPaymentCount !==
+        adminOutstandingRows.filter((row) => row.batchType === "Initial Payment").length ||
+      !adminOutstandingRows.some((row) =>
+        row.id === initialPaymentBody.payment.id && row.batchType === "Initial Payment")) {
+      throw new Error(`Teller and Admin should show the same Initial Payment in the active teller batch. ${
+        JSON.stringify({
+          payment: initialPaymentBody.payment,
+          tellerBatch: tellerPositionAfterInitialPaymentBody.activeBatch,
+          tellerExpected: tellerPositionAfterInitialPaymentBody.expected,
+          adminBatch: adminDashboardAfterInitialPaymentBody.outstandingBatch?.activeBatch,
+          adminRows: adminOutstandingRows
+        })
+      }`);
     }
 
     const duplicateInitialPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
@@ -1741,6 +1805,18 @@ async function run() {
       throw new Error("Daily Remittance posting should debit cash and credit configured income accounts.");
     }
 
+    const postedDailyDisbursementResult = postedFirstBatchBody.results.find(
+      (result) => result.id === dailyDisbursementBatchNo && result.batchType === "Daily Disbursement"
+    );
+    const disbursementLines = postedDailyDisbursementResult?.entry.lines || [];
+    if (!postedDailyDisbursementResult ||
+      disbursementLines.find((line) => line.accountCode === "5010")?.debit !== 80 ||
+      disbursementLines.find((line) => line.accountCode === "5030")?.debit !== 120 ||
+      disbursementLines.find((line) => line.accountCode === "5040")?.debit !== 50 ||
+      disbursementLines.find((line) => line.accountCode === "1010")?.credit !== 250) {
+      throw new Error("Daily Disbursement posting should debit configured expenses and credit cash.");
+    }
+
     const savingsDebitTotal = postedSavingsDepositResult.entry.lines.reduce((sum, line) => sum + line.debit, 0);
     const savingsCreditTotal = postedSavingsDepositResult.entry.lines.reduce((sum, line) => sum + line.credit, 0);
 
@@ -2282,11 +2358,11 @@ async function run() {
       !statementSavingsAccount ||
       !statementShareCapitalAccount ||
       !currentPeriodSurplus ||
-      statementOfFinancialConditionBody.summary.totalAssets !== 16675 ||
+      statementOfFinancialConditionBody.summary.totalAssets !== 16425 ||
       statementOfFinancialConditionBody.summary.totalLiabilities !== 3300 ||
-      statementOfFinancialConditionBody.summary.totalEquity !== 13375 ||
-      statementOfFinancialConditionBody.summary.totalLiabilitiesAndEquity !== 16675 ||
-      statementOfFinancialConditionBody.summary.currentPeriodSurplus !== 375 ||
+      statementOfFinancialConditionBody.summary.totalEquity !== 13125 ||
+      statementOfFinancialConditionBody.summary.totalLiabilitiesAndEquity !== 16425 ||
+      statementOfFinancialConditionBody.summary.currentPeriodSurplus !== 125 ||
       statementOfFinancialConditionBody.summary.difference !== 0 ||
       statementOfFinancialConditionBody.summary.status !== "Balanced"
     ) {
