@@ -125,12 +125,21 @@ async function run() {
         fullName: "Smoke Test Applicant",
         clusterName: "COMMUNITY A MEMBERS",
         contactNumber: "0999-000-0000",
+        gender: "Female",
+        idType: "PhilSys ID / ePhilID",
+        idNumber: "1234-5678-9012",
         initialShareCapital: 5000
       })
     });
     const createBody = await createApplication.json();
 
-    if (!createApplication.ok || createBody.application.status !== "Pending Approval") {
+    if (
+      !createApplication.ok ||
+      createBody.application.status !== "Pending Approval" ||
+      createBody.application.gender !== "Female" ||
+      createBody.application.idType !== "PhilSys ID / ePhilID" ||
+      createBody.application.idNumber !== "1234-5678-9012"
+    ) {
       throw new Error("Member application was not created as Pending Approval.");
     }
 
@@ -653,6 +662,9 @@ async function run() {
         fullName: "Post Import Approval Member",
         clusterName: "COMMUNITY A MEMBERS",
         contactNumber: "0999-333-4444",
+        gender: "Male",
+        idType: "Driver's License",
+        idNumber: "N01-23-456789",
         initialShareCapital: 5000
       })
     });
@@ -669,7 +681,10 @@ async function run() {
     if (
       !postImportApplication.ok ||
       !postImportApproval.ok ||
-      !/^M-\d{6}$/.test(postImportApprovalBody.member?.id || "")
+      !/^M-\d{6}$/.test(postImportApprovalBody.member?.id || "") ||
+      postImportApprovalBody.member?.gender !== "Male" ||
+      postImportApprovalBody.member?.idType !== "Driver's License" ||
+      postImportApprovalBody.member?.idNumber !== "N01-23-456789"
     ) {
       throw new Error("Admin approval should ignore nonnumeric imported member IDs when assigning the next member number.");
     }

@@ -80,6 +80,28 @@ pg.types.setTypeParser(1700, (value) => Number(value));
 const MONEY_SCALE = 100;
 const MAX_MONEY = 9999999999999.99;
 const loanCollateralTypes = ["PDC", "ATM Cards"];
+const memberApplicationIdTypes = [
+  "PhilSys ID / ePhilID",
+  "Philippine Passport",
+  "Driver's License",
+  "Unified Multi-Purpose ID (UMID)",
+  "SSS ID",
+  "GSIS eCard",
+  "PRC ID",
+  "Voter's ID / Voter's Certificate",
+  "Postal ID",
+  "PhilHealth ID",
+  "TIN ID",
+  "Pag-IBIG Loyalty Card",
+  "Senior Citizen ID",
+  "PWD ID",
+  "NBI Clearance",
+  "Police Clearance",
+  "Barangay ID",
+  "School ID",
+  "Other"
+];
+const memberApplicationGenders = ["Male", "Female", "Prefer not to say"];
 
 function moneyCents(value) {
   const amount = Number(value || 0);
@@ -3311,6 +3333,7 @@ async function listMembers() {
             share_capital AS share, savings_balance AS savings,
             secured_savings_balance AS securedSavings, status,
             contact_number AS contactNumber, address, birthdate,
+            gender, id_type AS idType, id_number AS idNumber,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
             previous_loan_balance AS previousLoanBalance
      FROM members
@@ -3507,6 +3530,7 @@ async function updateMemberProfile(memberId, input) {
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
             share_capital AS share, savings_balance AS savings, status,
             contact_number AS contactNumber, address, birthdate,
+            gender, id_type AS idType, id_number AS idNumber,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
             previous_loan_balance AS previousLoanBalance
      FROM members
@@ -6505,7 +6529,8 @@ async function listMemberApplications() {
 
   const [rows] = await db.execute(
     `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
-            contact_number AS contactNumber, initial_share_capital AS initialShareCapital,
+            contact_number AS contactNumber, gender, id_type AS idType, id_number AS idNumber,
+            initial_share_capital AS initialShareCapital,
             status, created_by AS createdBy, created_at AS createdAt
      FROM member_applications
      ORDER BY created_at DESC, id DESC`
@@ -6521,6 +6546,9 @@ async function createMemberApplication(input, user) {
     fullName: input.fullName,
     clusterName: input.clusterName,
     contactNumber: input.contactNumber,
+    gender: input.gender,
+    idType: input.idType,
+    idNumber: input.idNumber,
     initialShareCapital: input.initialShareCapital,
     status: "Pending Approval",
     createdBy: user.username
@@ -6533,15 +6561,18 @@ async function createMemberApplication(input, user) {
 
   await db.execute(
     `INSERT INTO member_applications (
-       application_no, full_name, cluster_name, contact_number,
+       application_no, full_name, cluster_name, contact_number, gender, id_type, id_number,
        initial_share_capital, status, created_by
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       application.id,
       application.fullName,
       application.clusterName,
       application.contactNumber,
+      application.gender,
+      application.idType,
+      application.idNumber,
       application.initialShareCapital,
       application.status,
       application.createdBy
@@ -6964,6 +6995,9 @@ async function approveMemberApplication(applicationId, user) {
       savings: 0,
       status: "Active",
       contactNumber: application.contactNumber || "",
+      gender: application.gender || "",
+      idType: application.idType || "",
+      idNumber: application.idNumber || "",
       address: "",
       birthdate: "",
       civilStatus: "",
@@ -6986,7 +7020,8 @@ async function approveMemberApplication(applicationId, user) {
 
     const [rows] = await connection.execute(
       `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
-              contact_number AS contactNumber, initial_share_capital AS initialShareCapital,
+              contact_number AS contactNumber, gender, id_type AS idType, id_number AS idNumber,
+              initial_share_capital AS initialShareCapital,
               status
        FROM member_applications
        WHERE application_no = ?
@@ -7020,10 +7055,19 @@ async function approveMemberApplication(applicationId, user) {
     await connection.execute(
       `INSERT INTO members (
          member_no, full_name, cluster_name, status, share_capital, savings_balance,
-         contact_number, membership_date
+         contact_number, gender, id_type, id_number, membership_date
        )
-       VALUES (?, ?, ?, 'Active', ?, 0, ?, CURRENT_DATE)`,
-      [memberNo, application.fullName, application.clusterName, 0, application.contactNumber || ""]
+       VALUES (?, ?, ?, 'Active', ?, 0, ?, ?, ?, ?, CURRENT_DATE)`,
+      [
+        memberNo,
+        application.fullName,
+        application.clusterName,
+        0,
+        application.contactNumber || "",
+        application.gender || "",
+        application.idType || "",
+        application.idNumber || ""
+      ]
     );
 
     await connection.execute(
@@ -7051,6 +7095,9 @@ async function approveMemberApplication(applicationId, user) {
         previousLoanBalance: 0,
         status: "Active",
         contactNumber: application.contactNumber || "",
+        gender: application.gender || "",
+        idType: application.idType || "",
+        idNumber: application.idNumber || "",
         address: "",
         birthdate: "",
         civilStatus: "",
@@ -8790,6 +8837,7 @@ async function getMemberStatement(memberId) {
             share_capital AS share, savings_balance AS savings,
             secured_savings_balance AS securedSavings, status,
             contact_number AS contactNumber, address, birthdate,
+            gender, id_type AS idType, id_number AS idNumber,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
             previous_loan_balance AS previousLoanBalance
      FROM members
@@ -11137,6 +11185,9 @@ function validateMemberApplication(body) {
   const fullName = String(body.fullName || "").trim();
   const clusterValidation = validateMemberClassification(body.clusterName, "Cluster");
   const contactNumber = String(body.contactNumber || "").trim();
+  const gender = String(body.gender || "").trim();
+  const idType = String(body.idType || "").trim();
+  const idNumber = String(body.idNumber || "").trim();
   const initialShareCapital = Number(body.initialShareCapital || 0);
 
   if (!fullName) {
@@ -11151,6 +11202,18 @@ function validateMemberApplication(body) {
     return { error: "Contact number is required." };
   }
 
+  if (!memberApplicationGenders.includes(gender)) {
+    return { error: "Select a valid gender." };
+  }
+
+  if (!memberApplicationIdTypes.includes(idType)) {
+    return { error: "Select a valid ID type." };
+  }
+
+  if (!idNumber) {
+    return { error: "ID number is required." };
+  }
+
   if (!isMoney(initialShareCapital)) {
     return { error: "Initial share capital must have no more than two decimal places." };
   }
@@ -11160,6 +11223,9 @@ function validateMemberApplication(body) {
       fullName,
       clusterName: clusterValidation.value,
       contactNumber,
+      gender,
+      idType,
+      idNumber,
       initialShareCapital: moneyValue(initialShareCapital)
     }
   };

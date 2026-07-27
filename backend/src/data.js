@@ -317,6 +317,9 @@ export const memberApplications = [
     fullName: "Julieta M. Navarro",
     clusterName: "COMMUNITY A MEMBERS",
     contactNumber: "0917-555-0148",
+    gender: "Female",
+    idType: "PhilSys ID / ePhilID",
+    idNumber: "0000-0000-0001",
     initialShareCapital: 5000,
     status: "Pending Approval",
     createdBy: "membership"

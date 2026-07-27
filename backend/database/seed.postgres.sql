@@ -201,14 +201,18 @@ ON CONFLICT (application_no) DO UPDATE SET
   updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO member_applications (
-  application_no, full_name, cluster_name, contact_number,
+  application_no, full_name, cluster_name, contact_number, gender, id_type, id_number,
   initial_share_capital, status, created_by
 ) VALUES
-  ('MA-2026-0001', 'Julieta M. Navarro', 'COMMUNITY A MEMBERS', '0917-555-0148', 5000, 'Pending Approval', 'membership')
+  ('MA-2026-0001', 'Julieta M. Navarro', 'COMMUNITY A MEMBERS', '0917-555-0148',
+   'Female', 'PhilSys ID / ePhilID', '0000-0000-0001', 5000, 'Pending Approval', 'membership')
 ON CONFLICT (application_no) DO UPDATE SET
   full_name = EXCLUDED.full_name,
   cluster_name = EXCLUDED.cluster_name,
   contact_number = EXCLUDED.contact_number,
+  gender = EXCLUDED.gender,
+  id_type = EXCLUDED.id_type,
+  id_number = EXCLUDED.id_number,
   initial_share_capital = EXCLUDED.initial_share_capital,
   status = EXCLUDED.status,
   created_by = EXCLUDED.created_by;

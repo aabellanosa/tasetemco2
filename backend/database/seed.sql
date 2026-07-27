@@ -26,14 +26,18 @@ ON DUPLICATE KEY UPDATE
   savings_balance = VALUES(savings_balance);
 
 INSERT INTO member_applications (
-  application_no, full_name, cluster_name, contact_number,
+  application_no, full_name, cluster_name, contact_number, gender, id_type, id_number,
   initial_share_capital, status, created_by
 ) VALUES
-  ('MA-2026-0001', 'Julieta M. Navarro', 'COMMUNITY A MEMBERS', '0917-555-0148', 5000, 'Pending Approval', 'membership')
+  ('MA-2026-0001', 'Julieta M. Navarro', 'COMMUNITY A MEMBERS', '0917-555-0148',
+   'Female', 'PhilSys ID / ePhilID', '0000-0000-0001', 5000, 'Pending Approval', 'membership')
 ON DUPLICATE KEY UPDATE
   full_name = VALUES(full_name),
   cluster_name = VALUES(cluster_name),
   contact_number = VALUES(contact_number),
+  gender = VALUES(gender),
+  id_type = VALUES(id_type),
+  id_number = VALUES(id_number),
   initial_share_capital = VALUES(initial_share_capital),
   status = VALUES(status),
   created_by = VALUES(created_by);

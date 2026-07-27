@@ -65,6 +65,28 @@ const memberClassifications = [
   "COMMUNITY A MEMBERS",
   "COMMUNITY B MEMBERS"
 ];
+const memberApplicationIdTypes = [
+  "PhilSys ID / ePhilID",
+  "Philippine Passport",
+  "Driver's License",
+  "Unified Multi-Purpose ID (UMID)",
+  "SSS ID",
+  "GSIS eCard",
+  "PRC ID",
+  "Voter's ID / Voter's Certificate",
+  "Postal ID",
+  "PhilHealth ID",
+  "TIN ID",
+  "Pag-IBIG Loyalty Card",
+  "Senior Citizen ID",
+  "PWD ID",
+  "NBI Clearance",
+  "Police Clearance",
+  "Barangay ID",
+  "School ID",
+  "Other"
+];
+const memberApplicationGenders = ["Male", "Female", "Prefer not to say"];
 
 const theme = extendTheme({
   styles: {
@@ -2917,6 +2939,9 @@ function Members({ user }) {
     fullName: "",
     clusterName: memberClassifications[0],
     contactNumber: "",
+    gender: "",
+    idType: "",
+    idNumber: "",
     initialShareCapital: 5000
   });
   const [paymentForm, setPaymentForm] = useState({
@@ -3296,6 +3321,9 @@ function Members({ user }) {
         fullName: "",
         clusterName: memberClassifications[0],
         contactNumber: "",
+        gender: "",
+        idType: "",
+        idNumber: "",
         initialShareCapital: 5000
       });
       await loadMembersWorkflow();
@@ -3636,7 +3664,7 @@ function Members({ user }) {
             New Member Application
           </Heading>
           <Text color="gray.600" mb={5}>
-            Membership Officer encodes the application. Admin approval creates the member record for Teller payment.
+            Membership Officer encodes the application. Administrator or Manager approval creates the member record for Teller payment.
           </Text>
           <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={4}>
             <FormControl isRequired>
@@ -3657,6 +3685,34 @@ function Members({ user }) {
                 value={form.contactNumber}
                 onChange={(event) => updateForm("contactNumber", event.target.value)}
               />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Gender</FormLabel>
+              <Select
+                placeholder="Select gender"
+                value={form.gender}
+                onChange={(event) => updateForm("gender", event.target.value)}
+              >
+                {memberApplicationGenders.map((gender) => (
+                  <option key={gender} value={gender}>{gender}</option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>ID Type</FormLabel>
+              <Select
+                placeholder="Select ID type"
+                value={form.idType}
+                onChange={(event) => updateForm("idType", event.target.value)}
+              >
+                {memberApplicationIdTypes.map((idType) => (
+                  <option key={idType} value={idType}>{idType}</option>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>ID Number</FormLabel>
+              <Input value={form.idNumber} onChange={(event) => updateForm("idNumber", event.target.value)} />
             </FormControl>
             <FormControl>
               <FormLabel>Required Initial Share Capital</FormLabel>
@@ -3694,6 +3750,8 @@ function Members({ user }) {
                   <Th>Name</Th>
                   <Th>Cluster</Th>
                   <Th>Contact</Th>
+                  <Th>Gender</Th>
+                  <Th>ID</Th>
                 <Th isNumeric>Required Initial Share Capital</Th>
                 <Th>Status</Th>
                 {canApproveApplication ? <Th>Action</Th> : null}
@@ -3706,6 +3764,8 @@ function Members({ user }) {
                     <Td>{application.fullName}</Td>
                     <Td>{application.clusterName}</Td>
                     <Td>{application.contactNumber}</Td>
+                    <Td>{application.gender}</Td>
+                    <Td>{application.idType}<br />{application.idNumber}</Td>
                     <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
                   <Td>
                     <Badge colorScheme="yellow">{application.status}</Badge>
@@ -3726,7 +3786,7 @@ function Members({ user }) {
                 ))}
                 {pendingApplications.length === 0 ? (
                   <Tr>
-                    <Td colSpan={canApproveApplication ? 7 : 6} color="gray.500">
+                    <Td colSpan={canApproveApplication ? 9 : 8} color="gray.500">
                       No pending applications.
                     </Td>
                   </Tr>
