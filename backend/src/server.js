@@ -79,7 +79,7 @@ pg.types.setTypeParser(1700, (value) => Number(value));
 
 const MONEY_SCALE = 100;
 const MAX_MONEY = 9999999999999.99;
-const loanCollateralTypes = ["PDC", "ATM Cards"];
+const loanCollateralTypes = ["PDC", "ATM Cards", "Payroll"];
 const memberApplicationIdTypes = [
   "PhilSys ID / ePhilID",
   "Philippine Passport",
@@ -1201,7 +1201,7 @@ async function validateLoanApplicationInput(body) {
   }
 
   if (!loanCollateralTypes.includes(collateralType)) {
-    return { error: "Collateral type must be PDC or ATM Cards." };
+    return { error: "Collateral type must be PDC, ATM Cards, or Payroll." };
   }
 
   if (!isValidIsoDate(applicationDate)) {

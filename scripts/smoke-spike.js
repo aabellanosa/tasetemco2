@@ -2761,7 +2761,7 @@ async function run() {
         requestedPrincipal: 12000,
         requestedTermMonths: 6,
         purpose: "Smoke test livelihood supplies",
-        collateralType: "ATM Cards",
+        collateralType: "Payroll",
         applicationDate: "2026-06-19"
       })
     });
@@ -2772,7 +2772,7 @@ async function run() {
       !createLoanApplication.ok ||
       !smokeApplicationNo ||
       createLoanApplicationBody.application.status !== "Draft" ||
-      createLoanApplicationBody.application.collateralType !== "ATM Cards" ||
+      createLoanApplicationBody.application.collateralType !== "Payroll" ||
       createLoanApplicationBody.application.annualInterestRateBps !== 3000 ||
       createLoanApplicationBody.application.serviceFeeRateBps !== 450
     ) {

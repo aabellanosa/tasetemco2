@@ -8524,7 +8524,7 @@ const defaultLoanApplicationForm = {
   applicationDate: new Date().toISOString().slice(0, 10)
 };
 const commonLoanTermMonths = [1, 6, 9, 12, 18, 24, 36, 48, 60];
-const loanCollateralTypes = ["PDC", "ATM Cards"];
+const loanCollateralTypes = ["PDC", "ATM Cards", "Payroll"];
 const loanDocumentCategoryOptions = ["Providential", "Entrepreneurial", "Emergency", "Other"];
 
 const defaultLoanDocumentForm = {
