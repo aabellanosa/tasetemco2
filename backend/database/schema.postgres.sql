@@ -432,6 +432,11 @@ ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision_remarks TEXT NOT
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decision_date DATE;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decided_by VARCHAR(80);
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS manual_previous_loan_balance NUMERIC(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS system_outstanding_loan_balance NUMERIC(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS cbu_balance NUMERIC(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS savings_balance NUMERIC(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS secured_savings_balance NUMERIC(18,2) NOT NULL DEFAULT 0;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS service_fee_rate_bps INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS insurance_fee_rate_bps INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS cbu_rate_bps INTEGER NOT NULL DEFAULT 0;

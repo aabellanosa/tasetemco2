@@ -2774,7 +2774,13 @@ async function run() {
       createLoanApplicationBody.application.status !== "Draft" ||
       createLoanApplicationBody.application.collateralType !== "Payroll" ||
       createLoanApplicationBody.application.annualInterestRateBps !== 3000 ||
-      createLoanApplicationBody.application.serviceFeeRateBps !== 450
+      createLoanApplicationBody.application.serviceFeeRateBps !== 450 ||
+      createLoanApplicationBody.application.manualPreviousLoanBalance !== 0 ||
+      createLoanApplicationBody.application.systemOutstandingLoanBalance !== 0 ||
+      createLoanApplicationBody.application.previousLoanBalance !== 0 ||
+      createLoanApplicationBody.application.cbuBalance !== 44000 ||
+      createLoanApplicationBody.application.savingsBalance !== 76800 ||
+      createLoanApplicationBody.application.securedSavingsBalance !== 0
     ) {
       throw new Error("Loan Officer should create a draft with snapshotted product terms.");
     }
@@ -2849,7 +2855,10 @@ async function run() {
       !updateLoanApplication.ok ||
       updateLoanApplicationBody.application.requestedPrincipal !== 15000 ||
       updateLoanApplicationBody.application.collateralType !== "PDC" ||
-      updateLoanApplicationBody.application.status !== "Draft"
+      updateLoanApplicationBody.application.status !== "Draft" ||
+      updateLoanApplicationBody.application.cbuBalance !== 44000 ||
+      updateLoanApplicationBody.application.savingsBalance !== 76800 ||
+      updateLoanApplicationBody.application.securedSavingsBalance !== 0
     ) {
       throw new Error("Loan Officer should edit their own draft application.");
     }

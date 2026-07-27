@@ -226,6 +226,8 @@ Opening Balance Visibility v1e adds finalized opening balances to each member st
 
 Loan Product Foundation v1 replaces the Loans placeholder with persisted lending templates. The System Administrator can create and edit product codes, amount/term limits, annual rate, interest method, payment frequency, service-fee rate, insurance rate, CBU rate, savings-retention rate, penalty rate, accounting mappings, and status. General Manager, Loan Officer, Credit Committee / Approver, Teller / Cashier, and Auditor / Compliance Officer have read-only product access. The seeded TASETEMCO products are Emergency Loan, Petty Cash Loan, Salary Loan, Educational Loan, Appliance Loan, Small Business Loan, and LBP Loan. LBP follows the Appliance Loan rules, is non-revolving, and permits principal up to PHP 500,000. Existing Postgres deployments add it with `npm run pg:seed-loan-products`; no schema migration is required. Petty Cash Loan is limited to PHP 1,000 to PHP 2,000 and has no service fee.
 
+Loan applications snapshot the member's manual previous-loan balance, outstanding system-loan balance, CBU/share capital, regular savings, and secured savings at application time. Credit Review and the replicated printable loan form use the snapshot so later transactions cannot change the information originally reviewed. Previous Loan Balance combines the manual and system balances, while both components remain separately visible during review. Existing database deployments must run `npm run pg:migrate` before deploying this application build.
+
 | Loan Product Access | View | Create / Edit |
 | --- | --- | --- |
 | System Administrator | Yes | Yes |

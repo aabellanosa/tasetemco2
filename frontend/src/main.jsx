@@ -7606,6 +7606,13 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
   const savingsRateLabel = formatRateBps(application.savingsRetentionRateBps);
   const serviceFeeRateLabel = formatRateBps(application.serviceFeeRateBps);
   const insuranceRateLabel = formatRateBps(application.insuranceFeeRateBps);
+  const applicationDateLabel = formatDate(application.applicationDate);
+  const manualPreviousLoanBalance = Number(application.manualPreviousLoanBalance || 0);
+  const systemOutstandingLoanBalance = Number(application.systemOutstandingLoanBalance || 0);
+  const previousLoanBalance = addMoney(manualPreviousLoanBalance, systemOutstandingLoanBalance);
+  const cbuBalance = Number(application.cbuBalance || 0);
+  const savingsBalance = Number(application.savingsBalance || 0);
+  const securedSavingsBalance = Number(application.securedSavingsBalance || 0);
   const category = formData.loanCategory || "Providential";
   const logoSrc = `${window.location.origin}/brand/tasetemco-seal.png`;
   const cdaLogoSrc = `${window.location.origin}/brand/cda-pftec.jpeg`;
@@ -8016,10 +8023,11 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
 
       <div class="bookkeeper-title">To be filled by the Bookkeeper</div>
       <table class="bookkeeper-table">
-        <tr><td style="width: 1.7in">Capital Build-up (paid up)</td><td style="width: 1.7in">Php</td><td colspan="5">Aps of:</td></tr>
-        <tr><td>Savings</td><td>Php</td><td colspan="5">As of</td></tr>
+        <tr><td style="width: 1.7in">Capital Build-up (paid up)</td><td style="width: 1.7in">${escapeHtml(formatMoney(cbuBalance))}</td><td colspan="5">As of: ${escapeHtml(applicationDateLabel)}</td></tr>
+        <tr><td>Savings</td><td>${escapeHtml(formatMoney(savingsBalance))}</td><td colspan="5">As of: ${escapeHtml(applicationDateLabel)}</td></tr>
+        <tr><td>Secured Savings</td><td>${escapeHtml(formatMoney(securedSavingsBalance))}</td><td colspan="5">As of: ${escapeHtml(applicationDateLabel)}</td></tr>
         <tr><td>Outstanding Loan</td><td class="center">LBP/CCB</td><td class="center">Salary Loan</td><td class="center">Emergency Loan</td><td class="center">Educ.Loan</td><td class="center">Bonus Loan</td><td class="center">Others</td></tr>
-        <tr><td>Balance</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>Balance</td><td colspan="6" class="right">${escapeHtml(formatMoney(previousLoanBalance))}</td></tr>
         <tr><td>%Repayment</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
         <tr><td>Date of last availment</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
         <tr><td>Due Date</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
@@ -8057,7 +8065,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Insurance&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${insuranceRateLabel}</span><span>:</span><span>${pesoField(insuranceFee)}</span>
         <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Total GAS</span><span>:</span><span>${pesoField(totalDeductions)}</span>
         <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Total Net</span><span>:</span><span>${pesoField(netProceeds)}</span>
-        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Previous Loan Balance</span><span>:</span><span>${pesoBlank()}</span>
+        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Previous Loan Balance</span><span>:</span><span>${pesoField(previousLoanBalance)}</span>
         <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Undeducted</span><span>:</span><span>${pesoBlank()}</span>
         <span>Net Amount Received</span><span>:</span><span>${pesoField(netProceeds)}</span>
       </div>
@@ -9086,6 +9094,19 @@ function LoanApplications({ user }) {
                   </Text>
                   <Text color="gray.600">Collateral: {reviewApplication.collateralType || "PDC"}</Text>
                   <Text color="gray.600">{reviewApplication.productName} - {reviewApplication.purpose}</Text>
+                </Box>
+                <Box borderWidth="1px" borderRadius="md" p={3}>
+                  <Text fontSize="sm" fontWeight="bold" mb={2}>
+                    Balances as of application date ({formatDate(reviewApplication.applicationDate)})
+                  </Text>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={2}>
+                    <Text fontSize="sm">Manual previous loan: {formatMoney(reviewApplication.manualPreviousLoanBalance)}</Text>
+                    <Text fontSize="sm">System outstanding loans: {formatMoney(reviewApplication.systemOutstandingLoanBalance)}</Text>
+                    <Text fontSize="sm">Total previous loan balance: {formatMoney(reviewApplication.previousLoanBalance)}</Text>
+                    <Text fontSize="sm">CBU / share capital: {formatMoney(reviewApplication.cbuBalance)}</Text>
+                    <Text fontSize="sm">Regular savings: {formatMoney(reviewApplication.savingsBalance)}</Text>
+                    <Text fontSize="sm">Secured savings: {formatMoney(reviewApplication.securedSavingsBalance)}</Text>
+                  </Grid>
                 </Box>
                 <FormControl isRequired>
                   <FormLabel>Credit Assessment Notes</FormLabel>

@@ -1093,6 +1093,15 @@ function mapLoanApplication(row) {
     decisionDate: formatDateOnly(row.decisionDate),
     decidedBy: row.decidedBy || "",
     decidedAt: row.decidedAt || "",
+    manualPreviousLoanBalance: Number(row.manualPreviousLoanBalance || 0),
+    systemOutstandingLoanBalance: Number(row.systemOutstandingLoanBalance || 0),
+    previousLoanBalance: addMoney(
+      Number(row.manualPreviousLoanBalance || 0),
+      Number(row.systemOutstandingLoanBalance || 0)
+    ),
+    cbuBalance: Number(row.cbuBalance || 0),
+    savingsBalance: Number(row.savingsBalance || 0),
+    securedSavingsBalance: Number(row.securedSavingsBalance || 0),
     createdAt: row.createdAt || "",
     updatedAt: row.updatedAt || ""
   };
@@ -1132,7 +1141,12 @@ async function listLoanApplications() {
             recommended_term_months AS recommendedTermMonths,
             decision, decision_remarks AS decisionRemarks,
             decision_date AS decisionDate, decided_by AS decidedBy,
-            decided_at AS decidedAt, created_at AS createdAt, updated_at AS updatedAt
+            decided_at AS decidedAt,
+            manual_previous_loan_balance AS manualPreviousLoanBalance,
+            system_outstanding_loan_balance AS systemOutstandingLoanBalance,
+            cbu_balance AS cbuBalance, savings_balance AS savingsBalance,
+            secured_savings_balance AS securedSavingsBalance,
+            created_at AS createdAt, updated_at AS updatedAt
      FROM loan_applications
      ORDER BY created_at DESC, id DESC`
   );
@@ -1165,6 +1179,7 @@ async function validateLoanApplicationInput(body) {
   const applicationDate = formatDateOnly(body.applicationDate || new Date());
   const memberRows = await listMembers();
   const products = await listLoanProducts();
+  const memberLoans = await listLoans();
   const member = memberRows.find((item) => item.id === memberNo && item.status === "Active");
   const product = products.find((item) => item.code === productCode && item.status === "Active");
 
@@ -1236,7 +1251,16 @@ async function validateLoanApplicationInput(body) {
       shareCapitalAccount: product.shareCapitalAccount,
       savingsAccount: product.savingsAccount,
       penaltyIncomeAccount: product.penaltyIncomeAccount,
-      cashAccount: product.cashAccount
+      cashAccount: product.cashAccount,
+      manualPreviousLoanBalance: moneyValue(member.previousLoanBalance || 0),
+      systemOutstandingLoanBalance: moneyValue(
+        memberLoans
+          .filter((loan) => loan.memberNo === member.id && ["Released", "Posted"].includes(loan.status))
+          .reduce((total, loan) => addMoney(total, loanOutstandingBalance(loan)), 0)
+      ),
+      cbuBalance: moneyValue(member.share || 0),
+      savingsBalance: moneyValue(member.savings || 0),
+      securedSavingsBalance: moneyValue(member.securedSavings || 0)
     }
   };
 }
@@ -1270,9 +1294,12 @@ async function createLoanApplication(input, user) {
        savings_retention_rate_bps, cbu_optional, penalty_rate_bps,
        loans_receivable_account, interest_income_account, processing_fee_account,
        insurance_income_account, share_capital_account, savings_account,
-       penalty_income_account, cash_account, status, created_by
+       penalty_income_account, cash_account,
+       manual_previous_loan_balance, system_outstanding_loan_balance,
+       cbu_balance, savings_balance, secured_savings_balance,
+       status, created_by
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
     [
       applicationNo,
       input.memberNo,
@@ -1302,6 +1329,11 @@ async function createLoanApplication(input, user) {
       input.savingsAccount,
       input.penaltyIncomeAccount,
       input.cashAccount,
+      input.manualPreviousLoanBalance,
+      input.systemOutstandingLoanBalance,
+      input.cbuBalance,
+      input.savingsBalance,
+      input.securedSavingsBalance,
       user.username
     ]
   );
@@ -1323,7 +1355,15 @@ async function updateLoanApplication(applicationNo, input, user) {
     if (application.createdBy !== user.username) {
       return { error: "Loan Officer can edit only their own draft applications.", statusCode: 403 };
     }
-    Object.assign(application, input, {
+    const {
+      manualPreviousLoanBalance,
+      systemOutstandingLoanBalance,
+      cbuBalance,
+      savingsBalance,
+      securedSavingsBalance,
+      ...editableInput
+    } = input;
+    Object.assign(application, editableInput, {
       status: "Draft",
       updatedAt: new Date().toISOString()
     });
