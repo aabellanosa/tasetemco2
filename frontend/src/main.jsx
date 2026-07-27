@@ -344,6 +344,112 @@ function MemberCombobox({ members, value, onChange, placeholder = "Search member
   </Box>;
 }
 
+function OptionCombobox({ options, value, onChange, placeholder = "Search options", noMatchesText = "No options match." }) {
+  const [query, setQuery] = useState(value || "");
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const inputRef = useRef(null);
+  const tabSelectionRef = useRef(false);
+  const matches = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized || query === value) return options;
+    return options.filter((option) => option.toLowerCase().includes(normalized));
+  }, [options, query, value]);
+
+  useEffect(() => {
+    setQuery(value || "");
+  }, [value]);
+
+  function selectOption(option) {
+    onChange(option);
+    setQuery(option);
+    setIsOpen(false);
+    setActiveIndex(0);
+  }
+
+  function openMenu() {
+    const rect = inputRef.current?.getBoundingClientRect();
+    if (rect) setMenuPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    setIsOpen(true);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      openMenu();
+      setActiveIndex((current) => Math.min(current + 1, matches.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => Math.max(current - 1, 0));
+    } else if (event.key === "Enter" && isOpen && matches[activeIndex]) {
+      event.preventDefault();
+      selectOption(matches[activeIndex]);
+    } else if (event.key === "Tab" && isOpen && matches[activeIndex]) {
+      tabSelectionRef.current = true;
+      selectOption(matches[activeIndex]);
+    } else if (event.key === "Escape") {
+      setIsOpen(false);
+    }
+  }
+
+  return <Box position="relative" minW={0}>
+    <Input
+      ref={inputRef}
+      value={query}
+      placeholder={placeholder}
+      autoComplete="off"
+      required
+      role="combobox"
+      aria-expanded={isOpen}
+      aria-autocomplete="list"
+      onFocus={() => { openMenu(); setActiveIndex(0); }}
+      onBlur={() => {
+        setIsOpen(false);
+        if (tabSelectionRef.current) { tabSelectionRef.current = false; return; }
+        setQuery(value || "");
+      }}
+      onKeyDown={handleKeyDown}
+      onChange={(event) => {
+        setQuery(event.target.value);
+        onChange("");
+        openMenu();
+        setActiveIndex(0);
+      }}
+    />
+    {isOpen && menuPosition ? <Portal><Box
+      position="fixed"
+      top={`${menuPosition.top}px`}
+      left={`${menuPosition.left}px`}
+      width={`${menuPosition.width}px`}
+      zIndex={1500}
+      bg="white"
+      borderWidth="1px"
+      borderRadius="md"
+      boxShadow="lg"
+      maxH="260px"
+      overflowY="auto"
+      role="listbox"
+    >
+      {matches.map((option, index) => <Box
+        key={option}
+        role="option"
+        aria-selected={index === activeIndex}
+        px={3}
+        py={2}
+        cursor="pointer"
+        bg={index === activeIndex ? "green.50" : "white"}
+        borderBottomWidth={index < matches.length - 1 ? "1px" : 0}
+        onMouseDown={(event) => { event.preventDefault(); selectOption(option); }}
+        onMouseEnter={() => setActiveIndex(index)}
+      >
+        <Text fontSize="sm">{option}</Text>
+      </Box>)}
+      {matches.length === 0 ? <Text px={3} py={3} color="gray.500" fontSize="sm">{noMatchesText}</Text> : null}
+    </Box></Portal> : null}
+  </Box>;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -3700,15 +3806,13 @@ function Members({ user }) {
             </FormControl>
             <FormControl isRequired>
               <FormLabel>ID Type</FormLabel>
-              <Select
-                placeholder="Select ID type"
+              <OptionCombobox
+                options={memberApplicationIdTypes}
+                placeholder="Search ID type"
                 value={form.idType}
-                onChange={(event) => updateForm("idType", event.target.value)}
-              >
-                {memberApplicationIdTypes.map((idType) => (
-                  <option key={idType} value={idType}>{idType}</option>
-                ))}
-              </Select>
+                onChange={(idType) => updateForm("idType", idType)}
+                noMatchesText="No ID types match."
+              />
             </FormControl>
             <FormControl isRequired>
               <FormLabel>ID Number</FormLabel>
