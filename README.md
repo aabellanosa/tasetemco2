@@ -144,7 +144,7 @@ The React/Postgres pivot uses action-level permissions, not just screen access. 
 | Role | View Members | View Applications | Create Applications | Approve Applications | Member Import Preview | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | System Administrator | Yes | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
-| General Manager | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
+| General Manager | Yes | Yes | No | Yes | No | No | No | No | No | Yes | No | No | No |
 | Accountant / Bookkeeper | No | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
 | Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
 | Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No |
@@ -279,7 +279,7 @@ Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment a
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
-Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
+Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after System Administrator or General Manager approval.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 

@@ -151,20 +151,8 @@ async function run() {
     const managerBody = await managerLogin.json();
     const managerCookie = managerLogin.headers.get("set-cookie")?.split(";")[0];
 
-    if (managerBody.user.permissions.includes("members:applications:approve")) {
-      throw new Error("Manager should not have member application approval permission in this spike.");
-    }
-
-    const forbiddenApproval = await fetch(
-      `${baseUrl}/api/member-applications/${createBody.application.id}/approve`,
-      {
-        method: "POST",
-        headers: { Cookie: managerCookie }
-      }
-    );
-
-    if (forbiddenApproval.status !== 403) {
-      throw new Error("Manager should be denied member application approval.");
+    if (!managerBody.user.permissions.includes("members:applications:approve")) {
+      throw new Error("Manager should have member application approval permission.");
     }
 
     const forbiddenOpeningBalanceLookup = await fetch(`${baseUrl}/api/ledger/member-lookup`, {
@@ -429,12 +417,12 @@ async function run() {
 
     const approval = await fetch(`${baseUrl}/api/member-applications/${createBody.application.id}/approve`, {
       method: "POST",
-      headers: { Cookie: adminCookie }
+      headers: { Cookie: managerCookie }
     });
     const approvalBody = await approval.json();
 
     if (!approval.ok || approvalBody.application.status !== "Approved") {
-      throw new Error("Admin approval did not approve the member application.");
+      throw new Error("Manager approval did not approve the member application.");
     }
 
     const activeMembers = await fetch(`${baseUrl}/api/members`, {

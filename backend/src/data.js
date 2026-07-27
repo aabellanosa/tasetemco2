@@ -131,6 +131,7 @@ export const rolePermissions = {
   "General Manager": [
     "members:view",
     "members:applications:view",
+    "members:applications:approve",
     "members:initial-payments:view",
     "members:share-capital-contributions:view",
     "members:savings-deposits:view",

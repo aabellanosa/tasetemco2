@@ -187,7 +187,7 @@ The React/Postgres pivot separates screen access from action access. A role may 
 | Role | View Members | View Applications | Create Applications | Approve Applications | Member Import Preview | Record Initial Payment | Record Share Capital | Record Savings Deposit | Record Savings Withdrawal | View Ledger | Review Batch | Post Teller Batch | Close Batch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | System Administrator | Yes | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
-| General Manager | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
+| General Manager | Yes | Yes | No | Yes | No | No | No | No | No | Yes | No | No | No |
 | Accountant / Bookkeeper | No | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
 | Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
 | Credit Committee / Approver | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No |
@@ -200,7 +200,7 @@ For demo testing across browser profiles, the Members workflow auto-refreshes ev
 
 Members Workspace UI Refactor v1 organizes the Members screen into role-aware tabs: Applications, Imports, Teller Transactions, Member Directory, and Transaction History. This keeps application processing, CSV import staging, teller activity, member profile review, and transaction audit history visually separate while keeping the same permissions and backend behavior.
 
-Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after Admin approval.
+Membership applications capture `Required Initial Share Capital` as the expected membership requirement. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after System Administrator or General Manager approval.
 
 Member Import Preview v0 is available only to the System Administrator and Membership Officer. It accepts pasted CSV text exported from Excel, detects columns, lets the user map columns to member profile fields, and shows validation issues before any import write is implemented. The current preview checks missing full names, duplicate member numbers in the upload, member numbers that already exist, invalid dates, and unknown statuses.
 
