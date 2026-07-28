@@ -45,7 +45,10 @@ function validateSite(directory) {
   assert(index.includes("POS, GCASH, and LOADER"), "POS, GCASH, and LOADER Daily Remittance sources are missing.");
   assert(index.includes("4080 - Other Operating Income"), "POS, GCASH, and LOADER account treatment is missing.");
   assert(index.includes('id="daily-disbursement"'), "Daily Disbursement workflow is missing.");
-  assert(index.includes("Building and renovations, Travel, and Other expenses"), "Daily Disbursement categories are missing.");
+  assert(index.includes("Water, Light, Wifi, SSS, Pag-ibig, Philhealth, and Other expenses"),
+    "Expanded Daily Disbursement categories are missing.");
+  assert(index.includes("Other expenses is deliberately displayed as the last"),
+    "Daily Disbursement Other-expenses ordering guidance is missing.");
   assert(index.includes("same active batch ID"), "Teller/Admin active-batch reconciliation guidance is missing.");
   assert(index.includes("credits 1010 - Cash on Hand"), "Daily Disbursement posting guidance is missing.");
   assert(index.includes("Admin configures centers and reviews activity"), "Cost-center role separation is missing.");

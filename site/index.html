@@ -323,13 +323,14 @@
             <h3>Daily Disbursement</h3>
             <ol>
               <li>Admin configures category name, reporting group, optional cost center, 5xxx expense account, display order, and status.</li>
-              <li>Initial categories are Canteen A, Canteen B, WRS, Building and renovations, Travel, and Other expenses.</li>
+              <li>Standard categories are Canteen A, Canteen B, WRS, Building and renovations, Travel, Water, Light, Wifi, SSS, Pag-ibig, Philhealth, and Other expenses.</li>
+              <li>Other expenses is deliberately displayed as the last Daily Disbursement item.</li>
               <li>Teller enters a backdateable Disbursement Date, actual Cash Disbursed Date, unique voucher/reference, positive amounts, and optional remarks.</li>
               <li>Zero-value rows are not saved. A Draft has no cash or journal effect.</li>
               <li>The creating Teller adds the Draft to the Open teller batch, including its total in cash-out and expected ending cash.</li>
               <li>Teller and Admin monitor the same active batch ID, so their transaction counts and rows reconcile.</li>
               <li>After cash count and Bookkeeper review, posting debits the snapshotted expense accounts and credits 1010 - Cash on Hand.</li>
-              <li>Canteen A/B retain C1/C2 and WRS retains WRS; Building and renovations, Travel, and Other expenses belong to cooperative operations.</li>
+              <li>Canteen A/B retain C1/C2 and WRS retains WRS; all other standard categories belong to cooperative operations.</li>
               <li>Admin may configure additional categories as new expenses are identified.</li>
             </ol>
           </article>
