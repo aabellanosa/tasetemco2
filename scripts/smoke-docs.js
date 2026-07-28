@@ -42,8 +42,8 @@ function validateSite(directory) {
   assert(index.includes('id="daily-remittance"'), "Daily Remittance workflow is missing.");
   assert(index.includes("fixed grid containing every Active configured source"), "Daily Remittance grid guidance is missing.");
   assert(index.includes("snapshotted income account"), "Daily Remittance posting guidance is missing.");
-  assert(index.includes("GCASH and LOADER"), "GCASH and LOADER Daily Remittance sources are missing.");
-  assert(index.includes("4080 - Other Operating Income"), "GCASH and LOADER account treatment is missing.");
+  assert(index.includes("POS, GCASH, and LOADER"), "POS, GCASH, and LOADER Daily Remittance sources are missing.");
+  assert(index.includes("4080 - Other Operating Income"), "POS, GCASH, and LOADER account treatment is missing.");
   assert(index.includes('id="daily-disbursement"'), "Daily Disbursement workflow is missing.");
   assert(index.includes("Building and renovations, Travel, and Other expenses"), "Daily Disbursement categories are missing.");
   assert(index.includes("same active batch ID"), "Teller/Admin active-batch reconciliation guidance is missing.");
