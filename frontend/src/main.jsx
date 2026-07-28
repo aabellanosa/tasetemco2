@@ -10218,6 +10218,109 @@ function LoanReleases({ user }) {
     printModal.onOpen();
   }
 
+  function printLoanBreakdown(loan) {
+    const printWindow = window.open("", "_blank", "width=900,height=1100");
+    if (!printWindow) {
+      setError("Allow pop-ups for this site to print the loan breakdown.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(buildLoanBreakdownPrintHtml(loan, user.username));
+    printWindow.document.close();
+    printWindow.focus();
+  }
+
+  function releaseComputationSummary(loan) {
+    return (
+      <Grid templateColumns={{ base: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" }} gap={4}>
+        {[
+          ["Principal", formatMoney(loan.principal)],
+          ["Total Interest", formatMoney(loan.totalInterest)],
+          ["Total Payable", formatMoney(loan.totalPayable)],
+          ["Net Proceeds", formatMoney(loan.netProceeds)],
+          ["Service Fee", formatMoney(loan.processingFee)],
+          ["Insurance", formatMoney(loan.insuranceFee)],
+          ["CBU", `${formatMoney(loan.cbuAmount)}${loan.cbuApplied ? "" : " (not applied)"}`],
+          ["Savings Retention", formatMoney(loan.savingsRetentionAmount)],
+          ["Installments", loan.installmentCount],
+          ["First Payment", loan.firstPaymentDate],
+          ["Maturity", loan.maturityDate]
+        ].map(([label, value]) => (
+          <Box key={label}>
+            <Text color="gray.500" fontSize="xs">{label}</Text>
+            <Text fontWeight="bold">{value}</Text>
+          </Box>
+        ))}
+      </Grid>
+    );
+  }
+
+  function releaseScheduleTable(schedule = []) {
+    return (
+      <TableContainer>
+        <Table size="sm">
+          <Thead>
+            <Tr>
+              <Th>Installment</Th>
+              <Th>Due Date</Th>
+              <Th isNumeric>Principal</Th>
+              <Th isNumeric>Interest</Th>
+              <Th isNumeric>Total Due</Th>
+              <Th>Status</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {schedule.map((installment) => (
+              <Tr key={installment.installmentNo}>
+                <Td>{installment.installmentNo}</Td>
+                <Td>{installment.dueDate}</Td>
+                <Td isNumeric>{formatMoney(installment.principalDue)}</Td>
+                <Td isNumeric>{formatMoney(installment.interestDue)}</Td>
+                <Td isNumeric fontWeight="bold">{formatMoney(installment.totalDue)}</Td>
+                <Td><Badge>{installment.status}</Badge></Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    );
+  }
+
+  function releaseBreakdownPreview(loan) {
+    const totalDeductions = addMoney(
+      loan.processingFee,
+      loan.insuranceFee,
+      loan.cbuAmount,
+      loan.savingsRetentionAmount
+    );
+    return (
+      <VStack align="stretch" spacing={5}>
+        {releaseComputationSummary(loan)}
+        <TableContainer>
+          <Table size="sm">
+            <Thead><Tr><Th>Deduction</Th><Th>Rate</Th><Th isNumeric>Amount</Th></Tr></Thead>
+            <Tbody>
+              {[
+                ["Service Fee", formatRateBps(loan.serviceFeeRateBps), loan.processingFee],
+                ["Insurance", formatRateBps(loan.insuranceFeeRateBps), loan.insuranceFee],
+                ["CBU / Capital Build-Up", loan.cbuApplied ? formatRateBps(loan.cbuRateBps) : "Not applied", loan.cbuAmount],
+                ["Savings Retention", formatRateBps(loan.savingsRetentionRateBps), loan.savingsRetentionAmount]
+              ].map(([label, rate, amount]) => (
+                <Tr key={label}><Td>{label}</Td><Td>{rate}</Td><Td isNumeric>{formatMoney(amount)}</Td></Tr>
+              ))}
+              <Tr>
+                <Td colSpan={2} fontWeight="bold">Total Deductions</Td>
+                <Td isNumeric fontWeight="bold">{formatMoney(totalDeductions)}</Td>
+              </Tr>
+            </Tbody>
+          </Table>
+        </TableContainer>
+        {releaseScheduleTable(loan.installments)}
+      </VStack>
+    );
+  }
+
   async function confirmRelease() {
     if (!selectedLoan) {
       return;
@@ -10467,8 +10570,8 @@ function LoanReleases({ user }) {
           <ModalBody>
             {selectedDetailLoan ? (
               <VStack align="stretch" spacing={5}>
-                {computationSummary(selectedDetailLoan)}
-                {scheduleTable(selectedDetailLoan.installments)}
+                {releaseComputationSummary(selectedDetailLoan)}
+                {releaseScheduleTable(selectedDetailLoan.installments)}
               </VStack>
             ) : null}
           </ModalBody>
@@ -10485,7 +10588,7 @@ function LoanReleases({ user }) {
             {selectedDetailLoan ? `${selectedDetailLoan.loanNo} Member Copy` : "Loan Breakdown"}
           </ModalHeader>
           <ModalBody>
-            {selectedDetailLoan ? loanBreakdownPreview(selectedDetailLoan) : null}
+            {selectedDetailLoan ? releaseBreakdownPreview(selectedDetailLoan) : null}
           </ModalBody>
           <ModalFooter>
             <Button variant="outline" mr={3} onClick={printModal.onClose}>Close</Button>
