@@ -65,6 +65,8 @@ function validateSite(directory) {
   assert(index.includes("Tab to select and advance"), "Keyboard member-selection guidance is missing.");
   assert(index.includes("System Administrator records assessment notes and a loan decision"), "Current Admin loan decision flow is missing.");
   assert(index.includes("partial, full, or advance receipts"), "Flexible loan collection workflow is missing.");
+  assert(index.includes("oldest unpaid installment through future installments"),
+    "Sequential advance-payment allocation guidance is missing.");
   assert(!index.includes("Credit Committee / Approver"), "Retired loan Approver role is still shown in the published workflow.");
   assert(!/Tabon|tabon|TABON/.test(index), "Old Tabon branding is still present.");
 }
