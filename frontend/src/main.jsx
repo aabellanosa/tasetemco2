@@ -7711,6 +7711,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         break-after: page;
         page-break-after: always;
       }
+      .proceeds-page,
       .legal-copy,
       .schedule-page {
         break-before: page;
@@ -7737,6 +7738,9 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       }
       .page-one {
         padding-top: 0.55in;
+      }
+      .proceeds-page {
+        padding: 0.85in 0.7in 0.55in;
       }
       .header {
         align-items: center;
@@ -8087,6 +8091,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
           margin: 0;
           overflow: hidden;
         }
+        .proceeds-page,
         .legal-copy,
         .schedule-page {
           break-before: page;
@@ -8183,7 +8188,9 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         <tr><td class="label-cell">CREDIT COMMITTEE:</td><td></td><td></td><td></td></tr>
         <tr><td class="label-cell">BOARD of DIRECTORS:</td><td></td><td></td><td></td></tr>
       </table>
+    </main>
 
+    <section class="page proceeds-page">
       <div class="dash-rule"></div>
       <div class="deductions">
         <span>Amount Granted</span><span>:</span><span>${pesoField(principal)}</span>
@@ -8206,7 +8213,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         thru TMENHS with its authorized representative to deduct the amortization from my salary.
       </p>
       <div class="payee-signature"><div class="signature-space"></div><div>Payee</div></div>
-    </main>
+    </section>
 
     <section class="page legal-copy">
         <div class="annex">ANNEX I</div>
