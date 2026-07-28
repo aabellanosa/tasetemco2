@@ -9374,7 +9374,6 @@ function LoanComputations({ user }) {
   const [applications, setApplications] = useState([]);
   const [loans, setLoans] = useState([]);
   const [selectedApplication, setSelectedApplication] = useState(null);
-  const [selectedLoan, setSelectedLoan] = useState(null);
   const [firstPaymentDate, setFirstPaymentDate] = useState(defaultFirstPaymentDate());
   const [applyCbu, setApplyCbu] = useState(true);
   const [preview, setPreview] = useState(null);
@@ -9382,8 +9381,6 @@ function LoanComputations({ user }) {
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const computationModal = useDisclosure();
-  const scheduleModal = useDisclosure();
-  const printModal = useDisclosure();
   const canCreate = user.permissions.includes("loans:computations:create");
 
   const loadComputations = useCallback(async () => {
@@ -9460,16 +9457,6 @@ function LoanComputations({ user }) {
     } finally {
       setBusyAction("");
     }
-  }
-
-  function viewSchedule(loan) {
-    setSelectedLoan(loan);
-    scheduleModal.onOpen();
-  }
-
-  function previewPrintBreakdown(loan) {
-    setSelectedLoan(loan);
-    printModal.onOpen();
   }
 
   function printLoanBreakdown(loan) {
@@ -9715,7 +9702,6 @@ function LoanComputations({ user }) {
                 <Th isNumeric>Total Payable</Th>
                 <Th>Maturity</Th>
                 <Th>Status</Th>
-                <Th>Action</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -9731,14 +9717,6 @@ function LoanComputations({ user }) {
                   <Td isNumeric>{formatMoney(loan.totalPayable)}</Td>
                   <Td>{loan.maturityDate}</Td>
                   <Td><Badge colorScheme="purple">{loan.status}</Badge></Td>
-                  <Td>
-                    <Flex gap={2} wrap="wrap">
-                      <Button size="sm" onClick={() => viewSchedule(loan)}>View Schedule</Button>
-                      <Button size="sm" variant="outline" onClick={() => previewPrintBreakdown(loan)}>
-                        Print Breakdown
-                      </Button>
-                    </Flex>
-                  </Td>
                 </Tr>
               ))}
             </Tbody>
@@ -9821,39 +9799,6 @@ function LoanComputations({ user }) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={scheduleModal.isOpen} onClose={scheduleModal.onClose} size="6xl" scrollBehavior="inside">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>{selectedLoan ? `${selectedLoan.loanNo} Repayment Schedule` : "Repayment Schedule"}</ModalHeader>
-          <ModalBody>
-            {selectedLoan ? (
-              <VStack align="stretch" spacing={5}>
-                {computationSummary(selectedLoan)}
-                {scheduleTable(selectedLoan.installments)}
-              </VStack>
-            ) : null}
-          </ModalBody>
-          <ModalFooter>
-            <Button onClick={scheduleModal.onClose}>Close</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      <Modal isOpen={printModal.isOpen} onClose={printModal.onClose} size="6xl" scrollBehavior="inside">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>{selectedLoan ? `${selectedLoan.loanNo} Member Copy` : "Loan Breakdown"}</ModalHeader>
-          <ModalBody>
-            {selectedLoan ? loanBreakdownPreview(selectedLoan) : null}
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="outline" mr={3} onClick={printModal.onClose}>Close</Button>
-            <Button colorScheme="green" onClick={() => selectedLoan && printLoanBreakdown(selectedLoan)}>
-              Print
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
     </VStack>
   );
 }
@@ -10217,6 +10162,7 @@ function LoanReleases({ user }) {
   const [search, setSearch] = useState("");
   const [position, setPosition] = useState(null);
   const [selectedLoan, setSelectedLoan] = useState(null);
+  const [selectedDetailLoan, setSelectedDetailLoan] = useState(null);
   const [form, setForm] = useState({
     releaseDate: new Date().toISOString().slice(0, 10),
     referenceNo: "",
@@ -10226,6 +10172,8 @@ function LoanReleases({ user }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const releaseModal = useDisclosure();
+  const scheduleModal = useDisclosure();
+  const printModal = useDisclosure();
   const canCreate = user.permissions.includes("loans:releases:create");
 
   const loadReleases = useCallback(async () => {
@@ -10258,6 +10206,16 @@ function LoanReleases({ user }) {
     setMessage("");
     setError("");
     releaseModal.onOpen();
+  }
+
+  function viewSchedule(loan) {
+    setSelectedDetailLoan(loan);
+    scheduleModal.onOpen();
+  }
+
+  function previewPrintBreakdown(loan) {
+    setSelectedDetailLoan(loan);
+    printModal.onOpen();
   }
 
   async function confirmRelease() {
@@ -10309,18 +10267,17 @@ function LoanReleases({ user }) {
           placeholder="Search loan no., member name, or member no." />
       </FormControl>
 
-      {canCreate ? (
-        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
           <Flex justify="space-between" gap={4} wrap="wrap" mb={4}>
             <Box>
               <Heading size="sm">For Release Queue</Heading>
-              <Text color="gray.600" fontSize="sm" mt={1}>
+              {canCreate ? <Text color="gray.600" fontSize="sm" mt={1}>
                 Available teller cash: {formatMoney(position?.availableCash || 0)}
-              </Text>
+              </Text> : null}
             </Box>
-            <Badge colorScheme={position?.fundingShortage > 0 ? "orange" : "green"} alignSelf="start">
+            {canCreate ? <Badge colorScheme={position?.fundingShortage > 0 ? "orange" : "green"} alignSelf="start">
               Queue shortage: {formatMoney(position?.fundingShortage || 0)}
-            </Badge>
+            </Badge> : null}
           </Flex>
           <TableContainer>
             <Table size="sm">
@@ -10354,15 +10311,23 @@ function LoanReleases({ user }) {
                       <Td isNumeric>{formatMoney(loan.savingsRetentionAmount)}</Td>
                       <Td isNumeric fontWeight="bold">{formatMoney(loan.netProceeds)}</Td>
                       <Td>
-                        <Button
-                          size="sm"
-                          colorScheme="green"
-                          onClick={() => startRelease(loan)}
-                          isDisabled={shortage > 0}
-                          title={shortage > 0 ? `Funding shortage: ${formatMoney(shortage)}` : ""}
-                        >
-                          {shortage > 0 ? `Short ${formatMoney(shortage)}` : "Release"}
-                        </Button>
+                        <Flex gap={2} wrap="wrap">
+                          <Button size="sm" onClick={() => viewSchedule(loan)}>View Schedule</Button>
+                          <Button size="sm" variant="outline" onClick={() => previewPrintBreakdown(loan)}>
+                            Print Breakdown
+                          </Button>
+                          {canCreate ? (
+                            <Button
+                              size="sm"
+                              colorScheme="green"
+                              onClick={() => startRelease(loan)}
+                              isDisabled={shortage > 0}
+                              title={shortage > 0 ? `Funding shortage: ${formatMoney(shortage)}` : ""}
+                            >
+                              {shortage > 0 ? `Short ${formatMoney(shortage)}` : "Release"}
+                            </Button>
+                          ) : null}
+                        </Flex>
                       </Td>
                     </Tr>
                   );
@@ -10378,7 +10343,6 @@ function LoanReleases({ user }) {
             </Table>
           </TableContainer>
         </Box>
-      ) : null}
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Heading size="sm" mb={4}>Release History</Heading>
@@ -10395,11 +10359,13 @@ function LoanReleases({ user }) {
                 <Th>Date</Th>
                 <Th>Status</Th>
                 <Th>Journal</Th>
+                <Th>Action</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {filteredReleases.map((release) => (
-                <Tr key={release.releaseNo}>
+              {filteredReleases.map((release) => {
+                const loan = loans.find((item) => item.loanNo === release.loanNo);
+                return <Tr key={release.releaseNo}>
                   <Td>{release.releaseNo}</Td>
                   <Td>{release.loanNo}</Td>
                   <Td>{release.memberName}</Td>
@@ -10409,8 +10375,16 @@ function LoanReleases({ user }) {
                   <Td>{release.releaseDate}</Td>
                   <Td><Badge colorScheme={release.status === "Posted" ? "green" : "orange"}>{release.status}</Badge></Td>
                   <Td>{release.postedEntryNo || "-"}</Td>
-                </Tr>
-              ))}
+                  <Td>
+                    {loan ? <Flex gap={2} wrap="wrap">
+                      <Button size="sm" onClick={() => viewSchedule(loan)}>View Schedule</Button>
+                      <Button size="sm" variant="outline" onClick={() => previewPrintBreakdown(loan)}>
+                        Print Breakdown
+                      </Button>
+                    </Flex> : "-"}
+                  </Td>
+                </Tr>;
+              })}
             </Tbody>
           </Table>
         </TableContainer>
@@ -10479,6 +10453,47 @@ function LoanReleases({ user }) {
             <Button variant="outline" mr={3} onClick={releaseModal.onClose}>Cancel</Button>
             <Button colorScheme="green" onClick={confirmRelease} isLoading={busy}>
               Confirm Release
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={scheduleModal.isOpen} onClose={scheduleModal.onClose} size="6xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            {selectedDetailLoan ? `${selectedDetailLoan.loanNo} Repayment Schedule` : "Repayment Schedule"}
+          </ModalHeader>
+          <ModalBody>
+            {selectedDetailLoan ? (
+              <VStack align="stretch" spacing={5}>
+                {computationSummary(selectedDetailLoan)}
+                {scheduleTable(selectedDetailLoan.installments)}
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button onClick={scheduleModal.onClose}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={printModal.isOpen} onClose={printModal.onClose} size="6xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            {selectedDetailLoan ? `${selectedDetailLoan.loanNo} Member Copy` : "Loan Breakdown"}
+          </ModalHeader>
+          <ModalBody>
+            {selectedDetailLoan ? loanBreakdownPreview(selectedDetailLoan) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={printModal.onClose}>Close</Button>
+            <Button
+              colorScheme="green"
+              onClick={() => selectedDetailLoan && printLoanBreakdown(selectedDetailLoan)}
+            >
+              Print
             </Button>
           </ModalFooter>
         </ModalContent>
