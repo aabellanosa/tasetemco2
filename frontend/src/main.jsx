@@ -7711,6 +7711,13 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         break-after: page;
         page-break-after: always;
       }
+      .legal-copy,
+      .schedule-page {
+        break-before: page;
+        page-break-before: always;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
       .page:last-child {
         break-after: auto;
         page-break-after: auto;
@@ -7783,13 +7790,17 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         grid-template-columns: 1.28in 12px 1fr;
         align-items: end;
       }
-      .field-line.two {
-        grid-template-columns: 1.28in 12px 2.45in 0.38in 0.02in 1.75in;
+      .field-line.split {
+        grid-template-columns: 1.28in 12px 2.04in 0.18in 0.95in 12px 1.25in;
       }
-      .field-line.two.amount-row {
-        grid-template-columns: 1.28in 12px 2.03in 0.92in 12px 1.52in;
+      .field-line.split > .fill,
+      .field-line.full-line > .fill,
+      .field-line.split > .peso,
+      .field-line.split > .peso > .fill {
+        min-width: 0;
+        width: 100%;
       }
-      .amount-row > span:nth-child(4) {
+      .field-line.split > span:nth-child(5) {
         white-space: nowrap;
       }
       .category-line {
@@ -7865,6 +7876,9 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       .approval-label {
         font-size: 11px;
       }
+      .approval-label:first-child {
+        font-weight: 700;
+      }
       .approval-names {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -7875,6 +7889,9 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       .approval-names > div:last-child {
         justify-self: end;
         min-width: 2.3in;
+      }
+      .approval-sign-space {
+        height: 0.34in;
       }
       .name { font-weight: 700; text-transform: uppercase; }
       .committee-grid {
@@ -8065,8 +8082,15 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       @media print {
         .no-print { display: none; }
         .page {
+          width: 8.5in;
+          height: 13in;
           margin: 0;
-          overflow: visible;
+          overflow: hidden;
+        }
+        .legal-copy,
+        .schedule-page {
+          break-before: page;
+          page-break-before: always;
         }
       }
     </style>
@@ -8090,13 +8114,13 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       <h1>Loan Application Form</h1>
 
       <div class="field-block">
-        <div class="field-line two">
-          <span>Name of Borrower</span><span>:</span><span>${field(application.memberName, 275)}</span>
-          <span>Date</span><span>:</span><span>${field(formatDate(application.applicationDate), 170)}</span>
+        <div class="field-line split">
+          <span>Name of Borrower</span><span>:</span>${field(application.memberName, 0)}
+          <span></span><span>Date</span><span>:</span>${field(formatDate(application.applicationDate), 0)}
         </div>
-        <div class="field-line"><span>Address</span><span>:</span>${field(formData.borrowerAddress, 500)}</div>
-        <div class="field-line"><span>Name of Spouse</span><span>:</span>${field(formData.spouseName, 500)}</div>
-        <div class="field-line"><span>Co-maker</span><span>:</span>${field(formData.coMakerName, 500)}</div>
+        <div class="field-line full-line"><span>Address</span><span>:</span>${field(formData.borrowerAddress, 0)}</div>
+        <div class="field-line full-line"><span>Name of Spouse</span><span>:</span>${field(formData.spouseName, 0)}</div>
+        <div class="field-line full-line"><span>Co-maker</span><span>:</span>${field(formData.coMakerName, 0)}</div>
         <div class="field-line category-line">
           <span>Type of Loan Applied</span><span>:</span>
           <span>
@@ -8106,9 +8130,9 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
             ${formCategoryMark(category, "Other")} Others: ${formData.otherLoanType ? field(formData.otherLoanType, 120) : blank(120)}
           </span>
         </div>
-        <div class="field-line two amount-row">
-          <span>Purpose of Loan</span><span>:</span><span>${field(application.purpose, 210)}</span>
-          <span>Amount Applied</span><span>:</span><span>${moneyField(principal, 160)}</span>
+        <div class="field-line split">
+          <span>Purpose of Loan</span><span>:</span>${field(application.purpose, 0)}
+          <span></span><span>Amount Applied</span><span>:</span>${moneyField(principal, 0)}
         </div>
         <div class="field-line"><span>Term of Payment</span><span>:</span><span>${field(termMonths, 90)} Months</span></div>
       </div>
@@ -8152,8 +8176,8 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         <div class="approval-label center"><strong>APPROVED BY:</strong></div>
       </div>
       <section class="approval-names">
-        <div><div class="name">JOEL L. YPARRAGUIRRE</div><div>Coop manager</div></div>
-        <div><div class="name">VIRGINIA V. LACUNA</div><div>BOD Chairman</div></div>
+        <div><div class="approval-sign-space"></div><div class="name">JOEL L. YPARRAGUIRRE</div><div>Coop manager</div></div>
+        <div><div class="approval-sign-space"></div><div class="name">VIRGINIA V. LACUNA</div><div>BOD Chairman</div></div>
       </section>
       <table class="committee-grid">
         <tr><td class="label-cell">CREDIT COMMITTEE:</td><td></td><td></td><td></td></tr>
