@@ -793,7 +793,8 @@ async function run() {
         row.costCenterCode === "" && row.status === "Active") ||
       !["WATER", "LIGHT", "WIFI", "SSS", "PAG-IBIG", "PHILHEALTH"].every((code) =>
         disbursementCategoryRows.some((row) => row.code === code &&
-          row.costCenterCode === "" && row.expenseAccountCode === "5090" && row.status === "Active"))) {
+          row.costCenterCode === "" && row.expenseAccountCode === "5090" && row.status === "Active")) ||
+      disbursementCategoryRows.filter((row) => row.status === "Active").at(-1)?.code !== "OTHER-EXPENSES") {
       throw new Error("Daily Disbursement should seed cost-center and cooperative-operation categories.");
     }
     const dailyDisbursementDraft = await fetch(`${baseUrl}/api/daily-disbursement-batches`, {
