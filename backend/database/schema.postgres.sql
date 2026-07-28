@@ -83,7 +83,8 @@ INSERT INTO remittance_sources (code, name, reporting_group, cost_center_code, i
   ('WATER-VENDO-B', 'Water Vendo B', 'Water Vendo B', '', '4080', 'Other Operating Income', 100),
   ('CATERING', 'Catering', 'Catering', '', '4080', 'Other Operating Income', 110),
   ('GCASH', 'GCASH', 'GCASH', '', '4080', 'Other Operating Income', 120),
-  ('LOADER', 'LOADER', 'LOADER', '', '4080', 'Other Operating Income', 130)
+  ('LOADER', 'LOADER', 'LOADER', '', '4080', 'Other Operating Income', 130),
+  ('POS', 'POS', 'POS', '', '4080', 'Other Operating Income', 140)
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS daily_remittance_batches (

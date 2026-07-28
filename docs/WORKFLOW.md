@@ -871,7 +871,7 @@ Secured Savings Subsidiary v1 keeps `secured_savings_balance` separate from regu
 
 Teller / Cashier records cash turned over by cooperative operations using a Remittance Date, Cash Received Date, globally unique receipt/reference, and one or more configured source amounts. The operational date may be backdated but cannot follow the cash date. Drafts have no cash, journal, member-payable, or SUMMO effect. Adding the Draft to the Open teller batch includes its total in expected cashier cash.
 
-After cash count and Bookkeeper review, posting debits `1010 - Cash on Hand` and credits the income account snapshotted from each source definition. Canteen A/B post to Canteen income and remain tied to cost centers C1/C2. WRS and Water Bottle A/B roll up to WRS income while retaining source detail. Standalone sources and Admin-configured additional definitions retain their reporting group, optional cost center, income account, order, and active status. Run `npm run pg:migrate` before deployment.
+After cash count and Bookkeeper review, posting debits `1010 - Cash on Hand` and credits the income account snapshotted from each source definition. Canteen A/B post to Canteen income and remain tied to cost centers C1/C2. WRS and Water Bottle A/B roll up to WRS income while retaining source detail. POS, GCASH, and LOADER are active standalone sources mapped to `4080 - Other Operating Income`. Standalone sources and Admin-configured additional definitions retain their reporting group, optional cost center, income account, order, and active status. Run `npm run pg:migrate` before deployment.
 
 ## 11. Implementation Notes
 

@@ -747,12 +747,12 @@ async function run() {
       headers: { Cookie: tellerCookie }
     });
     const remittanceSourceRows = await remittanceSourcesResponse.json();
-    if (!remittanceSourcesResponse.ok || !["GCASH", "LOADER"].every((code) =>
+    if (!remittanceSourcesResponse.ok || !["GCASH", "LOADER", "POS"].every((code) =>
       remittanceSourceRows.some((row) => row.code === code && row.name === code &&
         row.reportingGroup === code && row.costCenterCode === "" &&
         row.incomeAccountCode === "4080" && row.incomeAccountName === "Other Operating Income" &&
         row.status === "Active"))) {
-      throw new Error("GCASH and LOADER should be active non-cost-center Daily Remittance sources.");
+      throw new Error("GCASH, LOADER, and POS should be active non-cost-center Daily Remittance sources.");
     }
 
     const remittanceDate = new Date().toISOString().slice(0, 10);
