@@ -7677,6 +7677,8 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
   const pesoField = (value, width = 105) =>
     `<span class="peso">${moneyField(value, width)}</span>`;
   const pesoBlank = (width = 105) => `<span class="peso">${blank(width)}</span>`;
+  const receivedAmountField = (value, width = 205) =>
+    `<span class="fill received-amount" style="--fill-width:${width}px">${escapeHtml(formatMoney(value))}</span>`;
   const amortizationRows = Array.from(
     { length: 18 },
     () => "<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
@@ -7784,6 +7786,12 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       .field-line.two {
         grid-template-columns: 1.28in 12px 2.45in 0.38in 0.02in 1.75in;
       }
+      .field-line.two.amount-row {
+        grid-template-columns: 1.28in 12px 2.03in 0.92in 12px 1.52in;
+      }
+      .amount-row > span:nth-child(4) {
+        white-space: nowrap;
+      }
       .category-line {
         white-space: nowrap;
       }
@@ -7815,10 +7823,18 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         padding: 1px 5px;
       }
       .certified {
-        display: grid;
-        grid-template-columns: 1fr 1.05in 0.2in 1.55in 1fr;
-        margin: 0.06in 0 0.16in;
+        margin: 0.06in auto 0.12in;
         text-align: center;
+        width: 4.3in;
+      }
+      .cert-sign-space {
+        height: 0.3in;
+      }
+      .cert-line {
+        display: grid;
+        grid-template-columns: 1.2in 0.2in 1.8in;
+        justify-content: center;
+        align-items: start;
       }
       .dash-rule {
         border-top: 1px dashed #111;
@@ -7854,7 +7870,11 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         grid-template-columns: 1fr 1fr;
         margin: 0 auto 0.11in;
         text-align: center;
-        width: 4.65in;
+        width: 6.65in;
+      }
+      .approval-names > div:last-child {
+        justify-self: end;
+        min-width: 2.3in;
       }
       .name { font-weight: 700; text-transform: uppercase; }
       .committee-grid {
@@ -7891,9 +7911,23 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         line-height: 1.22;
         margin-top: 0.16in;
       }
-      .payee {
+      .received-amount {
+        font-size: 15px;
+        font-weight: 700;
+        text-align: center;
+      }
+      .treasurer {
         margin: 0.18in 0.65in 0 0;
         text-align: right;
+      }
+      .payee-signature {
+        margin: 0.22in 0 0 auto;
+        text-align: center;
+        width: 2.15in;
+      }
+      .payee-signature .signature-space {
+        border-bottom: 1px solid #111;
+        height: 0.36in;
       }
       .legal-copy {
         font-size: 12.8px;
@@ -7932,17 +7966,32 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       }
       .legal-signatures {
         display: grid;
-        grid-template-columns: 1.85in 1fr;
-        line-height: 1.38;
+        grid-template-columns: 1.85in 2.65in;
+        column-gap: 0.12in;
+        row-gap: 0.08in;
+        line-height: 1.2;
         margin-top: 0.16in;
-        width: 4.75in;
+        width: 4.65in;
       }
       .legal-signatures .full {
         grid-column: 1 / 3;
         margin-bottom: 0.1in;
       }
-      .legal-signatures .fill {
-        width: 2.5in;
+      .legal-signature-label {
+        align-self: end;
+        padding-bottom: 2px;
+      }
+      .legal-signature-block {
+        min-height: 0.58in;
+        text-align: center;
+      }
+      .legal-signing-space {
+        height: 0.34in;
+      }
+      .legal-printed-name {
+        border-top: 1px solid #111;
+        min-height: 16px;
+        padding-top: 2px;
       }
       .schedule-page {
         padding: 1.05in 0.42in 0.52in;
@@ -8057,7 +8106,7 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
             ${formCategoryMark(category, "Other")} Others: ${formData.otherLoanType ? field(formData.otherLoanType, 120) : blank(120)}
           </span>
         </div>
-        <div class="field-line two">
+        <div class="field-line two amount-row">
           <span>Purpose of Loan</span><span>:</span><span>${field(application.purpose, 210)}</span>
           <span>Amount Applied</span><span>:</span><span>${moneyField(principal, 160)}</span>
         </div>
@@ -8065,9 +8114,9 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
       </div>
 
       <section class="signature-row">
-        <div class="signature">Signature over Printed Name - Co Maker</div>
-        <div class="signature">Signature of Spouse</div>
         <div class="signature">Signature of Borrower</div>
+        <div class="signature">Signature of Spouse</div>
+        <div class="signature">Signature over Printed Name - Co Maker</div>
       </section>
 
       <div class="bookkeeper-title">To be filled by the Bookkeeper</div>
@@ -8082,7 +8131,13 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         <tr><td>Due Date</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
       </table>
 
-      <div class="certified"><span></span><span>Certified Correct</span><span>:</span><span><strong>ELLEN JOY P. LATIBAN</strong><br>Bookkeeper</span><span></span></div>
+      <div class="certified">
+        <div class="cert-sign-space"></div>
+        <div class="cert-line">
+          <span>Certified Correct</span><span>:</span>
+          <span><strong>ELLEN JOY P. LATIBAN</strong><br>Bookkeeper</span>
+        </div>
+      </div>
       <div class="dash-rule"></div>
       <div class="action-title">Action Taken</div>
       <div class="action-checks">${approvedMark} Approved &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${disapprovedMark} Disapproved</div>
@@ -8119,14 +8174,14 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         <span>Net Amount Received</span><span>:</span><span>${pesoField(netProceeds)}</span>
       </div>
       <div>Disbursed the amount of P ${blank(225)} in payment of the above loan</div>
-      <div class="payee"><strong>FE B. PENALES</strong><br>Coop Treasurer</div>
+      <div class="treasurer"><strong>FE B. PENALES</strong><br>Coop Treasurer</div>
 
       <p class="ack">
-        I acknowledge receipt of the proceeds of my loan in the amount of ${field(formatMoney(netProceeds), 205)}
+        I acknowledge receipt of the proceeds of my loan in the amount of ${receivedAmountField(netProceeds)}
         and I hereby authorize the TASETEMCO<br>
         thru TMENHS with its authorized representative to deduct the amortization from my salary.
       </p>
-      <div class="payee">${blank(150)}<br>Payee</div>
+      <div class="payee-signature"><div class="signature-space"></div><div>Payee</div></div>
     </main>
 
     <section class="page legal-copy">
@@ -8178,10 +8233,14 @@ function buildLoanApplicationFormPrintHtml(application, formData, preparedBy = "
         </p>
         <div class="legal-signatures">
           <div class="full">In joint-several capacity:</div>
-          <div>Name &amp; Signature of Maker</div><div>: ${field(application.memberName, 235)}</div>
-          <div>Name &amp; Signature of Co-Maker</div><div>: ${field(formData.coMakerName, 235)}</div>
-          <div>With Marital Consent</div><div>: ${field(formData.spouseName, 235)}</div>
-          <div>Signed in the presence of</div><div>: ${blank(235)}</div>
+          <div class="legal-signature-label">Name &amp; Signature of Maker</div>
+          <div class="legal-signature-block"><div class="legal-signing-space"></div><div class="legal-printed-name">${line(application.memberName)}</div></div>
+          <div class="legal-signature-label">Name &amp; Signature of Co-Maker</div>
+          <div class="legal-signature-block"><div class="legal-signing-space"></div><div class="legal-printed-name">${line(formData.coMakerName)}</div></div>
+          <div class="legal-signature-label">With Marital Consent</div>
+          <div class="legal-signature-block"><div class="legal-signing-space"></div><div class="legal-printed-name">${line(formData.spouseName)}</div></div>
+          <div class="legal-signature-label">Signed in the presence of</div>
+          <div class="legal-signature-block"><div class="legal-signing-space"></div><div class="legal-printed-name">&nbsp;</div></div>
         </div>
       </section>
 
