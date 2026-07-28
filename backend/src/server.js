@@ -196,6 +196,7 @@ const persistedTables = [
   "summo_rules",
   "journal_entry_lines",
   "journal_entries",
+  "loan_collection_allocations",
   "loan_collections",
   "loan_releases",
   "loan_installments",
@@ -489,6 +490,15 @@ const requiredSchemaColumns = {
     "posted_by",
     "posted_entry_no",
     "posted_at",
+    "created_at"
+  ],
+  loan_collection_allocations: [
+    "collection_no",
+    "loan_no",
+    "installment_no",
+    "principal_amount",
+    "interest_amount",
+    "amount_applied",
     "created_at"
   ],
   teller_fundings: [
@@ -1929,20 +1939,50 @@ function memberSystemLoanSummary(loan) {
   };
 }
 
-function allocateLoanCollectionPayment(amountReceived, installment) {
+function allocateLoanCollectionPayment(amountReceived, installments) {
   let remainingPayment = moneyValue(amountReceived);
-  const interestAmount = Math.min(remainingPayment, moneyValue(installment.interestRemaining ?? installment.interestDue));
-  remainingPayment = moneyValue(remainingPayment - interestAmount);
-  const scheduledPrincipal = Math.min(
-    remainingPayment,
-    moneyValue(installment.principalRemaining ?? installment.principalDue)
-  );
-  remainingPayment = moneyValue(remainingPayment - scheduledPrincipal);
+  const allocations = [];
+
+  for (const installment of installments) {
+    if (remainingPayment <= 0) break;
+    const interestAmount = Math.min(
+      remainingPayment,
+      moneyValue(installment.interestRemaining ?? installment.interestDue)
+    );
+    remainingPayment = moneyValue(remainingPayment - interestAmount);
+    const principalAmount = Math.min(
+      remainingPayment,
+      moneyValue(installment.principalRemaining ?? installment.principalDue)
+    );
+    remainingPayment = moneyValue(remainingPayment - principalAmount);
+    const amountApplied = addMoney(interestAmount, principalAmount);
+    if (amountApplied > 0) {
+      allocations.push({
+        installmentNo: installment.installmentNo,
+        interestAmount: moneyValue(interestAmount),
+        principalAmount: moneyValue(principalAmount),
+        amountApplied
+      });
+    }
+  }
 
   return {
-    interestAmount: moneyValue(interestAmount),
-    principalAmount: moneyValue(scheduledPrincipal + Math.max(0, remainingPayment))
+    allocations,
+    interestAmount: moneyValue(allocations.reduce((total, item) => addMoney(total, item.interestAmount), 0)),
+    principalAmount: moneyValue(allocations.reduce((total, item) => addMoney(total, item.principalAmount), 0))
   };
+}
+
+function loanCollectionAllocationRows(collections) {
+  return collections.flatMap((collection) =>
+    Array.isArray(collection.allocations) && collection.allocations.length
+      ? collection.allocations.map((allocation) => ({
+          ...allocation,
+          loanNo: collection.loanNo,
+          amountReceived: allocation.amountApplied
+        }))
+      : [collection]
+  );
 }
 
 async function listLoans() {
@@ -1953,7 +1993,7 @@ async function listLoans() {
       ...loan,
       installments: decorateLoanInstallments(
         loanInstallments.filter((item) => item.loanNo === loan.loanNo),
-        loanCollections.filter((item) => item.loanNo === loan.loanNo)
+        loanCollectionAllocationRows(loanCollections.filter((item) => item.loanNo === loan.loanNo))
       )
     }));
   }
@@ -1988,8 +2028,8 @@ async function listLoans() {
   const [collectionRows] = await db.execute(
     `SELECT loan_no AS loanNo, installment_no AS installmentNo,
             principal_amount AS principalAmount, interest_amount AS interestAmount,
-            amount_received AS amountReceived
-     FROM loan_collections`
+            amount_applied AS amountReceived
+     FROM loan_collection_allocations`
   );
 
   return loanRows.map((loan) => mapLoan({
@@ -2595,7 +2635,15 @@ function mapLoanCollection(row) {
     postedBy: row.postedBy || "",
     postedEntryNo: row.postedEntryNo || "",
     postedAt: row.postedAt || "",
-    createdAt: row.createdAt || ""
+    createdAt: row.createdAt || "",
+    allocations: Array.isArray(row.allocations)
+      ? row.allocations.map((item) => ({
+          installmentNo: Number(item.installmentNo || 0),
+          principalAmount: Number(item.principalAmount || 0),
+          interestAmount: Number(item.interestAmount || 0),
+          amountApplied: Number(item.amountApplied || 0)
+        }))
+      : []
   };
 }
 
@@ -2616,7 +2664,17 @@ async function listLoanCollections() {
      FROM loan_collections
      ORDER BY created_at DESC, id DESC`
   );
-  return rows.map(mapLoanCollection);
+  const [allocationRows] = await db.execute(
+    `SELECT collection_no AS collectionNo, installment_no AS installmentNo,
+            principal_amount AS principalAmount, interest_amount AS interestAmount,
+            amount_applied AS amountApplied
+     FROM loan_collection_allocations
+     ORDER BY collection_no, installment_no`
+  );
+  return rows.map((row) => mapLoanCollection({
+    ...row,
+    allocations: allocationRows.filter((item) => item.collectionNo === row.collectionNo)
+  }));
 }
 
 function validateLoanCollectionInput(body, installment, releaseDate = "", outstandingBalance = installment.totalRemaining) {
@@ -2676,7 +2734,10 @@ async function recordLoanCollection(loanNo, body, user) {
   if (validation.error) {
     return { error: validation.error, statusCode: 400 };
   }
-  const allocation = allocateLoanCollectionPayment(validation.value.amountReceived, installment);
+  const allocation = allocateLoanCollectionPayment(
+    validation.value.amountReceived,
+    loan.installments.filter((item) => item.status !== "Paid" && item.totalRemaining > 0)
+  );
   const batchResult = await getOpenTellerBatch(user);
   if (batchResult.error) {
     return batchResult;
@@ -2697,19 +2758,26 @@ async function recordLoanCollection(loanNo, body, user) {
       memberName: loan.memberName,
       principalAmount: allocation.principalAmount,
       interestAmount: allocation.interestAmount,
+      allocations: allocation.allocations,
       ...validation.value,
       receivedBy: user.username,
       status: "Teller Batch",
       createdAt: new Date().toISOString()
     };
     loanCollections.unshift(collection);
-    const storedInstallment = loanInstallments.find(
-      (item) => item.loanNo === loanNo && item.installmentNo === installment.installmentNo
-    );
-    storedInstallment.status =
-      moneyValue(installment.totalPaid + validation.value.amountReceived) + 0.005 >= moneyValue(installment.totalDue)
-        ? "Paid"
-        : "Partial";
+    for (const item of allocation.allocations) {
+      const decoratedInstallment = loan.installments.find(
+        (row) => row.installmentNo === item.installmentNo
+      );
+      const storedInstallment = loanInstallments.find(
+        (row) => row.loanNo === loanNo && row.installmentNo === item.installmentNo
+      );
+      storedInstallment.status =
+        moneyValue(decoratedInstallment.totalPaid + item.amountApplied) + 0.005 >=
+        moneyValue(decoratedInstallment.totalDue)
+          ? "Paid"
+          : "Partial";
+    }
     return {
       collection: mapLoanCollection(collection),
       loan: (await listLoans()).find((item) => item.loanNo === loanNo)
@@ -2762,8 +2830,8 @@ async function recordLoanCollection(loanNo, body, user) {
     const [collectionRows] = await connection.execute(
       `SELECT loan_no AS loanNo, installment_no AS installmentNo,
               principal_amount AS principalAmount, interest_amount AS interestAmount,
-              amount_received AS amountReceived
-       FROM loan_collections
+              amount_applied AS amountReceived
+       FROM loan_collection_allocations
        WHERE loan_no = ?`,
       [loanNo]
     );
@@ -2792,7 +2860,7 @@ async function recordLoanCollection(loanNo, body, user) {
     }
     const lockedAllocation = allocateLoanCollectionPayment(
       lockedValidation.value.amountReceived,
-      lockedInstallment
+      decoratedInstallments.filter((item) => item.status !== "Paid" && item.totalRemaining > 0)
     );
     const collectionNo = await nextLoanCollectionNo(connection);
     await connection.execute(
@@ -2809,17 +2877,28 @@ async function recordLoanCollection(loanNo, body, user) {
         user.username
       ]
     );
-    const nextInstallmentStatus =
-      moneyValue(lockedInstallment.totalPaid + lockedValidation.value.amountReceived) + 0.005 >=
-      moneyValue(lockedInstallment.totalDue)
-        ? "Paid"
-        : "Partial";
-    await connection.execute(
-      `UPDATE loan_installments
-       SET status = ?
-       WHERE loan_no = ? AND installment_no = ?`,
-      [nextInstallmentStatus, loanNo, lockedInstallment.installmentNo]
-    );
+    for (const item of lockedAllocation.allocations) {
+      await connection.execute(
+        `INSERT INTO loan_collection_allocations
+          (collection_no, loan_no, installment_no, principal_amount, interest_amount, amount_applied)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [collectionNo, loanNo, item.installmentNo, item.principalAmount, item.interestAmount, item.amountApplied]
+      );
+      const decoratedInstallment = decoratedInstallments.find(
+        (row) => row.installmentNo === item.installmentNo
+      );
+      const status =
+        moneyValue(decoratedInstallment.totalPaid + item.amountApplied) + 0.005 >=
+        moneyValue(decoratedInstallment.totalDue)
+          ? "Paid"
+          : "Partial";
+      await connection.execute(
+        `UPDATE loan_installments
+         SET status = ?
+         WHERE loan_no = ? AND installment_no = ?`,
+        [status, loanNo, item.installmentNo]
+      );
+    }
     await connection.commit();
     return {
       collection: (await listLoanCollections()).find((item) => item.collectionNo === collectionNo),

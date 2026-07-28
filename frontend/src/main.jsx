@@ -193,13 +193,46 @@ function addMoney(...values) {
   return values.reduce((total, value) => total + moneyCents(value), 0) / MONEY_SCALE;
 }
 
-function previewLoanCollectionAllocation(amountReceived, installment, outstandingBalance = 0) {
+function previewLoanCollectionAllocation(amountReceived, installments = []) {
   const amount = Math.max(0, moneyValue(amountReceived));
-  const interestRemaining = moneyValue(installment?.interestRemaining ?? installment?.interestDue ?? 0);
-  const principalRemaining = moneyValue(installment?.principalRemaining ?? installment?.principalDue ?? 0);
-  const dueNow = moneyValue(installment?.totalRemaining ?? installment?.totalDue ?? 0);
-  const interestApplied = Math.min(amount, interestRemaining);
-  const principalApplied = Math.max(0, moneyValue(amount - interestApplied));
+  const collectibleInstallments = installments.filter(
+    (installment) => installment.status !== "Paid" && installment.totalRemaining > 0
+  );
+  const dueNow = moneyValue(collectibleInstallments[0]?.totalRemaining ?? 0);
+  const outstandingBalance = moneyValue(
+    collectibleInstallments.reduce((total, installment) => addMoney(total, installment.totalRemaining), 0)
+  );
+  let remaining = amount;
+  const allocations = [];
+  for (const installment of collectibleInstallments) {
+    if (remaining <= 0) break;
+    const interestApplied = Math.min(
+      remaining,
+      moneyValue(installment.interestRemaining ?? installment.interestDue ?? 0)
+    );
+    remaining = moneyValue(remaining - interestApplied);
+    const principalApplied = Math.min(
+      remaining,
+      moneyValue(installment.principalRemaining ?? installment.principalDue ?? 0)
+    );
+    remaining = moneyValue(remaining - principalApplied);
+    const amountApplied = addMoney(interestApplied, principalApplied);
+    if (amountApplied > 0) {
+      allocations.push({
+        installmentNo: installment.installmentNo,
+        interestApplied,
+        principalApplied,
+        amountApplied,
+        result: amountApplied + 0.005 >= installment.totalRemaining ? "Paid" : "Partial"
+      });
+    }
+  }
+  const interestApplied = moneyValue(
+    allocations.reduce((total, item) => addMoney(total, item.interestApplied), 0)
+  );
+  const principalApplied = moneyValue(
+    allocations.reduce((total, item) => addMoney(total, item.principalApplied), 0)
+  );
   const remainingAfterReceipt = Math.max(0, moneyValue(outstandingBalance - amount));
   const paymentType =
     amount > dueNow
@@ -219,9 +252,8 @@ function previewLoanCollectionAllocation(amountReceived, installment, outstandin
       "Full Payment": "green",
       "Advance Payment": "blue"
     }[paymentType],
-    principalRemaining,
-    interestRemaining,
-    dueNow
+    dueNow,
+    allocations
   };
 }
 
@@ -10787,8 +10819,7 @@ function LoanCollections({ user }) {
     : 0;
   const collectionPreview = previewLoanCollectionAllocation(
     form.amountReceived,
-    selectedInstallment,
-    selectedOutstandingBalance
+    selectedLoan?.installments || []
   );
 
   return (
@@ -10890,7 +10921,11 @@ function LoanCollections({ user }) {
                   <Td>{collection.collectionNo}</Td>
                   <Td>{collection.loanNo}</Td>
                   <Td>{collection.memberName}</Td>
-                  <Td>{collection.installmentNo}</Td>
+                  <Td>
+                    {collection.allocations?.length > 1
+                      ? `${collection.allocations[0].installmentNo}–${collection.allocations.at(-1).installmentNo}`
+                      : collection.installmentNo}
+                  </Td>
                   <Td>{collection.referenceNo}</Td>
                   <Td isNumeric>{formatMoney(collection.principalAmount)}</Td>
                   <Td isNumeric>{formatMoney(collection.interestAmount)}</Td>
@@ -10994,9 +11029,39 @@ function LoanCollections({ user }) {
                       <Text fontWeight="bold">{formatMoney(collectionPreview.remainingAfterReceipt)}</Text>
                     </Box>
                   </Grid>
+                  {collectionPreview.allocations.length ? (
+                    <TableContainer mt={4}>
+                      <Table size="sm" bg="white">
+                        <Thead>
+                          <Tr>
+                            <Th>Installment</Th>
+                            <Th isNumeric>Interest</Th>
+                            <Th isNumeric>Principal</Th>
+                            <Th isNumeric>Applied</Th>
+                            <Th>Result</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {collectionPreview.allocations.map((allocation) => (
+                            <Tr key={allocation.installmentNo}>
+                              <Td>{allocation.installmentNo}</Td>
+                              <Td isNumeric>{formatMoney(allocation.interestApplied)}</Td>
+                              <Td isNumeric>{formatMoney(allocation.principalApplied)}</Td>
+                              <Td isNumeric>{formatMoney(allocation.amountApplied)}</Td>
+                              <Td>
+                                <Badge colorScheme={allocation.result === "Paid" ? "green" : "orange"}>
+                                  {allocation.result}
+                                </Badge>
+                              </Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </Table>
+                    </TableContainer>
+                  ) : null}
                 </Box>
                 <Text color="gray.500" fontSize="sm">
-                  Collections apply first to remaining interest, then principal. Any excess over this installment is treated as advance principal payment.
+                  Collections apply to the oldest unpaid installment first, then continue through future installments. Each installment applies interest before principal; the original schedule is not recomputed.
                 </Text>
               </VStack>
             ) : null}

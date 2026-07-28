@@ -35,6 +35,8 @@ async function waitForHealth() {
 }
 
 async function run() {
+  const loanTransactionDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
   if (!["memory", "postgres"].includes(smokeMode)) {
     throw new Error("SMOKE_DB_MODE must be memory or postgres.");
   }
@@ -3330,7 +3332,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-20",
+        releaseDate: loanTransactionDate,
         referenceNo: "LV-SMOKE-NO-FUNDING",
         cashReleased: 11830
       })
@@ -3376,7 +3378,7 @@ async function run() {
         sourceAccountCode: "1020",
         sourceAccountName: "Cash in Bank",
         referenceNo: "TF-SMOKE-001",
-        fundingDate: "2026-07-20"
+        fundingDate: loanTransactionDate
       })
     });
     const prepareTellerFundingBody = await prepareTellerFunding.json();
@@ -3508,7 +3510,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-20",
+        releaseDate: loanTransactionDate,
         referenceNo: "LV-SMOKE-WRONG-CASH",
         cashReleased: 12000
       })
@@ -3525,7 +3527,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-20",
+        releaseDate: loanTransactionDate,
         referenceNo: "WV-SMOKE-001",
         cashReleased: 11830
       })
@@ -3542,7 +3544,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-20",
+        releaseDate: loanTransactionDate,
         referenceNo: "LV-SMOKE-001",
         cashReleased: 11830
       })
@@ -3567,7 +3569,7 @@ async function run() {
         Cookie: tellerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-20",
+        releaseDate: loanTransactionDate,
         referenceNo: "LV-SMOKE-002",
         cashReleased: 11830
       })
@@ -3840,7 +3842,7 @@ async function run() {
           Cookie: tellerCookie
         },
         body: JSON.stringify({
-          collectionDate: "2026-06-30",
+          collectionDate: "2000-01-01",
           referenceNo: "OR-LOAN-EARLY-DATE",
           amountReceived: 1950
         })
@@ -3860,7 +3862,7 @@ async function run() {
           Cookie: tellerCookie
         },
         body: JSON.stringify({
-          collectionDate: "2026-07-21",
+          collectionDate: loanTransactionDate,
           referenceNo: "OR-LOAN-EXCESSIVE",
           amountReceived: 999999
         })
@@ -3880,9 +3882,9 @@ async function run() {
           Cookie: tellerCookie
         },
         body: JSON.stringify({
-          collectionDate: "2026-07-21",
+          collectionDate: loanTransactionDate,
           referenceNo: "OR-LOAN-SMOKE-001",
-          amountReceived: 1950
+          amountReceived: 4000
         })
       }
     );
@@ -3893,20 +3895,29 @@ async function run() {
       !recordLoanCollection.ok ||
       !smokeCollectionNo ||
       recordLoanCollectionBody.collection.installmentNo !== 1 ||
-      recordLoanCollectionBody.collection.principalAmount !== 1625 ||
-      recordLoanCollectionBody.collection.interestAmount !== 325 ||
-      recordLoanCollectionBody.collection.amountReceived !== 1950 ||
+      recordLoanCollectionBody.collection.principalAmount !== 3250 ||
+      recordLoanCollectionBody.collection.interestAmount !== 750 ||
+      recordLoanCollectionBody.collection.amountReceived !== 4000 ||
+      recordLoanCollectionBody.collection.allocations.length !== 3 ||
+      recordLoanCollectionBody.collection.allocations[0].installmentNo !== 1 ||
+      recordLoanCollectionBody.collection.allocations[1].installmentNo !== 2 ||
+      recordLoanCollectionBody.collection.allocations[2].installmentNo !== 3 ||
+      recordLoanCollectionBody.collection.allocations[2].amountApplied !== 140.62 ||
       recordLoanCollectionBody.collection.status !== "Teller Batch"
     ) {
-      throw new Error("Teller should record the exact next scheduled installment in the Open batch.");
+      throw new Error("Teller should allocate an advance receipt across consecutive installments.");
     }
 
     const collectedLoan = recordLoanCollectionBody.loan;
     if (
       collectedLoan.installments.find((item) => item.installmentNo === 1)?.status !== "Paid" ||
-      collectedLoan.installments.find((item) => item.installmentNo === 2)?.status !== "Scheduled"
+      collectedLoan.installments.find((item) => item.installmentNo === 2)?.status !== "Paid" ||
+      collectedLoan.installments.find((item) => item.installmentNo === 3)?.status !== "Partial" ||
+      collectedLoan.installments.find((item) => item.installmentNo === 3)?.totalRemaining !== 1728.13
     ) {
-      throw new Error("Collection should mark only the next scheduled installment Paid.");
+      throw new Error(
+        `Advance collection should pay future installments in order and retain the partial remainder. Got ${JSON.stringify(collectedLoan.installments.slice(0, 3))}`
+      );
     }
 
     const duplicateCollectionReference = await fetch(
@@ -3918,7 +3929,7 @@ async function run() {
           Cookie: tellerCookie
         },
         body: JSON.stringify({
-          collectionDate: "2026-07-21",
+          collectionDate: loanTransactionDate,
           referenceNo: "OR-LOAN-SMOKE-001",
           amountReceived: 1909.38
         })
@@ -3935,16 +3946,16 @@ async function run() {
         "Content-Type": "application/json",
         Cookie: tellerCookie
       },
-      body: JSON.stringify({ actualCash: 1950 })
+      body: JSON.stringify({ actualCash: 4000 })
     });
     const collectionCashCountBody = await collectionCashCount.json();
 
     if (
       !collectionCashCount.ok ||
-      collectionCashCountBody.cashCount.expectedCash !== 1950 ||
+      collectionCashCountBody.cashCount.expectedCash !== 4000 ||
       collectionCashCountBody.cashCount.variance !== 0
     ) {
-      throw new Error("The exact installment receipt should increase expected Teller cash.");
+      throw new Error("The advance receipt should increase expected Teller cash by the full amount.");
     }
 
     const collectionBatchId = recordLoanCollectionBody.collection.batchId;
@@ -3976,13 +3987,13 @@ async function run() {
       (result) => result.id === smokeCollectionNo && result.batchType === "Loan Collection"
     );
     const collectionCashLine = postedCollectionResult?.entry.lines.find(
-      (line) => line.accountCode === "1010" && line.debit === 1950
+      (line) => line.accountCode === "1010" && line.debit === 4000
     );
     const collectionPrincipalLine = postedCollectionResult?.entry.lines.find(
-      (line) => line.accountCode === "1050" && line.credit === 1625
+      (line) => line.accountCode === "1050" && line.credit === 3250
     );
     const collectionInterestLine = postedCollectionResult?.entry.lines.find(
-      (line) => line.accountCode === "4010" && line.credit === 325
+      (line) => line.accountCode === "4010" && line.credit === 750
     );
 
     if (
@@ -3993,7 +4004,7 @@ async function run() {
       !collectionPrincipalLine ||
       !collectionInterestLine
     ) {
-      throw new Error("Bookkeeper should post the balanced scheduled installment journal.");
+      throw new Error("Bookkeeper should post the balanced advance-payment journal.");
     }
 
     const postedCollections = await fetch(`${baseUrl}/api/loan-collections`, {
@@ -4007,6 +4018,7 @@ async function run() {
     if (
       !postedCollections.ok ||
       postedCollection?.status !== "Posted" ||
+      postedCollection?.allocations.length !== 3 ||
       postedCollection?.postedEntryNo !== postedCollectionResult.entry.id
     ) {
       throw new Error("Loan collection history should expose its posted journal evidence.");
@@ -4019,7 +4031,7 @@ async function run() {
         Cookie: loanOfficerCookie
       },
       body: JSON.stringify({
-        releaseDate: "2026-07-20",
+        releaseDate: loanTransactionDate,
         referenceNo: "LV-SMOKE-OFFICER",
         cashReleased: 11830
       })
