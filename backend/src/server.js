@@ -3481,6 +3481,9 @@ function validateMemberProfileInput(body) {
   const contactNumber = String(body.contactNumber || "").trim();
   const address = String(body.address || "").trim();
   const birthdate = normalizeOptionalDate(body.birthdate);
+  const gender = String(body.gender || "").trim();
+  const idType = String(body.idType || "").trim();
+  const idNumber = String(body.idNumber || "").trim();
   const civilStatus = String(body.civilStatus || "").trim();
   const occupation = String(body.occupation || "").trim();
   const membershipDate = normalizeOptionalDate(body.membershipDate);
@@ -3499,6 +3502,18 @@ function validateMemberProfileInput(body) {
     return { error: "Member status must be Active or Inactive." };
   }
 
+  if (gender && !memberApplicationGenders.includes(gender)) {
+    return { error: "Select a valid gender." };
+  }
+
+  if (idType && !memberApplicationIdTypes.includes(idType)) {
+    return { error: "Select a valid ID type." };
+  }
+
+  if (Boolean(idType) !== Boolean(idNumber)) {
+    return { error: "ID type and ID number must be provided together." };
+  }
+
   if (!isMoney(previousLoanBalance)) {
     return { error: "Previous Loan Balance must be a valid money amount." };
   }
@@ -3510,6 +3525,9 @@ function validateMemberProfileInput(body) {
       contactNumber,
       address,
       birthdate,
+      gender,
+      idType,
+      idNumber,
       civilStatus,
       occupation,
       membershipDate,
@@ -3548,7 +3566,8 @@ async function updateMemberProfile(memberId, input) {
   await db.execute(
     `UPDATE members
      SET full_name = ?, cluster_name = ?, contact_number = ?, address = ?,
-         birthdate = ?, civil_status = ?, occupation = ?, membership_date = ?,
+         birthdate = ?, gender = ?, id_type = ?, id_number = ?,
+         civil_status = ?, occupation = ?, membership_date = ?,
          previous_loan_balance = ?, status = ?
      WHERE member_no = ?`,
     [
@@ -3557,6 +3576,9 @@ async function updateMemberProfile(memberId, input) {
       input.contactNumber,
       input.address,
       input.birthdate,
+      input.gender,
+      input.idType,
+      input.idNumber,
       input.civilStatus,
       input.occupation,
       input.membershipDate,

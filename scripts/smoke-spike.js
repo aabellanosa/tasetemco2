@@ -484,6 +484,9 @@ async function run() {
         contactNumber: "0999-111-2222",
         address: "Smoke Test Address",
         birthdate: "1990-01-01",
+        gender: "Male",
+        idType: "Philippine Passport",
+        idNumber: "P1234567A",
         civilStatus: "Single",
         occupation: "Prototype tester",
         membershipDate: "2026-06-14",
@@ -499,6 +502,9 @@ async function run() {
       !memberProfileUpdate.ok ||
       memberProfileUpdateBody.member.group !== "RETIREES" ||
       memberProfileUpdateBody.member.contactNumber !== "0999-111-2222" ||
+      memberProfileUpdateBody.member.gender !== "Male" ||
+      memberProfileUpdateBody.member.idType !== "Philippine Passport" ||
+      memberProfileUpdateBody.member.idNumber !== "P1234567A" ||
       memberProfileUpdateBody.member.previousLoanBalance !== 1250.75 ||
       memberProfileUpdateBody.member.share !== 0 ||
       memberProfileUpdateBody.member.savings !== 0

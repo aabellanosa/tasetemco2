@@ -344,7 +344,14 @@ function MemberCombobox({ members, value, onChange, placeholder = "Search member
   </Box>;
 }
 
-function OptionCombobox({ options, value, onChange, placeholder = "Search options", noMatchesText = "No options match." }) {
+function OptionCombobox({
+  options,
+  value,
+  onChange,
+  placeholder = "Search options",
+  noMatchesText = "No options match.",
+  isRequired = true
+}) {
   const [query, setQuery] = useState(value || "");
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -399,7 +406,7 @@ function OptionCombobox({ options, value, onChange, placeholder = "Search option
       value={query}
       placeholder={placeholder}
       autoComplete="off"
-      required
+      required={isRequired}
       role="combobox"
       aria-expanded={isOpen}
       aria-autocomplete="list"
@@ -3087,6 +3094,9 @@ function Members({ user }) {
     contactNumber: "",
     address: "",
     birthdate: "",
+    gender: "",
+    idType: "",
+    idNumber: "",
     civilStatus: "",
     occupation: "",
     membershipDate: "",
@@ -3593,6 +3603,9 @@ function Members({ user }) {
         contactNumber: data.member.contactNumber || "",
         address: data.member.address || "",
         birthdate: data.member.birthdate ? String(data.member.birthdate).slice(0, 10) : "",
+        gender: data.member.gender || "",
+        idType: data.member.idType || "",
+        idNumber: data.member.idNumber || "",
         civilStatus: data.member.civilStatus || "",
         occupation: data.member.occupation || "",
         membershipDate: data.member.membershipDate ? String(data.member.membershipDate).slice(0, 10) : "",
@@ -4526,6 +4539,42 @@ function Members({ user }) {
                   type="date"
                   value={memberProfileForm.birthdate}
                   onChange={(event) => updateMemberProfileForm("birthdate", event.target.value)}
+                  isReadOnly={!canEditMemberProfile}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Gender</FormLabel>
+                <Select
+                  value={memberProfileForm.gender}
+                  onChange={(event) => updateMemberProfileForm("gender", event.target.value)}
+                  isDisabled={!canEditMemberProfile}
+                >
+                  <option value="">Unspecified</option>
+                  {memberApplicationGenders.map((gender) => (
+                    <option key={gender} value={gender}>{gender}</option>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl>
+                <FormLabel>ID Type</FormLabel>
+                {canEditMemberProfile ? (
+                  <OptionCombobox
+                    options={memberApplicationIdTypes}
+                    placeholder="Search ID type"
+                    value={memberProfileForm.idType}
+                    onChange={(idType) => updateMemberProfileForm("idType", idType)}
+                    noMatchesText="No ID types match."
+                    isRequired={false}
+                  />
+                ) : (
+                  <Input value={memberProfileForm.idType} isReadOnly />
+                )}
+              </FormControl>
+              <FormControl>
+                <FormLabel>ID Number</FormLabel>
+                <Input
+                  value={memberProfileForm.idNumber}
+                  onChange={(event) => updateMemberProfileForm("idNumber", event.target.value)}
                   isReadOnly={!canEditMemberProfile}
                 />
               </FormControl>

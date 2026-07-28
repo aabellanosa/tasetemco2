@@ -281,7 +281,7 @@ Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment a
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
 
-Membership applications capture gender, presented ID type and number, and `Required Initial Share Capital` as the expected membership requirement. ID type uses a controlled list of common Philippine identification documents. On approval, the identity fields carry into the active member record. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after System Administrator or General Manager approval. Existing database deployments must run `npm run pg:migrate` before deploying this application build.
+Membership applications capture gender, presented ID type and number, and `Required Initial Share Capital` as the expected membership requirement. ID type uses a controlled list of common Philippine identification documents. On approval, the identity fields carry into the active member record, where authorized profile editors can view and update them. Teller/Cashier records the actual opening payment for share capital, membership fee, and savings after System Administrator or General Manager approval. Existing database deployments must run `npm run pg:migrate` before deploying this application build.
 
 Initial member payment is a one-time onboarding transaction. After it exists for a member, the system blocks another initial payment; later savings activity uses Savings Deposit or Savings Withdrawal, and later share capital additions use Share Capital Contribution.
 
