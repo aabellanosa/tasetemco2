@@ -671,7 +671,12 @@ export const disbursementCategories = [
   { code: "TRAVEL", name: "Travel", reportingGroup: "Travel", costCenterCode: "",
     expenseAccountCode: "5040", expenseAccountName: "Travel Expense", displayOrder: 50, status: "Active" },
   { code: "OTHER-EXPENSES", name: "Other expenses", reportingGroup: "Other expenses", costCenterCode: "",
-    expenseAccountCode: "5090", expenseAccountName: "Other Operating Expenses", displayOrder: 60, status: "Active" }
+    expenseAccountCode: "5090", expenseAccountName: "Other Operating Expenses", displayOrder: 60, status: "Active" },
+  ...["Water", "Light", "Wifi", "SSS", "Pag-ibig", "Philhealth"].map((name, index) => ({
+    code: name.toUpperCase(), name, reportingGroup: name, costCenterCode: "",
+    expenseAccountCode: "5090", expenseAccountName: "Other Operating Expenses",
+    displayOrder: 70 + index * 10, status: "Active"
+  }))
 ];
 export const dailyDisbursementBatches = [];
 export const dailyDisbursementEntries = [];

@@ -790,7 +790,10 @@ async function run() {
       !disbursementCategoryRows.some((row) => row.code === "BUILDING-RENOVATIONS" &&
         row.costCenterCode === "" && row.expenseAccountCode === "5030") ||
       !disbursementCategoryRows.some((row) => row.code === "OTHER-EXPENSES" &&
-        row.costCenterCode === "" && row.status === "Active")) {
+        row.costCenterCode === "" && row.status === "Active") ||
+      !["WATER", "LIGHT", "WIFI", "SSS", "PAG-IBIG", "PHILHEALTH"].every((code) =>
+        disbursementCategoryRows.some((row) => row.code === code &&
+          row.costCenterCode === "" && row.expenseAccountCode === "5090" && row.status === "Active"))) {
       throw new Error("Daily Disbursement should seed cost-center and cooperative-operation categories.");
     }
     const dailyDisbursementDraft = await fetch(`${baseUrl}/api/daily-disbursement-batches`, {

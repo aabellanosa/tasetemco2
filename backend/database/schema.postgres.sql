@@ -127,7 +127,13 @@ VALUES
   ('WRS', 'WRS', 'WRS', 'WRS', '5020', 'Water Refilling Operating Expense', 30),
   ('BUILDING-RENOVATIONS', 'Building and renovations', 'Building and renovations', '', '5030', 'Building and Renovation Expense', 40),
   ('TRAVEL', 'Travel', 'Travel', '', '5040', 'Travel Expense', 50),
-  ('OTHER-EXPENSES', 'Other expenses', 'Other expenses', '', '5090', 'Other Operating Expenses', 60)
+  ('OTHER-EXPENSES', 'Other expenses', 'Other expenses', '', '5090', 'Other Operating Expenses', 60),
+  ('WATER', 'Water', 'Water', '', '5090', 'Other Operating Expenses', 70),
+  ('LIGHT', 'Light', 'Light', '', '5090', 'Other Operating Expenses', 80),
+  ('WIFI', 'Wifi', 'Wifi', '', '5090', 'Other Operating Expenses', 90),
+  ('SSS', 'SSS', 'SSS', '', '5090', 'Other Operating Expenses', 100),
+  ('PAG-IBIG', 'Pag-ibig', 'Pag-ibig', '', '5090', 'Other Operating Expenses', 110),
+  ('PHILHEALTH', 'Philhealth', 'Philhealth', '', '5090', 'Other Operating Expenses', 120)
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS daily_disbursement_batches (
