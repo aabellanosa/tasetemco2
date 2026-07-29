@@ -69,6 +69,8 @@ function validateSite(directory) {
     "Sequential advance-payment allocation guidance is missing.");
   assert(index.includes("Loan Officer Cash Turnover"), "Loan Officer cash-turnover workflow is missing.");
   assert(index.includes("mismatch blocks acceptance"), "Cash-turnover count control is missing.");
+  assert(index.includes("endorsement note for the Bookkeeper"),
+    "Teller cash-count endorsement-note workflow is missing.");
   assert(!index.includes("Credit Committee / Approver"), "Retired loan Approver role is still shown in the published workflow.");
   assert(!/Tabon|tabon|TABON/.test(index), "Old Tabon branding is still present.");
 }

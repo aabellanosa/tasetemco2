@@ -337,7 +337,7 @@ Teller and Bookkeeper screens show unposted teller batch cash position: cash in,
 
 Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
-Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning, and non-zero variance requires a Bookkeeper variance note before review.
+Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. Cash Count Verification includes an optional Teller endorsement note of up to 500 characters. It is stored with the immutable cash-count record and shown to Bookkeeper during review and in Batch History. This is separate from the Bookkeeper variance note required for a non-zero cash variance. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction.
 
 Official batch close uses a confirmation step. The Bookkeeper reviews cash totals, posted and unposted counts, may enter a closing note, and the system stores closed by, closed at, and closing note for audit review.
 
@@ -499,9 +499,10 @@ Sample accounting effect:
 1. Teller reviews the unposted teller batch cash position.
 2. System shows cash in, cash out, expected net cash, transaction count, and transaction mix.
 3. Teller counts actual cash on hand.
-4. Teller submits the cash count.
-5. System stores expected cash, actual cash, variance, submitted by, and status.
-6. Teller batch status moves from Open to Submitted.
+4. Teller may enter an endorsement note for the Bookkeeper, limited to 500 characters.
+5. Teller submits the cash count.
+6. System stores expected cash, actual cash, variance, Teller endorsement note, submitted by, and status.
+7. Teller batch status moves from Open to Submitted.
 7. Accountant / Bookkeeper reviews the submitted teller batch.
 8. Bookkeeper marks the batch as Reviewed.
 9. Bookkeeper posts all teller transactions assigned to the reviewed batch.
@@ -882,6 +883,8 @@ Loan Collection v2 is UI-only and requires no migration. It makes the allocation
 Loan Collection v3 adds `loan_collection_allocations` so one advance-payment receipt can be traced across multiple scheduled installments. Run `npm run pg:migrate` before starting or deploying this build. The migration backfills every existing collection as a single allocation, preserving prior receipt and journal evidence. New advance receipts allocate sequentially without changing the original amortization schedule.
 
 Loan Officer Collection and Cash Turnover v1 adds turnover amount, transaction count, submitter/acceptor, timestamps, and target Cashier batch fields to `teller_batches`. Run `npm run pg:migrate` before deployment. Existing Teller batches and transactions are preserved; no seed or reset is required.
+
+Teller Cash Count Endorsement v1 adds `teller_cash_counts.teller_note`. Run `npm run pg:migrate` before deployment. Existing cash counts are preserved with an empty note, and no seed or reset is required.
 
 Daily Cost Center Payables v1 adds `cost_centers`, `member_charge_batches`, `member_charge_entries`, and `member_charge_movements`. The SUMMO integration adds a posting-time `summo_column` snapshot to movements and backfills existing movements from their current cost-center configuration. The G-mar extension seeds `GMAR / G-mar Commercial` with SUMMO mapping `G-mar Capital`; run `npm run pg:migrate` so an existing Postgres installation receives that cost center. The later searchable-selector and report-filter UI changes require no schema migration.
 

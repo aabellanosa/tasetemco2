@@ -292,7 +292,7 @@ Teller and Bookkeeper screens show unposted teller batch cash position: cash in,
 
 Teller/Cashier records transactions into the current Open teller batch. In this spike, the batch lifecycle is `Open -> Submitted -> Reviewed -> Closed`; Bookkeeper closes a reviewed batch after its teller transactions are posted, and the system opens the next batch for new teller activity.
 
-Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction. Cash variance is shown as a warning, and non-zero variance requires a Bookkeeper variance note before review.
+Bookkeeper posting is gated by batch review: teller transactions cannot be posted until their assigned batch is Reviewed. Before submitting Cash Count Verification, Teller/Cashier may add an endorsement note of up to 500 characters. The note is stored with the immutable cash-count evidence and is visible to the Bookkeeper during review and in Batch History. It remains distinct from the Bookkeeper variance note, which is required when cash variance is non-zero. The Bookkeeper can post the reviewed teller batch in one action; the system creates traceable journal entries for each source transaction.
 
 Official batch close uses a confirmation step. The Bookkeeper reviews cash totals, posted and unposted counts, may enter a closing note, and the system stores closed by, closed at, and closing note for audit review.
 
