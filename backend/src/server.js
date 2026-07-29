@@ -8,6 +8,7 @@ import multer from "multer";
 import pg from "pg";
 import {
   dashboard,
+  cbuWithdrawals,
   costCenters,
   remittanceSources,
   dailyRemittanceBatches,
@@ -186,6 +187,7 @@ const persistedTables = [
   "monthly_contribution_entries",
   "monthly_contribution_batches",
   "secured_savings_withdrawals",
+  "cbu_withdrawals",
   "member_charge_movements",
   "member_charge_entries",
   "member_charge_batches",
@@ -234,6 +236,11 @@ const requiredSchemaColumns = {
   monthly_contribution_entries: ["batch_no", "member_no", "tfea_amount", "cbu_amount", "secured_savings_amount"],
   monthly_contribution_movements: ["movement_no", "batch_no", "member_no", "contribution_type", "amount"],
   secured_savings_withdrawals: ["withdrawal_no", "batch_no", "member_no", "amount", "reference_no", "status"],
+  cbu_withdrawals: [
+    "withdrawal_no", "batch_no", "member_no", "amount", "membership_minimum",
+    "manual_loan_exposure", "system_loan_exposure", "pending_withdrawal_exposure",
+    "withdrawable_before_request", "reference_no", "requested_by", "released_by", "status"
+  ],
   cost_centers: ["code", "name", "cost_center_type", "summo_column", "status"],
   member_charge_batches: ["batch_no", "cost_center_code", "transaction_date", "status", "created_by", "finalized_by", "finalized_at"],
   member_charge_entries: ["batch_no", "member_no", "amount", "reference_no", "remarks"],
@@ -3022,8 +3029,12 @@ async function getTellerCashPosition(batchId, connection = null) {
          (SELECT COALESCE(SUM(cash_released), 0)
           FROM loan_releases
           WHERE batch_no = ? AND status = 'Teller Batch')
+         +
+         (SELECT COALESCE(SUM(amount), 0)
+          FROM cbu_withdrawals
+          WHERE batch_no = ? AND status = 'Teller Batch')
        ) AS cashOut`,
-    [batchId, batchId, batchId, batchId, batchId, batchId, batchId]
+    [batchId, batchId, batchId, batchId, batchId, batchId, batchId, batchId]
   );
   const position = rows[0] || {};
   const openingFunding = Number(position.openingFunding || 0);
@@ -3040,7 +3051,11 @@ async function getTellerCashPosition(batchId, connection = null) {
 
 async function getTellerFundingPosition() {
   const batches = await listTellerBatches();
-  const batch = batches.find((item) => item.status === "Open") || null;
+  const systemUsers = await listSystemUsers();
+  const batch = batches.find((item) =>
+    item.status === "Open" &&
+    systemUsers.some((user) => user.username === item.tellerUsername && user.role === "Teller / Cashier")
+  ) || null;
   const releaseQueue = (await listLoans())
     .filter((loan) => loan.status === "For Release")
     .map((loan) => ({
@@ -3052,7 +3067,20 @@ async function getTellerFundingPosition() {
       status: loan.status
     }));
   const cashPosition = await getTellerCashPosition(batch?.id || "");
-  const totalReleaseDemand = sumMoney(releaseQueue.map((loan) => loan.netProceeds));
+  const cbuWithdrawalQueue = (await listCbuWithdrawals())
+    .filter((withdrawal) => withdrawal.status === "For Funding")
+    .map((withdrawal) => ({
+      id: withdrawal.id,
+      memberId: withdrawal.memberId,
+      memberName: withdrawal.memberName,
+      amount: withdrawal.amount,
+      referenceNo: withdrawal.referenceNo,
+      requestedAt: withdrawal.requestedAt,
+      status: withdrawal.status
+    }));
+  const totalLoanReleaseDemand = sumMoney(releaseQueue.map((loan) => loan.netProceeds));
+  const totalCbuWithdrawalDemand = sumMoney(cbuWithdrawalQueue.map((withdrawal) => withdrawal.amount));
+  const totalReleaseDemand = addMoney(totalLoanReleaseDemand, totalCbuWithdrawalDemand);
 
   return {
     batch: batch
@@ -3063,6 +3091,9 @@ async function getTellerFundingPosition() {
         }
       : null,
     releaseQueue,
+    cbuWithdrawalQueue,
+    totalLoanReleaseDemand,
+    totalCbuWithdrawalDemand,
     totalReleaseDemand,
     ...cashPosition,
     fundingShortage: Math.max(0, subtractMoney(totalReleaseDemand, cashPosition.availableCash))
@@ -6777,6 +6808,7 @@ function buildTellerBatchSummary(rows) {
           summary.shareCapitalContributionCount + (row.batchType === "Share Capital Contribution" ? 1 : 0),
         savingsDepositCount: summary.savingsDepositCount + (row.batchType === "Savings Deposit" ? 1 : 0),
         savingsWithdrawalCount: summary.savingsWithdrawalCount + (row.batchType === "Savings Withdrawal" ? 1 : 0),
+        cbuWithdrawalCount: summary.cbuWithdrawalCount + (row.batchType === "CBU Withdrawal" ? 1 : 0),
         securedSavingsWithdrawalCount:
           summary.securedSavingsWithdrawalCount + (row.batchType === "Secured Savings Withdrawal" ? 1 : 0),
         loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
@@ -6798,6 +6830,7 @@ function buildTellerBatchSummary(rows) {
       shareCapitalContributionCount: 0,
       savingsDepositCount: 0,
       savingsWithdrawalCount: 0,
+      cbuWithdrawalCount: 0,
       securedSavingsWithdrawalCount: 0,
       loanReleaseCount: 0,
       loanCollectionCount: 0,
@@ -6827,9 +6860,13 @@ function nextSecuredSavingsWithdrawalNumber() {
   return `SSW-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
 }
 
+function nextCbuWithdrawalNumber() {
+  return `CBUW-${new Date().getFullYear()}-${String(cbuWithdrawals.length + 1).padStart(4, "0")}`;
+}
+
 function hasWithdrawalReference(referenceNo) {
   const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
-  return [...savingsWithdrawals, ...securedSavingsWithdrawals, ...loanReleases,
+  return [...savingsWithdrawals, ...securedSavingsWithdrawals, ...cbuWithdrawals, ...loanReleases,
     ...dailyDisbursementBatches.filter((batch) => batch.status !== "Draft")].some(
     (transaction) => normalizeReferenceNo(transaction.referenceNo || transaction.sourceReference) === normalizedReferenceNo
   );
@@ -6881,11 +6918,15 @@ async function hasWithdrawalReferenceInDatabase(connection, referenceNo) {
      FROM secured_savings_withdrawals
      WHERE UPPER(reference_no) = UPPER(?)
      UNION ALL
+     SELECT reference_no AS referenceNo
+     FROM cbu_withdrawals
+     WHERE UPPER(reference_no) = UPPER(?)
+     UNION ALL
      SELECT source_reference AS referenceNo
      FROM daily_disbursement_batches
      WHERE status <> 'Draft' AND UPPER(source_reference) = UPPER(?)
      LIMIT 1`,
-    [referenceNo, referenceNo, referenceNo, referenceNo]
+    [referenceNo, referenceNo, referenceNo, referenceNo, referenceNo]
   );
 
   return rows.length > 0;
@@ -7031,6 +7072,13 @@ function buildSavingsWithdrawalJournalLines(withdrawal) {
       credit: withdrawal.amount
     }
   ].filter((line) => line.debit > 0 || line.credit > 0);
+}
+
+function buildCbuWithdrawalJournalLines(withdrawal) {
+  return [
+    { accountCode: "3010", accountName: "Share Capital", debit: withdrawal.amount, credit: 0 },
+    { accountCode: "1010", accountName: "Cash on Hand", debit: 0, credit: withdrawal.amount }
+  ];
 }
 
 function buildLoanReleaseJournalLines(release) {
@@ -7331,6 +7379,62 @@ async function listSavingsWithdrawals() {
   return rows;
 }
 
+async function listCbuWithdrawals() {
+  const db = await getPool();
+  if (!db) return cbuWithdrawals;
+  const [rows] = await db.execute(
+    `SELECT withdrawal_no AS id, batch_no AS batchId, member_no AS memberId,
+            member_name AS memberName, amount, membership_minimum AS membershipMinimum,
+            manual_loan_exposure AS manualLoanExposure,
+            system_loan_exposure AS systemLoanExposure,
+            pending_withdrawal_exposure AS pendingWithdrawalExposure,
+            withdrawable_before_request AS withdrawableBeforeRequest,
+            reference_no AS referenceNo, requested_by AS requestedBy,
+            requested_at AS requestedAt, COALESCE(released_by, '') AS releasedBy,
+            released_at AS releasedAt, status, COALESCE(posted_by, '') AS postedBy,
+            COALESCE(posted_entry_no, '') AS postedEntryNo, posted_at AS postedAt,
+            created_at AS createdAt
+     FROM cbu_withdrawals
+     ORDER BY created_at DESC, id DESC`
+  );
+  return rows;
+}
+
+async function getMemberCbuWithdrawalPosition(memberId) {
+  const member = (await listMembers()).find((item) => item.id === memberId && item.status === "Active");
+  if (!member) return null;
+  const manualLoanExposure = sumMoney(
+    (await listMemberPreviousLoans(memberId)).map((item) => item.outstandingBalance)
+  );
+  const systemLoanExposure = sumMoney(
+    (await listLoans())
+      .filter((loan) => loan.memberNo === memberId && loan.status === "Posted")
+      .map(loanOutstandingBalance)
+  );
+  const pendingWithdrawalExposure = sumMoney(
+    (await listCbuWithdrawals())
+      .filter((item) => item.memberId === memberId && ["For Funding", "Teller Batch"].includes(item.status))
+      .map((item) => item.amount)
+  );
+  const membershipMinimum = 5000;
+  const requiredRetention = addMoney(
+    membershipMinimum,
+    manualLoanExposure,
+    systemLoanExposure,
+    pendingWithdrawalExposure
+  );
+  return {
+    member,
+    membershipMinimum,
+    manualLoanExposure,
+    systemLoanExposure,
+    pendingWithdrawalExposure,
+    totalLoanExposure: addMoney(manualLoanExposure, systemLoanExposure),
+    requiredRetention,
+    withdrawableAmount: Math.max(0, subtractMoney(member.share, requiredRetention))
+  };
+}
+
 async function listJournalEntries() {
   const db = await getPool();
 
@@ -7437,6 +7541,18 @@ async function listTellerBatchRows(batchId = "") {
         membershipFeeAmount: 0,
         savingsDepositAmount: -withdrawal.amount
       })),
+    ...(await listCbuWithdrawals())
+      .filter((withdrawal) => withdrawal.status === "Teller Batch")
+      .map((withdrawal) => ({
+        ...withdrawal,
+        batchType: "CBU Withdrawal",
+        receivedBy: withdrawal.releasedBy,
+        cashReceived: 0,
+        cashOut: withdrawal.amount,
+        shareCapitalAmount: -withdrawal.amount,
+        membershipFeeAmount: 0,
+        savingsDepositAmount: 0
+      })),
     ...(await listLoanReleases())
       .filter((release) => release.status === "Teller Batch")
       .map((release) => ({
@@ -7537,6 +7653,16 @@ async function listTellerBatchTransactions(batchId) {
       membershipFeeAmount: 0,
       savingsDepositAmount: -withdrawal.amount
     })),
+    ...(await listCbuWithdrawals()).map((withdrawal) => ({
+      ...withdrawal,
+      batchType: "CBU Withdrawal",
+      receivedBy: withdrawal.releasedBy,
+      cashReceived: 0,
+      cashOut: withdrawal.amount,
+      shareCapitalAmount: -withdrawal.amount,
+      membershipFeeAmount: 0,
+      savingsDepositAmount: 0
+    })),
     ...(await listLoanReleases()).map((release) => ({
       ...release,
       id: release.releaseNo,
@@ -7615,6 +7741,7 @@ function countBatchTransactions(batchId) {
     ...savingsDeposits,
     ...shareCapitalContributions,
     ...savingsWithdrawals,
+    ...cbuWithdrawals,
     ...securedSavingsWithdrawals,
     ...loanReleases,
     ...loanCollections,
@@ -7670,6 +7797,8 @@ async function listTellerBatches() {
                 UNION ALL
                 SELECT batch_no, status, posted_entry_no FROM savings_withdrawals
                 UNION ALL
+                SELECT batch_no, status, posted_entry_no FROM cbu_withdrawals
+                UNION ALL
                 SELECT batch_no, status, posted_entry_no FROM secured_savings_withdrawals
                 UNION ALL
                 SELECT batch_no, status, posted_entry_no FROM loan_releases
@@ -7699,6 +7828,8 @@ async function listTellerBatches() {
                 SELECT batch_no, status FROM share_capital_contributions
                 UNION ALL
                 SELECT batch_no, status FROM savings_withdrawals
+                UNION ALL
+                SELECT batch_no, status FROM cbu_withdrawals
                 UNION ALL
                 SELECT batch_no, status FROM secured_savings_withdrawals
                 UNION ALL
@@ -9779,6 +9910,151 @@ async function recordSavingsWithdrawal(input, user) {
   }
 }
 
+function cbuGuardrailError(position, requestedAmount) {
+  return {
+    error:
+      `CBU withdrawal would reduce retained capital below the required ₱5,000 membership minimum plus ` +
+      `₱${position.totalLoanExposure.toFixed(2)} loan exposure. Maximum currently withdrawable: ` +
+      `₱${position.withdrawableAmount.toFixed(2)}. Please refer this transaction to the System Administrator.`,
+    errorCode: "CBU_RETENTION_GUARDRAIL",
+    statusCode: 409,
+    details: { ...position, member: undefined, requestedAmount }
+  };
+}
+
+async function recordCbuWithdrawal(input, user) {
+  let position = await getMemberCbuWithdrawalPosition(input.memberId);
+  if (!position) return { error: "Active member was not found.", statusCode: 404 };
+  if (moneyCents(input.amount) > moneyCents(position.withdrawableAmount)) {
+    return cbuGuardrailError(position, input.amount);
+  }
+  const batchResult = await getOpenTellerBatch(user);
+  if (batchResult.error) return batchResult;
+  const cashPosition = await getTellerCashPosition(batchResult.batch.id);
+  const immediatelyFunded = moneyCents(cashPosition.availableCash) >= moneyCents(input.amount);
+  const status = immediatelyFunded ? "Teller Batch" : "For Funding";
+  const batchId = immediatelyFunded ? batchResult.batch.id : "";
+  const db = await getPool();
+  if (!db) {
+    if (hasWithdrawalReference(input.referenceNo)) {
+      return { error: "Withdrawal voucher/reference number already exists.", statusCode: 409 };
+    }
+    const withdrawal = {
+      id: nextCbuWithdrawalNumber(), batchId, memberId: position.member.id,
+      memberName: position.member.name, amount: input.amount,
+      membershipMinimum: position.membershipMinimum,
+      manualLoanExposure: position.manualLoanExposure,
+      systemLoanExposure: position.systemLoanExposure,
+      pendingWithdrawalExposure: position.pendingWithdrawalExposure,
+      withdrawableBeforeRequest: position.withdrawableAmount,
+      referenceNo: input.referenceNo, requestedBy: user.username,
+      requestedAt: new Date().toISOString(),
+      releasedBy: immediatelyFunded ? user.username : "",
+      releasedAt: immediatelyFunded ? new Date().toISOString() : "",
+      status, postedBy: "", postedEntryNo: "", postedAt: ""
+    };
+    cbuWithdrawals.unshift(withdrawal);
+    return {
+      withdrawal,
+      position,
+      fundingShortage: immediatelyFunded ? 0 : subtractMoney(input.amount, cashPosition.availableCash)
+    };
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [lockedMembers] = await connection.execute(
+      `SELECT member_no FROM members WHERE member_no = ? AND status = 'Active' FOR UPDATE`,
+      [input.memberId]
+    );
+    if (!lockedMembers[0]) {
+      await connection.rollback();
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+    position = await getMemberCbuWithdrawalPosition(input.memberId);
+    if (moneyCents(input.amount) > moneyCents(position.withdrawableAmount)) {
+      await connection.rollback();
+      return cbuGuardrailError(position, input.amount);
+    }
+    if (await hasWithdrawalReferenceInDatabase(connection, input.referenceNo)) {
+      await connection.rollback();
+      return { error: "Withdrawal voucher/reference number already exists.", statusCode: 409 };
+    }
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue FROM cbu_withdrawals
+       WHERE YEAR(created_at) = YEAR(CURRENT_DATE)`
+    );
+    const withdrawalNo =
+      `CBUW-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    await connection.execute(
+      `INSERT INTO cbu_withdrawals
+        (withdrawal_no, batch_no, member_no, member_name, amount, membership_minimum,
+         manual_loan_exposure, system_loan_exposure, pending_withdrawal_exposure,
+         withdrawable_before_request, reference_no, requested_by, released_by, released_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        withdrawalNo, batchId, position.member.id, position.member.name, input.amount,
+        position.membershipMinimum, position.manualLoanExposure, position.systemLoanExposure,
+        position.pendingWithdrawalExposure, position.withdrawableAmount, input.referenceNo,
+        user.username, immediatelyFunded ? user.username : null,
+        immediatelyFunded ? new Date() : null, status
+      ]
+    );
+    await connection.commit();
+    return {
+      withdrawal: (await listCbuWithdrawals()).find((item) => item.id === withdrawalNo),
+      position,
+      fundingShortage: immediatelyFunded ? 0 : subtractMoney(input.amount, cashPosition.availableCash)
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function releaseCbuWithdrawal(withdrawalId, user) {
+  const withdrawal = (await listCbuWithdrawals()).find((item) => item.id === withdrawalId);
+  if (!withdrawal) return { error: "CBU withdrawal was not found.", statusCode: 404 };
+  if (withdrawal.status !== "For Funding") {
+    return { error: "Only a For Funding CBU withdrawal can be released.", statusCode: 409 };
+  }
+  const position = await getMemberCbuWithdrawalPosition(withdrawal.memberId);
+  if (!position) return { error: "Active member was not found.", statusCode: 404 };
+  if (moneyCents(position.member.share) < moneyCents(position.requiredRetention)) {
+    return cbuGuardrailError(position, withdrawal.amount);
+  }
+  const batchResult = await getOpenTellerBatch(user);
+  if (batchResult.error) return batchResult;
+  const cashPosition = await getTellerCashPosition(batchResult.batch.id);
+  if (moneyCents(cashPosition.availableCash) < moneyCents(withdrawal.amount)) {
+    return {
+      error: `Insufficient teller cash. Available: ${cashPosition.availableCash}; required: ${withdrawal.amount}; ` +
+        `shortage: ${subtractMoney(withdrawal.amount, cashPosition.availableCash)}.`,
+      errorCode: "CBU_FUNDING_REQUIRED",
+      statusCode: 409
+    };
+  }
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    Object.assign(withdrawal, {
+      batchId: batchResult.batch.id, status: "Teller Batch",
+      releasedBy: user.username, releasedAt: now
+    });
+    return { withdrawal };
+  }
+  const [result] = await db.execute(
+    `UPDATE cbu_withdrawals
+     SET batch_no = ?, status = 'Teller Batch', released_by = ?, released_at = CURRENT_TIMESTAMP
+     WHERE withdrawal_no = ? AND status = 'For Funding'`,
+    [batchResult.batch.id, user.username, withdrawalId]
+  );
+  if (!result.affectedRows) return { error: "CBU withdrawal is no longer available for release.", statusCode: 409 };
+  return { withdrawal: (await listCbuWithdrawals()).find((item) => item.id === withdrawalId) };
+}
+
 async function postInitialPayment(paymentId, user) {
   const db = await getPool();
 
@@ -10277,6 +10553,120 @@ async function postSavingsWithdrawal(withdrawalId, user) {
         postedBy: user.username,
         postedAt: new Date().toISOString(),
         lines
+      }
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function postCbuWithdrawal(withdrawalId, user) {
+  const db = await getPool();
+  if (!db) {
+    const withdrawal = cbuWithdrawals.find((item) => item.id === withdrawalId);
+    if (!withdrawal) return { error: "CBU withdrawal was not found.", statusCode: 404 };
+    if (withdrawal.status !== "Teller Batch") {
+      return { error: "Only teller batch CBU withdrawals can be posted.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(withdrawal.batchId);
+    if (batchResult.error) return batchResult;
+    const position = await getMemberCbuWithdrawalPosition(withdrawal.memberId);
+    if (!position) return { error: "Active member was not found.", statusCode: 404 };
+    if (moneyCents(position.member.share) < moneyCents(position.requiredRetention)) {
+      return cbuGuardrailError(position, withdrawal.amount);
+    }
+    const entry = {
+      id: nextJournalEntryNumber(),
+      sourceType: "CBU Withdrawal",
+      sourceNo: withdrawal.id,
+      description: `CBU withdrawal - ${withdrawal.memberName}`,
+      postedBy: user.username,
+      postedAt: new Date().toISOString(),
+      lines: buildCbuWithdrawalJournalLines(withdrawal)
+    };
+    position.member.share = subtractMoney(position.member.share, withdrawal.amount);
+    Object.assign(withdrawal, {
+      status: "Posted", postedBy: user.username, postedEntryNo: entry.id, postedAt: entry.postedAt
+    });
+    journalEntries.unshift(entry);
+    return { withdrawal, entry, member: position.member };
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [withdrawalRows] = await connection.execute(
+      `SELECT withdrawal_no AS id, batch_no AS batchId, member_no AS memberId,
+              member_name AS memberName, amount, reference_no AS referenceNo,
+              released_by AS releasedBy, status
+       FROM cbu_withdrawals WHERE withdrawal_no = ? FOR UPDATE`,
+      [withdrawalId]
+    );
+    const withdrawal = withdrawalRows[0];
+    if (!withdrawal) {
+      await connection.rollback();
+      return { error: "CBU withdrawal was not found.", statusCode: 404 };
+    }
+    if (withdrawal.status !== "Teller Batch") {
+      await connection.rollback();
+      return { error: "Only teller batch CBU withdrawals can be posted.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(withdrawal.batchId, connection);
+    if (batchResult.error) {
+      await connection.rollback();
+      return batchResult;
+    }
+    const [memberRows] = await connection.execute(
+      `SELECT member_no AS id, share_capital AS share FROM members
+       WHERE member_no = ? AND status = 'Active' FOR UPDATE`,
+      [withdrawal.memberId]
+    );
+    if (!memberRows[0]) {
+      await connection.rollback();
+      return { error: "Active member was not found.", statusCode: 404 };
+    }
+    const position = await getMemberCbuWithdrawalPosition(withdrawal.memberId);
+    position.member.share = Number(memberRows[0].share);
+    if (moneyCents(position.member.share) < moneyCents(position.requiredRetention)) {
+      await connection.rollback();
+      return cbuGuardrailError(position, withdrawal.amount);
+    }
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
+    const description = `CBU withdrawal - ${withdrawal.memberName}`;
+    await connection.execute(
+      `INSERT INTO journal_entries
+       (entry_no, source_type, source_no, description, posted_by)
+       VALUES (?, 'CBU Withdrawal', ?, ?, ?)`,
+      [entryNo, withdrawal.id, description, user.username]
+    );
+    const lines = buildCbuWithdrawalJournalLines(withdrawal);
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines
+         (entry_no, account_code, account_name, debit, credit)
+         VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+    await connection.execute(
+      `UPDATE members SET share_capital = share_capital - ? WHERE member_no = ?`,
+      [withdrawal.amount, withdrawal.memberId]
+    );
+    await connection.execute(
+      `UPDATE cbu_withdrawals
+       SET status = 'Posted', posted_by = ?, posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP
+       WHERE withdrawal_no = ?`,
+      [user.username, entryNo, withdrawal.id]
+    );
+    await connection.commit();
+    return {
+      withdrawal: { ...withdrawal, status: "Posted", postedBy: user.username, postedEntryNo: entryNo },
+      entry: {
+        id: entryNo, sourceType: "CBU Withdrawal", sourceNo: withdrawal.id,
+        description, postedBy: user.username, postedAt: new Date().toISOString(), lines
       }
     };
   } catch (error) {
@@ -11074,6 +11464,10 @@ async function postTellerBatchRow(row, user) {
     return postSavingsWithdrawal(row.id, user);
   }
 
+  if (row.batchType === "CBU Withdrawal") {
+    return postCbuWithdrawal(row.id, user);
+  }
+
   if (row.batchType === "Secured Savings Withdrawal") {
     return postSecuredSavingsWithdrawal(row.id, user);
   }
@@ -11676,6 +12070,18 @@ function validateSavingsWithdrawal(body) {
       referenceNo
     }
   };
+}
+
+function validateCbuWithdrawal(body) {
+  const memberId = String(body.memberId || "").trim();
+  const amount = Number(body.amount || 0);
+  const referenceNo = String(body.referenceNo || "").trim().toUpperCase();
+  if (!memberId) return { error: "Member is required." };
+  if (!isMoney(amount, { positive: true })) {
+    return { error: "CBU withdrawal amount must be positive and have no more than two decimal places." };
+  }
+  if (!referenceNo) return { error: "Withdrawal voucher or reference number is required." };
+  return { value: { memberId, amount: moneyValue(amount), referenceNo } };
 }
 
 function validateTellerCashCount(body) {
@@ -13239,6 +13645,53 @@ app.post("/api/savings-withdrawals", async (request, response) => {
   }
 
   response.status(201).json(withdrawalResult);
+});
+
+app.get("/api/cbu-withdrawals", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "members:cbu-withdrawals:view")) {
+    response.status(403).json({ error: "Access denied" }); return;
+  }
+  response.json(await listCbuWithdrawals());
+});
+
+app.post("/api/cbu-withdrawals", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "members:cbu-withdrawals:create")) {
+    response.status(403).json({ error: "Access denied" }); return;
+  }
+  const result = validateCbuWithdrawal(request.body);
+  if (result.error) { response.status(400).json({ error: result.error }); return; }
+  const withdrawalResult = await recordCbuWithdrawal(result.value, user);
+  if (withdrawalResult.error) {
+    response.status(withdrawalResult.statusCode).json({
+      error: withdrawalResult.error,
+      code: withdrawalResult.errorCode,
+      details: withdrawalResult.details
+    });
+    return;
+  }
+  response.status(201).json(withdrawalResult);
+});
+
+app.post("/api/cbu-withdrawals/:withdrawalId/release", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "members:cbu-withdrawals:create")) {
+    response.status(403).json({ error: "Access denied" }); return;
+  }
+  const result = await releaseCbuWithdrawal(request.params.withdrawalId, user);
+  if (result.error) {
+    response.status(result.statusCode).json({
+      error: result.error,
+      code: result.errorCode,
+      details: result.details
+    });
+    return;
+  }
+  response.json(result);
 });
 
 app.get("/api/secured-savings-withdrawals", async (request, response) => {

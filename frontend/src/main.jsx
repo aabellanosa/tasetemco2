@@ -161,7 +161,10 @@ async function api(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data.error || `Request failed (${response.status}) for ${path}`);
+    const requestError = new Error(data.error || `Request failed (${response.status}) for ${path}`);
+    requestError.code = data.code;
+    requestError.details = data.details;
+    throw requestError;
   }
 
   return data;
@@ -3072,6 +3075,7 @@ function Members({ user }) {
   const [dailyDisbursementBatches, setDailyDisbursementBatches] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
+  const [cbuWithdrawals, setCbuWithdrawals] = useState([]);
   const [securedSavingsWithdrawals, setSecuredSavingsWithdrawals] = useState([]);
   const [loanReleases, setLoanReleases] = useState([]);
   const [loanCollections, setLoanCollections] = useState([]);
@@ -3114,6 +3118,10 @@ function Members({ user }) {
     amount: 500,
     referenceNo: ""
   });
+  const [cbuWithdrawalForm, setCbuWithdrawalForm] = useState({
+    memberId: "", amount: 500, referenceNo: ""
+  });
+  const [cbuGuardrailDetails, setCbuGuardrailDetails] = useState(null);
   const [securedSavingsWithdrawalForm, setSecuredSavingsWithdrawalForm] = useState({
     memberId: "", amount: 500, referenceNo: ""
   });
@@ -3147,6 +3155,7 @@ function Members({ user }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const approvalNotice = useDisclosure();
+  const cbuGuardrailNotice = useDisclosure();
   const canCreateApplication = user.permissions.includes("members:applications:create");
   const canEditMemberProfile = user.permissions.includes("members:profile:edit");
   const canEditPreviousLoans = user.permissions.includes("members:previous-loans:edit");
@@ -3162,6 +3171,8 @@ function Members({ user }) {
   const canCreateSavingsDeposit = user.permissions.includes("members:savings-deposits:create");
   const canViewSavingsWithdrawals = user.permissions.includes("members:savings-withdrawals:view");
   const canCreateSavingsWithdrawal = user.permissions.includes("members:savings-withdrawals:create");
+  const canViewCbuWithdrawals = user.permissions.includes("members:cbu-withdrawals:view");
+  const canCreateCbuWithdrawal = user.permissions.includes("members:cbu-withdrawals:create");
   const canViewLoanReleases = user.permissions.includes("loans:releases:view");
   const canViewLoanCollections = user.permissions.includes("loans:collections:view");
   const canViewLoanProducts = user.permissions.includes("loans:products:view");
@@ -3203,7 +3214,8 @@ function Members({ user }) {
     canCreateInitialPayment ||
     canCreateShareCapitalContribution ||
     canCreateSavingsDeposit ||
-    canCreateSavingsWithdrawal;
+    canCreateSavingsWithdrawal ||
+    canCreateCbuWithdrawal;
   const selectedTellerMember = activeMembers.find((member) => member.id === selectedTellerMemberId);
   const tellerBatchRows = [
     ...initialPayments
@@ -3239,6 +3251,13 @@ function Members({ user }) {
         shareCapitalAmount: 0,
         membershipFeeAmount: 0,
         savingsDepositAmount: -withdrawal.amount
+      })),
+    ...cbuWithdrawals
+      .filter((withdrawal) => withdrawal.status === "Teller Batch")
+      .map((withdrawal) => ({
+        ...withdrawal, batchType: "CBU Withdrawal", cashReceived: 0,
+        cashOut: withdrawal.amount, shareCapitalAmount: -withdrawal.amount,
+        membershipFeeAmount: 0, savingsDepositAmount: 0
       })),
     ...loanReleases
       .filter((release) => release.status === "Teller Batch")
@@ -3319,6 +3338,7 @@ function Members({ user }) {
           contributionRows,
           savingsRows,
           withdrawalRows,
+          cbuWithdrawalRows,
           securedWithdrawalRows,
           loanReleaseRows,
           loanCollectionRows,
@@ -3335,6 +3355,7 @@ function Members({ user }) {
           canViewShareCapitalContributions ? api("/api/share-capital-contributions") : [],
           canViewSavingsDeposits ? api("/api/savings-deposits") : [],
           canViewSavingsWithdrawals ? api("/api/savings-withdrawals") : [],
+          canViewCbuWithdrawals ? api("/api/cbu-withdrawals") : [],
           canViewSavingsWithdrawals ? api("/api/secured-savings-withdrawals") : [],
           canViewLoanReleases ? api("/api/loan-releases") : [],
           canViewLoanCollections ? api("/api/loan-collections") : [],
@@ -3350,6 +3371,7 @@ function Members({ user }) {
         setShareCapitalContributions(contributionRows);
         setSavingsDeposits(savingsRows);
         setSavingsWithdrawals(withdrawalRows);
+        setCbuWithdrawals(cbuWithdrawalRows);
         setSecuredSavingsWithdrawals(securedWithdrawalRows);
         setLoanReleases(loanReleaseRows);
         setLoanCollections(loanCollectionRows);
@@ -3379,6 +3401,7 @@ function Members({ user }) {
       canViewShareCapitalContributions,
       canViewSavingsDeposits,
       canViewSavingsWithdrawals,
+      canViewCbuWithdrawals,
       canViewLoanReleases,
       canViewLoanCollections,
       canViewLoanProducts,
@@ -3408,6 +3431,7 @@ function Members({ user }) {
     updateShareCapitalContributionForm("memberId", memberId);
     updateSavingsDepositForm("memberId", memberId);
     updateSavingsWithdrawalForm("memberId", memberId);
+    setCbuWithdrawalForm((current) => ({ ...current, memberId }));
     setSecuredSavingsWithdrawalForm((current) => ({ ...current, memberId }));
   }
 
@@ -4005,6 +4029,7 @@ function Members({ user }) {
                 ) : null}
                 {canCreateSavingsDeposit ? <option value="savings-deposit">Savings deposit</option> : null}
                 {canCreateSavingsWithdrawal ? <option value="savings-withdrawal">Savings withdrawal</option> : null}
+                {canCreateCbuWithdrawal ? <option value="cbu-withdrawal">CBU / Share Capital withdrawal</option> : null}
                 {canCreateSavingsWithdrawal ? <option value="secured-savings-withdrawal">Secured savings withdrawal</option> : null}
               </Select>
             </FormControl>
@@ -4219,6 +4244,40 @@ function Members({ user }) {
               </Grid>
               <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
                 <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>Record secured withdrawal</Button>
+                {message ? <Text color="green.600">{message}</Text> : null}
+                {error ? <Text color="red.500">{error}</Text> : null}
+              </HStack>
+            </Box>
+          ) : null}
+
+          {tellerTransactionType === "cbu-withdrawal" && canCreateCbuWithdrawal ? (
+            <Box as="form" onSubmit={submitCbuWithdrawal}>
+              <Text color="gray.600" mb={4}>
+                The member must retain ₱5,000 plus current manual and system loan exposure.
+                Pending CBU withdrawals are reserved until posted.
+              </Text>
+              <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={4}>
+                <FormControl isRequired>
+                  <FormLabel>CBU withdrawal amount</FormLabel>
+                  <NumberInput min={0.01} precision={2} step={0.01} value={cbuWithdrawalForm.amount}
+                    onChange={(value) => setCbuWithdrawalForm((current) => ({
+                      ...current, amount: Number(value || 0)
+                    }))}>
+                    <NumberInputField />
+                  </NumberInput>
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Voucher / reference no.</FormLabel>
+                  <Input value={cbuWithdrawalForm.referenceNo}
+                    onChange={(event) => setCbuWithdrawalForm((current) => ({
+                      ...current, referenceNo: event.target.value
+                    }))} />
+                </FormControl>
+              </Grid>
+              <HStack mt={5} spacing={4} align="center" flexWrap="wrap">
+                <Button type="submit" colorScheme="green" isDisabled={!selectedTellerMemberId}>
+                  Process CBU withdrawal
+                </Button>
                 {message ? <Text color="green.600">{message}</Text> : null}
                 {error ? <Text color="red.500">{error}</Text> : null}
               </HStack>
@@ -5154,6 +5213,31 @@ function Members({ user }) {
               <Td>{withdrawal.referenceNo}</Td><Td>{withdrawal.releasedBy}</Td>
               <Td><Badge colorScheme={withdrawal.status === "Posted" ? "green" : "blue"}>{withdrawal.status}</Badge></Td>
             </Tr>)}{securedSavingsWithdrawals.length === 0 ? <Tr><Td colSpan={6} color="gray.500">No secured savings withdrawals recorded.</Td></Tr> : null}</Tbody>
+          </Table></TableContainer>
+        </Box>
+      ) : null}
+      {canViewCbuWithdrawals ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="md" mb={4}>CBU Withdrawal History and Funding Queue</Heading>
+          <TableContainer><Table size="sm">
+            <Thead><Tr><Th>Withdrawal</Th><Th>Member</Th><Th isNumeric>Amount</Th>
+              <Th>Reference</Th><Th>Audit</Th><Th>Status</Th><Th>Action</Th></Tr></Thead>
+            <Tbody>
+              {cbuWithdrawals.map((withdrawal) => <Tr key={withdrawal.id}>
+                <Td>{withdrawal.id}</Td><Td>{withdrawal.memberName}</Td>
+                <Td isNumeric>{formatMoney(withdrawal.amount)}</Td><Td>{withdrawal.referenceNo}</Td>
+                <Td fontSize="sm">Requested: {withdrawal.requestedBy}<br />
+                  Released: {withdrawal.releasedBy || "-"}<br />Posted: {withdrawal.postedBy || "-"}</Td>
+                <Td><Badge colorScheme={withdrawal.status === "Posted" ? "green" :
+                  withdrawal.status === "For Funding" ? "orange" : "blue"}>{withdrawal.status}</Badge></Td>
+                <Td>{canCreateCbuWithdrawal && withdrawal.status === "For Funding" ?
+                  <Button size="xs" colorScheme="green"
+                    onClick={() => releaseCbuWithdrawalRequest(withdrawal.id)}>Release after funding</Button> : "-"}</Td>
+              </Tr>)}
+              {!cbuWithdrawals.length ? <Tr><Td colSpan={7} color="gray.500">
+                No CBU withdrawals recorded.
+              </Td></Tr> : null}
+            </Tbody>
           </Table></TableContainer>
         </Box>
       ) : null}
@@ -10064,7 +10148,7 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
           <Box>
             <Heading size="sm">Release Funding Demand</Heading>
             <Text color="gray.600" fontSize="sm" mt={1}>
-              Current For Release loans compared with acknowledged cash in the Open teller batch.
+              Current loan releases and CBU withdrawals compared with acknowledged cash in the Open teller batch.
             </Text>
           </Box>
           <Badge colorScheme={position?.fundingShortage > 0 ? "orange" : "green"} alignSelf="start">
@@ -10075,7 +10159,7 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
         </Flex>
         <Grid templateColumns={{ base: "repeat(2, 1fr)", lg: "repeat(5, 1fr)" }} gap={4} mb={5}>
           {[
-            ["Release Demand", position?.totalReleaseDemand || 0],
+            ["Total Payout Demand", position?.totalReleaseDemand || 0],
             ["Acknowledged Funding", position?.openingFunding || 0],
             ["Other Cash Receipts", position?.cashIn || 0],
             ["Existing Cash Payouts", position?.cashOut || 0],
@@ -10105,7 +10189,7 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
           <Table size="sm">
             <Thead>
               <Tr>
-                <Th>Loan</Th>
+                <Th>Request</Th>
                 <Th>Member</Th>
                 <Th>Date Computed</Th>
                 <Th isNumeric>Net Proceeds</Th>
@@ -10122,9 +10206,18 @@ function TellerCashFunding({ user, onFundingAcknowledged }) {
                   <Td><Badge colorScheme="purple">{loan.status}</Badge></Td>
                 </Tr>
               ))}
-              {!position?.releaseQueue?.length ? (
+              {(position?.cbuWithdrawalQueue || []).map((withdrawal) => (
+                <Tr key={withdrawal.id}>
+                  <Td>{withdrawal.id}<br /><Text fontSize="xs">CBU Withdrawal</Text></Td>
+                  <Td>{withdrawal.memberName}</Td>
+                  <Td>{formatDateTime(withdrawal.requestedAt)}</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(withdrawal.amount)}</Td>
+                  <Td><Badge colorScheme="orange">{withdrawal.status}</Badge></Td>
+                </Tr>
+              ))}
+              {!position?.releaseQueue?.length && !position?.cbuWithdrawalQueue?.length ? (
                 <Tr>
-                  <Td colSpan={5} color="gray.500">No loans currently require release funding.</Td>
+                  <Td colSpan={5} color="gray.500">No payouts currently require funding.</Td>
                 </Tr>
               ) : null}
             </Tbody>
@@ -10357,6 +10450,49 @@ function LoanReleases({ user }) {
     setMessage("");
     setError("");
     releaseModal.onOpen();
+  }
+
+  async function submitCbuWithdrawal(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      const data = await api("/api/cbu-withdrawals", {
+        method: "POST",
+        body: JSON.stringify(cbuWithdrawalForm)
+      });
+      setMessage(
+        data.withdrawal.status === "For Funding"
+          ? `${data.withdrawal.id} saved for funding. Cashier funding shortage: ${formatMoney(data.fundingShortage)}.`
+          : `${data.withdrawal.id} released into the Teller batch for ${data.withdrawal.memberName}.`
+      );
+      setCbuWithdrawalForm((current) => ({ ...current, amount: 500, referenceNo: "" }));
+      await loadMembersWorkflow();
+    } catch (withdrawalError) {
+      if (withdrawalError.code === "CBU_RETENTION_GUARDRAIL") {
+        setCbuGuardrailDetails(withdrawalError.details || null);
+        cbuGuardrailNotice.onOpen();
+      } else {
+        setError(withdrawalError.message);
+      }
+    }
+  }
+
+  async function releaseCbuWithdrawalRequest(withdrawalId) {
+    setError("");
+    setMessage("");
+    try {
+      const data = await api(`/api/cbu-withdrawals/${withdrawalId}/release`, { method: "POST" });
+      setMessage(`${data.withdrawal.id} released into the current Teller batch.`);
+      await loadMembersWorkflow();
+    } catch (withdrawalError) {
+      if (withdrawalError.code === "CBU_RETENTION_GUARDRAIL") {
+        setCbuGuardrailDetails(withdrawalError.details || null);
+        cbuGuardrailNotice.onOpen();
+      } else {
+        setError(withdrawalError.message);
+      }
+    }
   }
 
   function viewSchedule(loan) {
@@ -10729,6 +10865,28 @@ function LoanReleases({ user }) {
           <ModalFooter>
             <Button onClick={scheduleModal.onClose}>Close</Button>
           </ModalFooter>
+        </ModalContent>
+      </Modal>
+      <Modal isOpen={cbuGuardrailNotice.isOpen} onClose={cbuGuardrailNotice.onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>CBU Withdrawal Not Allowed</ModalHeader>
+          <ModalBody>
+            <Text mb={4}>This withdrawal would reduce retained CBU below the required amount.
+              Please refer this transaction to the System Administrator.</Text>
+            <VStack align="stretch" spacing={2} fontSize="sm">
+              {[
+                ["Membership minimum", cbuGuardrailDetails?.membershipMinimum || 5000],
+                ["Manual loan exposure", cbuGuardrailDetails?.manualLoanExposure || 0],
+                ["System loan exposure", cbuGuardrailDetails?.systemLoanExposure || 0],
+                ["Pending CBU withdrawals", cbuGuardrailDetails?.pendingWithdrawalExposure || 0],
+                ["Maximum withdrawable", cbuGuardrailDetails?.withdrawableAmount || 0]
+              ].map(([label, value]) => <Flex key={label} justify="space-between">
+                <Text>{label}</Text><Text fontWeight="bold">{formatMoney(value)}</Text>
+              </Flex>)}
+            </VStack>
+          </ModalBody>
+          <ModalFooter><Button colorScheme="green" onClick={cbuGuardrailNotice.onClose}>Close</Button></ModalFooter>
         </ModalContent>
       </Modal>
 

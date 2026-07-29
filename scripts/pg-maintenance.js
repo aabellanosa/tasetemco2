@@ -22,6 +22,7 @@ const tables = [
   "loan_releases",
   "loan_installments",
   "loans",
+  "cbu_withdrawals",
   "teller_fundings",
   "teller_cash_counts",
   "initial_member_payments",

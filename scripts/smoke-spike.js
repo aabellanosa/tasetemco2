@@ -2030,6 +2030,27 @@ async function run() {
       throw new Error("Savings withdrawal above available balance should be rejected.");
     }
 
+    const excessiveCbuWithdrawal = await fetch(`${baseUrl}/api/cbu-withdrawals`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: tellerCookie
+      },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 999999,
+        referenceNo: "CBUW-SMOKE-TOO-MUCH"
+      })
+    });
+    const excessiveCbuWithdrawalBody = await excessiveCbuWithdrawal.json();
+    if (
+      excessiveCbuWithdrawal.status !== 409 ||
+      excessiveCbuWithdrawalBody.code !== "CBU_RETENTION_GUARDRAIL" ||
+      excessiveCbuWithdrawalBody.details?.membershipMinimum !== 5000
+    ) {
+      throw new Error("CBU withdrawal must enforce the ₱5,000 plus loan-exposure retention guardrail.");
+    }
+
     const savingsWithdrawal = await fetch(`${baseUrl}/api/savings-withdrawals`, {
       method: "POST",
       headers: {

@@ -103,6 +103,7 @@ export const rolePermissions = {
     "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
+    "members:cbu-withdrawals:view",
     "teller-cash-counts:view",
     "teller-batches:view",
     "ledger:view",
@@ -136,6 +137,7 @@ export const rolePermissions = {
     "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
+    "members:cbu-withdrawals:view",
     "teller-cash-counts:view",
     "teller-batches:view",
     "ledger:view",
@@ -211,6 +213,8 @@ export const rolePermissions = {
     "members:savings-deposits:create",
     "members:savings-withdrawals:view",
     "members:savings-withdrawals:create",
+    "members:cbu-withdrawals:view",
+    "members:cbu-withdrawals:create",
     "teller-cash-counts:view",
     "teller-cash-counts:create",
     "teller-batches:view",
@@ -255,6 +259,7 @@ export const rolePermissions = {
     "members:share-capital-contributions:view",
     "members:savings-deposits:view",
     "members:savings-withdrawals:view",
+    "members:cbu-withdrawals:view",
     "teller-cash-counts:view",
     "teller-batches:view",
     "ledger:view",
@@ -824,6 +829,7 @@ export const monthlyContributionMovements = [];
 export const savingsDeposits = [];
 
 export const savingsWithdrawals = [];
+export const cbuWithdrawals = [];
 export const securedSavingsWithdrawals = [];
 
 export const journalEntries = [];
