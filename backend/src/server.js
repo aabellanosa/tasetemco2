@@ -7601,7 +7601,7 @@ async function listTellerCashCounts() {
   const [rows] = await db.execute(
     `SELECT count_no AS id, batch_no AS batchId, expected_cash AS expectedCash, actual_cash AS actualCash,
             variance, transaction_count AS transactionCount, submitted_by AS submittedBy,
-            status, submitted_at AS submittedAt
+            COALESCE(teller_note, '') AS tellerNote, status, submitted_at AS submittedAt
      FROM teller_cash_counts
      ORDER BY submitted_at DESC, id DESC`
   );
@@ -11179,6 +11179,7 @@ async function submitTellerCashCount(input, user) {
     variance: subtractMoney(input.actualCash, addMoney(openingFunding, summary.netCash)),
     transactionCount: summary.transactionCount,
     submittedBy: user.username,
+    tellerNote: input.tellerNote,
     status: "Submitted",
     submittedAt: new Date().toISOString()
   };
@@ -11205,9 +11206,10 @@ async function submitTellerCashCount(input, user) {
 
   await db.execute(
     `INSERT INTO teller_cash_counts (
-       count_no, batch_no, expected_cash, actual_cash, variance, transaction_count, submitted_by, status
+       count_no, batch_no, expected_cash, actual_cash, variance, transaction_count,
+       submitted_by, teller_note, status
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'Submitted')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Submitted')`,
     [
       countNo,
       batch.id,
@@ -11215,7 +11217,8 @@ async function submitTellerCashCount(input, user) {
       cashCount.actualCash,
       cashCount.variance,
       cashCount.transactionCount,
-      user.username
+      user.username,
+      cashCount.tellerNote
     ]
   );
 
@@ -11677,14 +11680,19 @@ function validateSavingsWithdrawal(body) {
 
 function validateTellerCashCount(body) {
   const actualCash = Number(body.actualCash || 0);
+  const tellerNote = String(body.tellerNote || "").trim();
 
   if (!isMoney(actualCash)) {
     return { error: "Actual cash counted must have no more than two decimal places." };
   }
+  if (tellerNote.length > 500) {
+    return { error: "Teller endorsement note must be 500 characters or fewer." };
+  }
 
   return {
     value: {
-      actualCash: moneyValue(actualCash)
+      actualCash: moneyValue(actualCash),
+      tellerNote
     }
   };
 }

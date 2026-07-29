@@ -4124,14 +4124,28 @@ async function run() {
     const turnoverCashCount = await fetch(`${baseUrl}/api/teller-cash-count`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: tellerCookie },
-      body: JSON.stringify({ actualCash: 500 })
+      body: JSON.stringify({
+        actualCash: 500,
+        tellerNote: "Loan Officer turnover counted and included in the Cashier batch."
+      })
     });
     const turnoverCashCountBody = await turnoverCashCount.json();
     if (!turnoverCashCount.ok || turnoverCashCountBody.cashCount.variance !== 0 ||
+      turnoverCashCountBody.cashCount.tellerNote !==
+        "Loan Officer turnover counted and included in the Cashier batch." ||
       turnoverCashCountBody.cashCount.submittedBy !== "teller01") {
       throw new Error("Cashier should perform the final cash count after accepting Loan Officer turnover.");
     }
     const turnoverTargetBatchId = acceptLoanOfficerTurnoverBody.targetBatch.id;
+    const turnoverBatchEvidence = await fetch(`${baseUrl}/api/teller-batches/${turnoverTargetBatchId}`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const turnoverBatchEvidenceBody = await turnoverBatchEvidence.json();
+    if (!turnoverBatchEvidence.ok ||
+      turnoverBatchEvidenceBody.latestCashCount?.tellerNote !==
+        "Loan Officer turnover counted and included in the Cashier batch.") {
+      throw new Error("Bookkeeper batch review evidence should include the Teller endorsement note.");
+    }
     const reviewTurnoverBatch = await fetch(`${baseUrl}/api/teller-batches/${turnoverTargetBatchId}/review`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: bookkeeperCookie },

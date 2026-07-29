@@ -3118,7 +3118,8 @@ function Members({ user }) {
     memberId: "", amount: 500, referenceNo: ""
   });
   const [cashCountForm, setCashCountForm] = useState({
-    actualCash: "0.00"
+    actualCash: "0.00",
+    tellerNote: ""
   });
   const [memberProfileForm, setMemberProfileForm] = useState({
     name: "",
@@ -3616,7 +3617,7 @@ function Members({ user }) {
       setMessage(`${data.cashCount.id} submitted with ${formatMoney(data.cashCount.variance)} variance.`);
       setActiveBatch(data.batch);
       setLatestCashCount(data.cashCount);
-      setCashCountForm({ actualCash: "0.00" });
+      setCashCountForm({ actualCash: "0.00", tellerNote: "" });
       await loadMembersWorkflow();
     } catch (cashCountError) {
       setError(cashCountError.message);
@@ -4263,7 +4264,7 @@ function Members({ user }) {
                       precision={2}
                       step={0.01}
                       value={cashCountForm.actualCash}
-                      onChange={(value) => setCashCountForm({ actualCash: value })}
+                      onChange={(value) => setCashCountForm((current) => ({ ...current, actualCash: value }))}
                     >
                       <NumberInputField />
                     </NumberInput>
@@ -4289,11 +4290,33 @@ function Members({ user }) {
                     </Button>
                   </Box>
                 </Grid>
-                {latestCashCount ? (
-                  <Text mt={3} color="gray.600" fontSize="sm">
-                    Latest submitted by {latestCashCount.submittedBy}: expected {formatMoney(latestCashCount.expectedCash)},
-                    actual {formatMoney(latestCashCount.actualCash)}, variance {formatMoney(latestCashCount.variance)}.
+                <FormControl mt={4}>
+                  <FormLabel>Teller endorsement note</FormLabel>
+                  <Textarea
+                    value={cashCountForm.tellerNote}
+                    maxLength={500}
+                    onChange={(event) => setCashCountForm((current) => ({
+                      ...current,
+                      tellerNote: event.target.value
+                    }))}
+                    placeholder="Optional note for the Bookkeeper reviewing this cash count."
+                  />
+                  <Text color="gray.500" fontSize="xs" mt={1}>
+                    {cashCountForm.tellerNote.length}/500 characters
                   </Text>
+                </FormControl>
+                {latestCashCount ? (
+                  <Box mt={3}>
+                    <Text color="gray.600" fontSize="sm">
+                      Latest submitted by {latestCashCount.submittedBy}: expected {formatMoney(latestCashCount.expectedCash)},
+                      actual {formatMoney(latestCashCount.actualCash)}, variance {formatMoney(latestCashCount.variance)}.
+                    </Text>
+                    {latestCashCount.tellerNote ? (
+                      <Text color="gray.700" fontSize="sm" mt={1}>
+                        Endorsement note: {latestCashCount.tellerNote}
+                      </Text>
+                    ) : null}
+                  </Box>
                 ) : null}
               </Box>
             ) : null}
@@ -5432,6 +5455,10 @@ function Ledger({ user }) {
                       <Text fontWeight="bold">{latestCashCount ? latestCashCount.submittedBy : "-"}</Text>
                     </Box>
                   </Grid>
+                  <Box mt={4} borderWidth="1px" borderRadius="md" p={4} bg="gray.50">
+                    <Text color="gray.500" fontSize="sm">Teller Endorsement Note</Text>
+                    <Text fontWeight="bold" whiteSpace="pre-wrap">{latestCashCount?.tellerNote || "-"}</Text>
+                  </Box>
                   <Text mt={3} color="gray.600" fontSize="sm">
                     Post reviewed batch creates accounting entries for acknowledged funding and all unposted transaction rows. A non-zero variance requires a Bookkeeper note before review.
                   </Text>
@@ -5843,6 +5870,7 @@ function Ledger({ user }) {
                           <Th isNumeric>Variance</Th>
                           <Th isNumeric>Txns</Th>
                           <Th>Submitted By</Th>
+                          <Th>Teller Note</Th>
                           <Th>Submitted</Th>
                         </Tr>
                       </Thead>
@@ -5855,12 +5883,13 @@ function Ledger({ user }) {
                             <Td isNumeric>{formatMoney(cashCount.variance)}</Td>
                             <Td isNumeric>{cashCount.transactionCount}</Td>
                             <Td>{cashCount.submittedBy}</Td>
+                            <Td whiteSpace="pre-wrap">{cashCount.tellerNote || "-"}</Td>
                             <Td>{formatDateTime(cashCount.submittedAt)}</Td>
                           </Tr>
                         ))}
                         {selectedBatchDetails.cashCounts.length === 0 ? (
                           <Tr>
-                            <Td colSpan={7} color="gray.500">No cash count submitted for this batch.</Td>
+                            <Td colSpan={8} color="gray.500">No cash count submitted for this batch.</Td>
                           </Tr>
                         ) : null}
                       </Tbody>
