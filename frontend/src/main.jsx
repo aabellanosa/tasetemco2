@@ -11083,18 +11083,142 @@ function LoanCollections({ user }) {
   );
 }
 
+function CashTurnovers({ user }) {
+  const [batches, setBatches] = useState([]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  const canSubmit = user.permissions.includes("teller-turnovers:create");
+  const canAccept = user.permissions.includes("teller-turnovers:accept");
+
+  const load = useCallback(async () => {
+    try {
+      setError("");
+      setBatches(await api("/api/teller-batches"));
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const ownBatch = batches.find((batch) =>
+    batch.tellerUsername === user.username && ["Open", "Pending Turnover"].includes(batch.status)
+  );
+  const pending = batches.filter((batch) => batch.status === "Pending Turnover");
+
+  async function submitTurnover() {
+    if (!window.confirm("Submit this collection batch for physical cash turnover to the Cashier?")) return;
+    setBusy("submit"); setError(""); setMessage("");
+    try {
+      const result = await api("/api/teller-turnovers/submit", { method: "POST", body: JSON.stringify({}) });
+      setMessage(`${result.batch.id} submitted: ${formatMoney(result.summary.cashIn)} for Cashier count.`);
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function acceptTurnover(batch) {
+    const entered = window.prompt(
+      `Count the physical cash from ${batch.tellerUsername}, then enter the amount. Expected ${formatMoney(batch.turnoverAmount)}:`,
+      Number(batch.turnoverAmount || 0).toFixed(2)
+    );
+    if (entered === null) return;
+    const countedCash = Number(entered);
+    setBusy(batch.id); setError(""); setMessage("");
+    try {
+      const result = await api(`/api/teller-turnovers/${batch.id}/accept`, {
+        method: "POST",
+        body: JSON.stringify({ countedCash })
+      });
+      setMessage(
+        `${batch.id} accepted into Cashier batch ${result.targetBatch.id}. Final cash count remains with the Cashier.`
+      );
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <VStack align="stretch" spacing={5}>
+      <Box>
+        <Heading size="md">Cash Turnover</Heading>
+        <Text color="gray.600" mt={1}>
+          Loan Officer collections remain separate until the Cashier physically counts and accepts the turnover.
+        </Text>
+      </Box>
+      {message ? <Text color="green.600">{message}</Text> : null}
+      {error ? <Text color="red.500">{error}</Text> : null}
+      {canSubmit ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm" mb={3}>My Collection Batch</Heading>
+          {ownBatch ? (
+            <HStack justify="space-between" align="center" flexWrap="wrap" gap={3}>
+              <Box>
+                <Text fontWeight="bold">{ownBatch.id}</Text>
+                <Text color="gray.600">
+                  {ownBatch.status === "Pending Turnover"
+                    ? `${formatMoney(ownBatch.turnoverAmount)} awaiting Cashier acceptance`
+                    : `${ownBatch.unpostedTransactionCount || 0} encoded cash-in transaction(s)`}
+                </Text>
+              </Box>
+              <Button colorScheme="green" onClick={submitTurnover}
+                isLoading={busy === "submit"} isDisabled={ownBatch.status !== "Open"}>
+                Submit Cash Turnover
+              </Button>
+            </HStack>
+          ) : <Text color="gray.500">Your next cash-in transaction will open a collection batch.</Text>}
+        </Box>
+      ) : null}
+      {canAccept ? (
+        <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+          <Heading size="sm" mb={3}>Pending Loan Officer Turnovers</Heading>
+          <TableContainer>
+            <Table size="sm">
+              <Thead><Tr><Th>Batch</Th><Th>Loan Officer</Th><Th isNumeric>Transactions</Th>
+                <Th isNumeric>Cash to Count</Th><Th>Submitted</Th><Th>Action</Th></Tr></Thead>
+              <Tbody>
+                {pending.map((batch) => (
+                  <Tr key={batch.id}>
+                    <Td>{batch.id}</Td><Td>{batch.tellerUsername}</Td>
+                    <Td isNumeric>{batch.turnoverTransactionCount}</Td>
+                    <Td isNumeric fontWeight="bold">{formatMoney(batch.turnoverAmount)}</Td>
+                    <Td>{formatDateTime(batch.turnoverSubmittedAt)}</Td>
+                    <Td><Button size="sm" colorScheme="green" onClick={() => acceptTurnover(batch)}
+                      isLoading={busy === batch.id}>Count & Accept</Button></Td>
+                  </Tr>
+                ))}
+                {!pending.length ? <Tr><Td colSpan={6} color="gray.500">No cash turnovers awaiting acceptance.</Td></Tr> : null}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ) : null}
+    </VStack>
+  );
+}
+
 function Loans({ user }) {
   const canViewApplications = user.permissions.includes("loans:applications:view");
   const canViewComputations = user.permissions.includes("loans:computations:view");
   const canViewReleases = user.permissions.includes("loans:releases:view");
   const canViewCollections = user.permissions.includes("loans:collections:view");
   const canViewCashFunding = user.permissions.includes("teller-fundings:acknowledge");
+  const canViewCashTurnover = user.permissions.includes("teller-turnovers:create") ||
+    user.permissions.includes("teller-turnovers:accept");
   const canViewProducts = user.permissions.includes("loans:products:view");
   const tabs = [
     canViewApplications ? { key: "applications", label: "Applications" } : null,
     canViewComputations ? { key: "computations", label: "Computations" } : null,
     canViewReleases ? { key: "releases", label: "Releases" } : null,
     canViewCollections ? { key: "collections", label: "Collections" } : null,
+    canViewCashTurnover ? { key: "cash-turnover", label: "Cash Turnover" } : null,
     canViewCashFunding ? { key: "cash-funding", label: "Cash Funding" } : null,
     canViewProducts ? { key: "products", label: "Loan Products" } : null
   ].filter(Boolean);
@@ -11127,6 +11251,7 @@ function Loans({ user }) {
         {canViewComputations ? <TabPanel px={0}><LoanComputations user={user} /></TabPanel> : null}
         {canViewReleases ? <TabPanel px={0}><LoanReleases user={user} /></TabPanel> : null}
         {canViewCollections ? <TabPanel px={0}><LoanCollections user={user} /></TabPanel> : null}
+        {canViewCashTurnover ? <TabPanel px={0}><CashTurnovers user={user} /></TabPanel> : null}
         {canViewCashFunding ? (
           <TabPanel px={0}>
             <TellerCashFunding

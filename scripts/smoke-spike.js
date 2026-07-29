@@ -4024,6 +4024,132 @@ async function run() {
       throw new Error("Loan collection history should expose its posted journal evidence.");
     }
 
+    const closeCollectionBatch = await fetch(
+      `${baseUrl}/api/teller-batches/${collectionBatchId}/close`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: bookkeeperCookie },
+        body: JSON.stringify({ closingNote: "Close Cashier batch before Loan Officer turnover test." })
+      }
+    );
+    if (!closeCollectionBatch.ok) {
+      throw new Error("Bookkeeper should close the posted collection batch before turnover testing.");
+    }
+
+    const loanOfficerDeposit = await fetch(`${baseUrl}/api/savings-deposits`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: loanOfficerCookie },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 500,
+        cashReceived: 500,
+        referenceNo: "OR-LOAN-OFFICER-TURNOVER"
+      })
+    });
+    const loanOfficerDepositBody = await loanOfficerDeposit.json();
+    if (!loanOfficerDeposit.ok || loanOfficerDepositBody.deposit.receivedBy !== "loanofficer" ||
+      loanOfficerDepositBody.deposit.status !== "Teller Batch") {
+      throw new Error("Loan Officer should encode an authorized cash-in transaction in their own collection batch.");
+    }
+    const loanOfficerBatchId = loanOfficerDepositBody.deposit.batchId;
+
+    const forbiddenLoanOfficerWithdrawal = await fetch(`${baseUrl}/api/savings-withdrawals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: loanOfficerCookie },
+      body: JSON.stringify({
+        memberId: approvalBody.member.id,
+        amount: 100,
+        cashReleased: 100,
+        referenceNo: "WV-LOAN-OFFICER-FORBIDDEN"
+      })
+    });
+    if (forbiddenLoanOfficerWithdrawal.status !== 403) {
+      throw new Error("Loan Officer cash-in authority must not grant savings-withdrawal cash-out authority.");
+    }
+
+    const submitLoanOfficerTurnover = await fetch(`${baseUrl}/api/teller-turnovers/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: loanOfficerCookie },
+      body: JSON.stringify({})
+    });
+    const submitLoanOfficerTurnoverBody = await submitLoanOfficerTurnover.json();
+    if (!submitLoanOfficerTurnover.ok ||
+      submitLoanOfficerTurnoverBody.batch.id !== loanOfficerBatchId ||
+      submitLoanOfficerTurnoverBody.batch.status !== "Pending Turnover" ||
+      submitLoanOfficerTurnoverBody.summary.cashIn !== 500) {
+      throw new Error(
+        `Loan Officer should submit their collection batch and frozen cash total to Cashier. Got ${submitLoanOfficerTurnover.status}: ${JSON.stringify(submitLoanOfficerTurnoverBody)}`
+      );
+    }
+
+    const mismatchedTurnoverCount = await fetch(
+      `${baseUrl}/api/teller-turnovers/${loanOfficerBatchId}/accept`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+        body: JSON.stringify({ countedCash: 499 })
+      }
+    );
+    if (mismatchedTurnoverCount.status !== 409) {
+      throw new Error("Cashier should not accept a Loan Officer turnover with a cash-count difference.");
+    }
+
+    const acceptLoanOfficerTurnover = await fetch(
+      `${baseUrl}/api/teller-turnovers/${loanOfficerBatchId}/accept`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+        body: JSON.stringify({ countedCash: 500 })
+      }
+    );
+    const acceptLoanOfficerTurnoverBody = await acceptLoanOfficerTurnover.json();
+    if (!acceptLoanOfficerTurnover.ok ||
+      acceptLoanOfficerTurnoverBody.sourceBatch.status !== "Turned Over" ||
+      acceptLoanOfficerTurnoverBody.sourceBatch.turnoverAcceptedBy !== "teller01" ||
+      acceptLoanOfficerTurnoverBody.targetBatch.tellerUsername !== "teller01") {
+      throw new Error("Cashier should count and accept Loan Officer cash into the Cashier batch.");
+    }
+
+    const cashierPositionAfterTurnover = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const cashierPositionAfterTurnoverBody = await cashierPositionAfterTurnover.json();
+    if (!cashierPositionAfterTurnover.ok ||
+      cashierPositionAfterTurnoverBody.activeBatch.id !== acceptLoanOfficerTurnoverBody.targetBatch.id ||
+      cashierPositionAfterTurnoverBody.expected.cashIn !== 500 ||
+      cashierPositionAfterTurnoverBody.expected.transactionCount !== 1) {
+      throw new Error("Accepted Loan Officer cash should enter the Cashier batch and final cash-count position.");
+    }
+
+    const turnoverCashCount = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ actualCash: 500 })
+    });
+    const turnoverCashCountBody = await turnoverCashCount.json();
+    if (!turnoverCashCount.ok || turnoverCashCountBody.cashCount.variance !== 0 ||
+      turnoverCashCountBody.cashCount.submittedBy !== "teller01") {
+      throw new Error("Cashier should perform the final cash count after accepting Loan Officer turnover.");
+    }
+    const turnoverTargetBatchId = acceptLoanOfficerTurnoverBody.targetBatch.id;
+    const reviewTurnoverBatch = await fetch(`${baseUrl}/api/teller-batches/${turnoverTargetBatchId}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: bookkeeperCookie },
+      body: JSON.stringify({ varianceNote: "" })
+    });
+    if (!reviewTurnoverBatch.ok) {
+      throw new Error("Bookkeeper should review the Cashier batch containing accepted Loan Officer collections.");
+    }
+    const postTurnoverBatch = await fetch(
+      `${baseUrl}/api/ledger/teller-batches/${turnoverTargetBatchId}/post-reviewed`,
+      { method: "POST", headers: { Cookie: bookkeeperCookie } }
+    );
+    const postTurnoverBatchBody = await postTurnoverBatch.json();
+    if (!postTurnoverBatch.ok || postTurnoverBatchBody.postedCount !== 1 ||
+      postTurnoverBatchBody.results[0]?.batchType !== "Savings Deposit") {
+      throw new Error("Accepted Loan Officer collection should post through the normal reviewed Cashier batch.");
+    }
+
     const forbiddenLoanOfficerRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
       method: "POST",
       headers: {

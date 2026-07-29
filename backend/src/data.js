@@ -176,6 +176,12 @@ export const rolePermissions = {
   ],
   "Loan Officer": [
     "members:view",
+    "members:initial-payments:view",
+    "members:initial-payments:create",
+    "members:share-capital-contributions:view",
+    "members:share-capital-contributions:create",
+    "members:savings-deposits:view",
+    "members:savings-deposits:create",
     "members:previous-loans:edit",
     "members:previous-loans:unlock-request",
     "members:previous-loans:unlock-approve",
@@ -187,7 +193,13 @@ export const rolePermissions = {
     "loans:computations:view",
     "loans:computations:create",
     "loans:releases:view",
-    "loans:collections:view"
+    "loans:collections:view",
+    "loans:collections:create",
+    "monthly-contributions:view",
+    "monthly-contributions:encode",
+    "monthly-contributions:finalize",
+    "teller-batches:view",
+    "teller-turnovers:create"
   ],
   "Teller / Cashier": [
     "members:view",
@@ -202,6 +214,7 @@ export const rolePermissions = {
     "teller-cash-counts:view",
     "teller-cash-counts:create",
     "teller-batches:view",
+    "teller-turnovers:accept",
     "loans:products:view",
     "loans:releases:view",
     "loans:releases:create",

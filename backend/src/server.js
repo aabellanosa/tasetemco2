@@ -7652,6 +7652,13 @@ async function listTellerBatches() {
             COALESCE(variance_note, '') AS varianceNote,
             COALESCE(variance_noted_by, '') AS varianceNotedBy,
             variance_noted_at AS varianceNotedAt,
+            turnover_amount AS turnoverAmount,
+            turnover_transaction_count AS turnoverTransactionCount,
+            COALESCE(turnover_submitted_by, '') AS turnoverSubmittedBy,
+            turnover_submitted_at AS turnoverSubmittedAt,
+            COALESCE(turnover_accepted_by, '') AS turnoverAcceptedBy,
+            turnover_accepted_at AS turnoverAcceptedAt,
+            COALESCE(turnover_target_batch_no, '') AS turnoverTargetBatchNo,
             (
               SELECT COUNT(*)
               FROM (
@@ -7746,6 +7753,151 @@ async function getTellerBatchDetails(batchId) {
     transactions,
     journalEntries: linkedJournalEntries
   };
+}
+
+async function submitLoanOfficerCashTurnover(user) {
+  const batch = await getCurrentTellerBatch(user);
+  if (batch.tellerUsername !== user.username || batch.status !== "Open") {
+    return { error: "Only your Open Loan Officer collection batch can be submitted.", statusCode: 409 };
+  }
+  const rows = await listTellerBatchRows(batch.id);
+  const summary = buildTellerBatchSummary(rows);
+  if (!summary.transactionCount) {
+    return { error: "Encode at least one cash-in transaction before submitting turnover.", statusCode: 409 };
+  }
+  if (summary.cashOut > 0) {
+    return { error: "Loan Officer turnover batches cannot contain cash-out transactions.", statusCode: 409 };
+  }
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    Object.assign(batch, {
+      status: "Pending Turnover",
+      turnoverAmount: summary.cashIn,
+      turnoverTransactionCount: summary.transactionCount,
+      turnoverSubmittedBy: user.username,
+      turnoverSubmittedAt: now
+    });
+    return { batch, summary };
+  }
+  const [result] = await db.execute(
+    `UPDATE teller_batches
+     SET status = 'Pending Turnover', turnover_amount = ?, turnover_transaction_count = ?,
+         turnover_submitted_by = ?, turnover_submitted_at = CURRENT_TIMESTAMP
+     WHERE batch_no = ? AND teller_username = ? AND status = 'Open'`,
+    [summary.cashIn, summary.transactionCount, user.username, batch.id, user.username]
+  );
+  if (!result.affectedRows) {
+    return { error: "The collection batch is no longer available for turnover.", statusCode: 409 };
+  }
+  return {
+    batch: (await listTellerBatches()).find((item) => item.id === batch.id),
+    summary
+  };
+}
+
+function transferLoanOfficerRowsInMemory(sourceBatchId, targetBatchId) {
+  [initialPayments, savingsDeposits, shareCapitalContributions, loanCollections].forEach((rows) => {
+    rows.filter((row) => row.batchId === sourceBatchId && row.status === "Teller Batch")
+      .forEach((row) => { row.batchId = targetBatchId; });
+  });
+  monthlyContributionBatches
+    .filter((row) => row.tellerBatchNo === sourceBatchId && row.status === "Teller Batch")
+    .forEach((row) => { row.tellerBatchNo = targetBatchId; });
+}
+
+async function acceptLoanOfficerCashTurnover(batchId, input, user) {
+  const source = (await listTellerBatches()).find((item) => item.id === batchId);
+  if (!source) return { error: "Loan Officer collection batch was not found.", statusCode: 404 };
+  if (source.status !== "Pending Turnover") {
+    return { error: "Only a Pending Turnover collection batch can be accepted.", statusCode: 409 };
+  }
+  if (source.tellerUsername === user.username) {
+    return { error: "The collector cannot accept their own cash turnover.", statusCode: 403 };
+  }
+  const countedCash = Number(input?.countedCash);
+  if (!isMoney(countedCash) || countedCash < 0) {
+    return { error: "Cashier counted cash must be a valid amount.", statusCode: 400 };
+  }
+  if (!moneyEquals(countedCash, source.turnoverAmount)) {
+    return {
+      error: `Cash counted does not match the submitted turnover amount of ${moneyValue(source.turnoverAmount).toFixed(2)}.`,
+      statusCode: 409
+    };
+  }
+  const sourceRows = await listTellerBatchRows(batchId);
+  const summary = buildTellerBatchSummary(sourceRows);
+  if (!summary.transactionCount || summary.cashOut > 0 ||
+      !moneyEquals(summary.cashIn, source.turnoverAmount)) {
+    return { error: "Turnover contents no longer match the submitted cash total.", statusCode: 409 };
+  }
+  const targetResult = await getOpenTellerBatch(user);
+  if (targetResult.error) return targetResult;
+  const target = targetResult.batch;
+  const now = new Date().toISOString();
+  const db = await getPool();
+  if (!db) {
+    transferLoanOfficerRowsInMemory(batchId, target.id);
+    const storedSource = tellerBatches.find((item) => item.id === batchId);
+    Object.assign(storedSource, {
+      status: "Turned Over",
+      turnoverAcceptedBy: user.username,
+      turnoverAcceptedAt: now,
+      turnoverTargetBatchNo: target.id
+    });
+    return { sourceBatch: storedSource, targetBatch: target, summary };
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [sourceRowsLocked] = await connection.execute(
+      `SELECT status, turnover_amount AS turnoverAmount
+       FROM teller_batches WHERE batch_no = ? FOR UPDATE`,
+      [batchId]
+    );
+    const [targetRowsLocked] = await connection.execute(
+      `SELECT status FROM teller_batches WHERE batch_no = ? FOR UPDATE`,
+      [target.id]
+    );
+    if (sourceRowsLocked[0]?.status !== "Pending Turnover" || targetRowsLocked[0]?.status !== "Open") {
+      await connection.rollback();
+      return { error: "The source or Cashier batch changed before turnover acceptance.", statusCode: 409 };
+    }
+    for (const table of [
+      "initial_member_payments",
+      "savings_deposits",
+      "share_capital_contributions",
+      "loan_collections"
+    ]) {
+      await connection.execute(
+        `UPDATE ${table} SET batch_no = ? WHERE batch_no = ? AND status = 'Teller Batch'`,
+        [target.id, batchId]
+      );
+    }
+    await connection.execute(
+      `UPDATE monthly_contribution_batches
+       SET teller_batch_no = ? WHERE teller_batch_no = ? AND status = 'Teller Batch'`,
+      [target.id, batchId]
+    );
+    await connection.execute(
+      `UPDATE teller_batches
+       SET status = 'Turned Over', turnover_accepted_by = ?, turnover_accepted_at = CURRENT_TIMESTAMP,
+           turnover_target_batch_no = ?
+       WHERE batch_no = ?`,
+      [user.username, target.id, batchId]
+    );
+    await connection.commit();
+    return {
+      sourceBatch: (await listTellerBatches()).find((item) => item.id === batchId),
+      targetBatch: target,
+      summary
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function getDailyCashPositionReport() {
@@ -8711,9 +8863,16 @@ async function getLatestTellerCashCount() {
 
 async function getCurrentTellerBatch(user) {
   const db = await getPool();
+  const personalBatch = ["Loan Officer", "Teller / Cashier"].includes(user?.role);
+  const activeStatuses = user?.role === "Loan Officer"
+    ? ["Open", "Pending Turnover"]
+    : ["Open", "Submitted", "Reviewed"];
 
   if (!db) {
-    let batch = tellerBatches.find((item) => ["Open", "Submitted", "Reviewed"].includes(item.status));
+    let batch = tellerBatches.find((item) =>
+      activeStatuses.includes(item.status) &&
+      (!personalBatch || item.tellerUsername === user.username)
+    );
 
     if (!batch) {
       batch = {
@@ -8740,6 +8899,7 @@ async function getCurrentTellerBatch(user) {
     return batch;
   }
 
+  const personalFilter = personalBatch ? " AND teller_username = ?" : "";
   const [rows] = await db.execute(
     `SELECT batch_no AS id, teller_username AS tellerUsername, status,
             opened_at AS openedAt, submitted_at AS submittedAt,
@@ -8752,9 +8912,10 @@ async function getCurrentTellerBatch(user) {
             COALESCE(variance_noted_by, '') AS varianceNotedBy,
             variance_noted_at AS varianceNotedAt
      FROM teller_batches
-     WHERE status IN ('Open', 'Submitted', 'Reviewed')
+     WHERE status IN (${activeStatuses.map(() => "?").join(", ")})${personalFilter}
      ORDER BY opened_at DESC, id DESC
-     LIMIT 1`
+     LIMIT 1`,
+    [...activeStatuses, ...(personalBatch ? [user.username] : [])]
   );
 
   if (rows[0]) {
@@ -13151,6 +13312,32 @@ app.post("/api/teller-cash-count", async (request, response) => {
   }
 
   response.status(201).json(cashCountResult);
+});
+
+app.post("/api/teller-turnovers/submit", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "teller-turnovers:create")) {
+    response.status(403).json({ error: "Access denied" }); return;
+  }
+  const result = await submitLoanOfficerCashTurnover(user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error }); return;
+  }
+  response.status(201).json(result);
+});
+
+app.post("/api/teller-turnovers/:batchId/accept", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) { response.status(401).json({ error: "Login required" }); return; }
+  if (!hasPermission(user, "teller-turnovers:accept")) {
+    response.status(403).json({ error: "Access denied" }); return;
+  }
+  const result = await acceptLoanOfficerCashTurnover(request.params.batchId, request.body, user);
+  if (result.error) {
+    response.status(result.statusCode).json({ error: result.error }); return;
+  }
+  response.json(result);
 });
 
 app.post("/api/teller-batches/:batchId/review", async (request, response) => {
