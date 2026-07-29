@@ -54,6 +54,7 @@ function validateSite(directory) {
   assert(index.includes("Admin configures centers and reviews activity"), "Cost-center role separation is missing.");
   assert(index.includes("TFEA Payable, Share Capital, and Secured Savings Payable"), "Monthly contribution posting flow is missing.");
   assert(index.includes("posted Secured Savings less pending secured withdrawals"), "Secured Savings withdrawal controls are missing.");
+  assert(index.includes("A CBU withdrawal must leave PHP 5,000"), "CBU withdrawal guardrail is missing.");
   assert(index.includes("SUMMO — Regular Members Capture"), "SUMMO report listing is missing.");
   assert(index.includes("Daily Cost-Center Payables"), "Cost-center payable workflow is missing.");
   assert(index.includes("G-mar Commercial purchases supply G-mar Capital"), "System-to-SUMMO G-mar flow is missing.");
