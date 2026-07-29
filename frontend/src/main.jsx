@@ -3118,7 +3118,7 @@ function Members({ user }) {
     memberId: "", amount: 500, referenceNo: ""
   });
   const [cashCountForm, setCashCountForm] = useState({
-    actualCash: 0
+    actualCash: "0.00"
   });
   const [memberProfileForm, setMemberProfileForm] = useState({
     name: "",
@@ -3616,7 +3616,7 @@ function Members({ user }) {
       setMessage(`${data.cashCount.id} submitted with ${formatMoney(data.cashCount.variance)} variance.`);
       setActiveBatch(data.batch);
       setLatestCashCount(data.cashCount);
-      setCashCountForm({ actualCash: 0 });
+      setCashCountForm({ actualCash: "0.00" });
       await loadMembersWorkflow();
     } catch (cashCountError) {
       setError(cashCountError.message);
@@ -4263,7 +4263,7 @@ function Members({ user }) {
                       precision={2}
                       step={0.01}
                       value={cashCountForm.actualCash}
-                      onChange={(value) => setCashCountForm({ actualCash: Number(value || 0) })}
+                      onChange={(value) => setCashCountForm({ actualCash: value })}
                     >
                       <NumberInputField />
                     </NumberInput>
