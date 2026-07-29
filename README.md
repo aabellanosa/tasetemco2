@@ -145,7 +145,7 @@ The React/Postgres pivot uses action-level permissions, not just screen access. 
 | System Administrator | Yes | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
 | General Manager | Yes | Yes | No | Yes | No | No | No | No | No | Yes | No | No | No |
 | Accountant / Bookkeeper | No | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
+| Loan Officer | Yes | No | No | No | No | Yes | Yes | Yes | No | No | No | No | No |
 | Teller / Cashier | Yes | No | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
 | Membership Officer | Yes | Yes | Yes | No | Yes | No | No | No | No | No | No | No | No |
 | Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
@@ -220,6 +220,8 @@ Teller Cash Funding v1c completes the accounting transfer during reviewed-batch 
 
 Loan Collection v1-v3 supports real receipt amounts against the earliest unpaid installment. Teller/Cashier sees only posted loans and the next collectible installment, records a unique official receipt/reference, and may accept a partial, full, or advance payment as long as the amount does not exceed the remaining loan balance. The UI previews every affected installment before confirmation. Payment is applied to the oldest unpaid installment first, interest then principal, and any excess continues sequentially through future installments. Fully covered rows become `Paid`, the last partly covered row becomes `Partial`, and the original amortization schedule and interest are not recomputed. One receipt retains its detailed installment allocations while entering the Open teller batch as one cash-in transaction. Bookkeeper sees the aggregate principal and interest split before posting. After cash count and review, `Post reviewed batch` debits Cash on Hand, credits Loans Receivable for principal applied, and credits Interest Income for interest applied. Skipped-installment, penalty, payoff, and amortization-recalculation policies remain separate future decisions.
 
+Loan Officer Collection and Cash Turnover v1 allows Loan Officers to encode member initial payments, share-capital contributions, savings deposits, monthly member contributions, and loan collections. These cash-in transactions enter a separate Loan Officer collection batch. The Loan Officer submits its frozen transaction count and cash total; the Cashier physically counts the turnover and may accept it only when the counted amount matches. Acceptance transfers the transactions into the Cashier's Open batch for final cash count, Bookkeeper review, and posting. The audit trail retains collector, turnover submitter, Cashier acceptor, timestamps, source batch, and target batch. Loan Officers receive no savings-withdrawal, secured-withdrawal, loan-release, disbursement, final cash-count, review, or posting authority.
+
 Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment and one near-due installment so collection follow-up can be demonstrated after reset/seed. The dashboard shows borrower-level overdue details only to management, loan, accounting, audit, and executive roles; Teller/Cashier and Membership Officer do not receive portfolio-wide overdue borrower details.
 
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
@@ -263,7 +265,7 @@ Loan Portfolio Watch v1 seeds one demo posted loan with an overdue installment a
 | System Administrator | Yes | No |
 | General Manager | Yes | No |
 | Accountant / Bookkeeper | Ledger and batch evidence | No |
-| Loan Officer | Yes | No |
+| Loan Officer | Yes | Yes |
 | Teller / Cashier | Yes | Yes |
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
@@ -393,7 +395,7 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 
 ## Documentation
 
-Monthly Member Contributions are recorded by Teller/Cashier as cash-paid TFEA, CBU, and Secured Savings. A Draft has no effect; adding it to the Open teller batch includes the total in expected cash. Reviewed-batch posting creates the balanced journal, feeds SUMMO columns U, V, and AE, and increases member CBU/share-capital balances. Run `npm run pg:migrate` before deploying the application build that introduces this workflow.
+Monthly Member Contributions are recorded by Teller/Cashier or Loan Officer as cash-paid TFEA, CBU, and Secured Savings. A Loan Officer contribution enters their separate collection batch and reaches Cashier expected cash only after physical turnover acceptance. A Draft has no effect. Reviewed-batch posting creates the balanced journal, feeds SUMMO columns U, V, and AE, and increases member CBU/share-capital balances. Run `npm run pg:migrate` before deploying the application build that introduces this workflow.
 
 Secured Savings is a separate member subsidiary from regular savings. Posted Monthly Contributions increase the secured balance. Teller/Cashier may record a Secured Savings Withdrawal up to the posted balance less pending withdrawals; it enters the Open teller batch as cash-out. Reviewed-batch posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the member's secured-savings balance.
 

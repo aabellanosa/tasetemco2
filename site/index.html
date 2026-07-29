@@ -204,8 +204,8 @@
           <p>Use this map when a recorded transaction or approval is difficult to locate.</p>
         </div>
         <div class="capability-grid">
-          <article><h3>Teller Receipts</h3><p>Members -> Teller Transactions for initial payments, share capital, savings deposits, and savings withdrawals.</p></article>
-          <article><h3>Monthly Contributions</h3><p>Members -> Monthly Contributions for cash-paid TFEA, CBU, and Secured Savings entered by Teller/Cashier.</p></article>
+          <article><h3>Teller Receipts</h3><p>Members -> Teller Transactions for initial payments, share capital, savings deposits, and savings withdrawals. Loan Officers may encode cash-in types only.</p></article>
+          <article><h3>Monthly Contributions</h3><p>Members -> Monthly Contributions for cash-paid TFEA, CBU, and Secured Savings entered by Teller/Cashier or Loan Officer.</p></article>
           <article><h3>Daily Remittance</h3><p>Members -> Daily Remittance for fixed-grid cash turnover from operating units and Admin-configured sources.</p></article>
           <article><h3>Daily Disbursement</h3><p>Members -> Daily Disbursement for fixed-grid cash expenses attributed to cost centers or cooperative operations.</p></article>
           <article><h3>Cost-Center Encoding</h3><p>Members -> Cost Center Charges for daily Canteen A, Canteen B, Water Refilling Station, G-mar Commercial, and future configured member payables.</p></article>
@@ -268,6 +268,20 @@
               <li>Reports summarize member subsidiary balances for share capital and savings.</li>
               <li>Reports compare subsidiary activity against GL control accounts.</li>
               <li>Transaction stays in teller batch until posting.</li>
+            </ol>
+          </article>
+
+          <article>
+            <h3>Loan Officer Cash Turnover</h3>
+            <ol>
+              <li>Loan Officer encodes authorized cash-in transactions in a separate collection batch.</li>
+              <li>Allowed types are initial payment, share capital, savings deposit, monthly contribution, and loan collection.</li>
+              <li>Loan Officer submits the frozen transaction count and cash total for turnover.</li>
+              <li>Cashier physically counts the money; a mismatch blocks acceptance.</li>
+              <li>Exact acceptance transfers the transactions into the Cashier's Open batch.</li>
+              <li>Cashier performs final cash count; Bookkeeper reviews and posts.</li>
+              <li>Collector, submitter, acceptor, timestamps, and source/target batches remain auditable.</li>
+              <li>Loan Officer cannot encode cash-out, count Cashier cash, review, or post.</li>
             </ol>
           </article>
 

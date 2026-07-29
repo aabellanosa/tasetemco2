@@ -194,7 +194,7 @@ The React/Postgres pivot separates screen access from action access. A role may 
 | System Administrator | Yes | Yes | Yes | Yes | Yes | No | No | No | No | Yes | No | No | No |
 | General Manager | Yes | Yes | No | Yes | No | No | No | No | No | Yes | No | No | No |
 | Accountant / Bookkeeper | No | No | No | No | No | No | No | No | No | Yes | Yes | Yes | Yes |
-| Loan Officer | Yes | No | No | No | No | No | No | No | No | No | No | No | No |
+| Loan Officer | Yes | No | No | No | No | Yes | Yes | Yes | No | No | No | No | No |
 | Teller / Cashier | Yes | No | No | No | No | Yes | Yes | Yes | Yes | No | No | No | No |
 | Membership Officer | Yes | Yes | Yes | No | Yes | No | No | No | No | No | No | No | No |
 | Auditor / Compliance Officer | Yes | Yes | No | No | No | No | No | No | No | Yes | No | No | No |
@@ -265,6 +265,8 @@ Teller Cash Funding v1c adds accounting completion to the reviewed-batch posting
 
 Loan Collection v1-v3 introduces flexible receipt collection against the earliest unpaid installment. Teller/Cashier selects a posted loan and the system presents the next collectible installment, the amount due now, and the total remaining loan balance. Teller may enter the actual amount received as a partial, full, or advance payment, but cannot exceed the remaining loan balance. The system previews each affected installment before confirmation. It applies payment sequentially from the oldest unpaid installment through future installments, applying each row's remaining interest before principal. Fully covered installments become `Paid`; the last partly covered installment becomes `Partial`. The original amortization schedule and interest are not recomputed. A unique official receipt/reference is required. Recording creates one immutable cash-in row in the Open teller batch plus detailed installment allocations. After Teller cash count and Bookkeeper review, `Post reviewed batch` debits Cash on Hand for the total received, credits Loans Receivable for aggregate principal applied, and credits Interest Income for aggregate interest applied. Loan Officer, Admin, Manager, and Auditor have read-only collection visibility.
 
+Loan Officer Collection and Cash Turnover v1 gives Loan Officers cash-in encoding authority for member initial payments, share-capital contributions, savings deposits, monthly member contributions, and loan collections. Each transaction enters the originating Loan Officer's separate collection batch. Submitting turnover freezes its transaction count and cash total. Cashier physically counts the money and can accept only an exact match; acceptance transfers the cash-in rows to the Cashier's Open batch. Cashier then performs the final consolidated cash count, and Bookkeeper retains review and posting authority. Collector, submitter, Cashier acceptor, timestamps, source batch, and target batch remain auditable. Loan Officers cannot encode withdrawals, releases, or disbursements and cannot perform final cash count, review, or posting.
+
 Loan Portfolio Watch v1 makes collection follow-up visible on authorized dashboards. The seeded demo includes one posted loan with an overdue installment and one installment due within 7 days. Borrower-level alert details are shown only to management, loan, accounting, audit, and executive roles because overdue loan information is sensitive member credit data. Teller/Cashier and Membership Officer dashboards do not receive portfolio-wide borrower details.
 
 | Loan Application Access | View | Create / Edit Own Draft | Submit Own Draft | Credit Decision |
@@ -299,7 +301,7 @@ Loan Portfolio Watch v1 makes collection follow-up visible on authorized dashboa
 | System Administrator | Yes | No |
 | General Manager | Yes | No |
 | Accountant / Bookkeeper | Ledger and batch evidence | No |
-| Loan Officer | Yes | No |
+| Loan Officer | Yes | Yes |
 | Teller / Cashier | Yes | Yes |
 | Auditor / Compliance Officer | Yes | No |
 | Membership Officer | No | No |
@@ -371,7 +373,7 @@ General Manager, Accountant / Bookkeeper, and Auditor can reconcile cost-center 
 
 Cost-center movements are routed by member cluster. The current SUMMO consumes only Active `REGULAR MEMBERS CAPTURE` members. Transactions for Non Capture, LGU, Retirees, Community A, and Community B remain recorded and reconcilable but await their respective cluster reports; their absence from Regular Capture SUMMO does not mean the transactions were lost.
 
-Monthly Member Contributions v1 gives Teller/Cashier a separate multi-member Draft for cash-paid TFEA, CBU, and Secured Savings. Saving a Draft has no cash, balance, payable, journal, or SUMMO effect. The creating Teller adds the batch to the current Open teller batch using a unique official receipt/reference; its full total then forms part of expected cashier cash. After cash count and Bookkeeper review, reviewed-batch posting debits `1010 - Cash on Hand`, credits `2030 - TFEA Payable`, `3010 - Share Capital`, and `2040 - Secured Savings Payable`, creates immutable SUMMO movements, and increases each member's CBU/share-capital balance by the posted CBU amount. These contributions never aggregate into member payables.
+Monthly Member Contributions v1 gives Teller/Cashier or Loan Officer a separate multi-member Draft for cash-paid TFEA, CBU, and Secured Savings. Saving a Draft has no cash, balance, payable, journal, or SUMMO effect. A Teller finalization enters the Teller's Open batch directly. A Loan Officer finalization enters their collection batch and affects Cashier expected cash only after physical turnover acceptance. After final cash count and Bookkeeper review, posting debits `1010 - Cash on Hand`, credits `2030 - TFEA Payable`, `3010 - Share Capital`, and `2040 - Secured Savings Payable`, creates immutable SUMMO movements, and increases each member's CBU/share-capital balance by the posted CBU amount. These contributions never aggregate into member payables.
 
 Secured Savings Subsidiary v1 maintains a member `secured_savings_balance` independently from regular savings. Posted Monthly Contributions increase this secured balance. Teller/Cashier may record a Secured Savings Withdrawal against the posted balance less pending withdrawals. Recording reserves availability and adds a cash-out row to the Open teller batch without reducing the posted balance. Bookkeeper posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the secured balance. Member statements, transaction history, the Member Subsidiary Ledger, and Control Account Reconciliation show Secured Savings separately.
 
@@ -878,6 +880,8 @@ Loan Collection v1a adds the `loan_collections` Postgres table. Run `npm run pg:
 Loan Collection v2 is UI-only and requires no migration. It makes the allocation discoverable before Teller confirms the receipt and in Bookkeeper review surfaces: interest applied, principal applied, amount received, payment type, and balance after receipt.
 
 Loan Collection v3 adds `loan_collection_allocations` so one advance-payment receipt can be traced across multiple scheduled installments. Run `npm run pg:migrate` before starting or deploying this build. The migration backfills every existing collection as a single allocation, preserving prior receipt and journal evidence. New advance receipts allocate sequentially without changing the original amortization schedule.
+
+Loan Officer Collection and Cash Turnover v1 adds turnover amount, transaction count, submitter/acceptor, timestamps, and target Cashier batch fields to `teller_batches`. Run `npm run pg:migrate` before deployment. Existing Teller batches and transactions are preserved; no seed or reset is required.
 
 Daily Cost Center Payables v1 adds `cost_centers`, `member_charge_batches`, `member_charge_entries`, and `member_charge_movements`. The SUMMO integration adds a posting-time `summo_column` snapshot to movements and backfills existing movements from their current cost-center configuration. The G-mar extension seeds `GMAR / G-mar Commercial` with SUMMO mapping `G-mar Capital`; run `npm run pg:migrate` so an existing Postgres installation receives that cost center. The later searchable-selector and report-filter UI changes require no schema migration.
 
