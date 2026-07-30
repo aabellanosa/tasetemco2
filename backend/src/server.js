@@ -36,6 +36,8 @@ import {
   memberChargeBatches,
   memberChargeEntries,
   memberChargeMovements,
+  memberDuesPayments,
+  memberDuesPaymentAllocations,
   monthlyContributionBatches,
   monthlyContributionEntries,
   monthlyContributionMovements,
@@ -189,6 +191,8 @@ const persistedTables = [
   "secured_savings_withdrawals",
   "cbu_withdrawals",
   "member_charge_movements",
+  "member_dues_payment_allocations",
+  "member_dues_payments",
   "member_charge_entries",
   "member_charge_batches",
   "cost_centers",
@@ -245,6 +249,8 @@ const requiredSchemaColumns = {
   member_charge_batches: ["batch_no", "cost_center_code", "transaction_date", "status", "created_by", "finalized_by", "finalized_at"],
   member_charge_entries: ["batch_no", "member_no", "amount", "reference_no", "remarks"],
   member_charge_movements: ["movement_no", "batch_no", "member_no", "cost_center_code", "summo_column", "amount", "movement_type"],
+  member_dues_payments: ["payment_no", "batch_no", "member_no", "payment_date", "amount", "cash_received", "reference_no", "status"],
+  member_dues_payment_allocations: ["payment_no", "charge_movement_no", "cost_center_code", "income_account_code", "amount"],
   summo_import_batches: ["import_no", "report_period", "status", "created_by"],
   summo_import_rows: ["import_no", "member_no", "movement_type", "amount", "row_status"],
   summo_periods: ["report_period", "cluster_name", "status", "snapshot"],
@@ -3020,6 +3026,10 @@ async function getTellerCashPosition(batchId, connection = null) {
          (SELECT COALESCE(SUM(amount_received), 0)
           FROM loan_collections
           WHERE batch_no = ? AND status = 'Teller Batch')
+         +
+         (SELECT COALESCE(SUM(cash_received), 0)
+          FROM member_dues_payments
+          WHERE batch_no = ? AND status = 'Teller Batch')
        ) AS cashIn,
        (
          (SELECT COALESCE(SUM(amount), 0)
@@ -3034,7 +3044,7 @@ async function getTellerCashPosition(batchId, connection = null) {
           FROM cbu_withdrawals
           WHERE batch_no = ? AND status = 'Teller Batch')
        ) AS cashOut`,
-    [batchId, batchId, batchId, batchId, batchId, batchId, batchId, batchId]
+    [batchId, batchId, batchId, batchId, batchId, batchId, batchId, batchId, batchId]
   );
   const position = rows[0] || {};
   const openingFunding = Number(position.openingFunding || 0);
@@ -6813,6 +6823,7 @@ function buildTellerBatchSummary(rows) {
           summary.securedSavingsWithdrawalCount + (row.batchType === "Secured Savings Withdrawal" ? 1 : 0),
         loanReleaseCount: summary.loanReleaseCount + (row.batchType === "Loan Release" ? 1 : 0),
         loanCollectionCount: summary.loanCollectionCount + (row.batchType === "Loan Collection" ? 1 : 0),
+        memberDuesPaymentCount: summary.memberDuesPaymentCount + (row.batchType === "Cost Center Dues Payment" ? 1 : 0),
         monthlyContributionCount:
           summary.monthlyContributionCount + (row.batchType === "Monthly Member Contributions" ? 1 : 0),
         dailyRemittanceCount:
@@ -6834,6 +6845,7 @@ function buildTellerBatchSummary(rows) {
       securedSavingsWithdrawalCount: 0,
       loanReleaseCount: 0,
       loanCollectionCount: 0,
+      memberDuesPaymentCount: 0,
       monthlyContributionCount: 0,
       dailyRemittanceCount: 0,
       dailyDisbursementCount: 0
@@ -6848,6 +6860,7 @@ function normalizeReferenceNo(referenceNo) {
 function hasCashInReference(referenceNo) {
   const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
   return [...initialPayments, ...savingsDeposits, ...shareCapitalContributions, ...loanCollections,
+    ...memberDuesPayments,
     ...monthlyContributionBatches.filter((batch) => batch.status !== "Draft"),
     ...dailyRemittanceBatches.filter((batch) => batch.status !== "Draft")].some(
     (transaction) => normalizeReferenceNo(transaction.referenceNo) === normalizedReferenceNo
@@ -6858,6 +6871,198 @@ function hasCashInReference(referenceNo) {
 function nextSecuredSavingsWithdrawalNumber() {
   const next = securedSavingsWithdrawals.length + 1;
   return `SSW-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
+async function listMemberDuesPayments({ memberNo = "" } = {}) {
+  const db = await getPool();
+  if (!db) {
+    return memberDuesPayments
+      .filter((payment) => !memberNo || payment.memberNo === memberNo)
+      .map((payment) => ({
+        ...payment,
+        allocations: memberDuesPaymentAllocations.filter((row) => row.paymentNo === payment.paymentNo)
+      }))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  }
+  const params = [];
+  const where = memberNo ? "WHERE payment.member_no = ?" : "";
+  if (memberNo) params.push(memberNo);
+  const [payments] = await db.execute(
+    `SELECT payment.payment_no AS paymentNo, payment.batch_no AS batchId,
+            payment.member_no AS memberNo, payment.member_name AS memberName,
+            payment.payment_date AS paymentDate, payment.amount,
+            payment.cash_received AS cashReceived, payment.reference_no AS referenceNo,
+            payment.remarks, payment.received_by AS receivedBy, payment.status,
+            payment.posted_by AS postedBy, payment.posted_entry_no AS postedEntryNo,
+            payment.posted_at AS postedAt, payment.created_at AS createdAt
+     FROM member_dues_payments payment ${where}
+     ORDER BY payment.created_at DESC, payment.id DESC`,
+    params
+  );
+  if (!payments.length) return [];
+  const paymentNos = payments.map((payment) => payment.paymentNo);
+  const placeholders = paymentNos.map(() => "?").join(", ");
+  const [allocations] = await db.execute(
+    `SELECT payment_no AS paymentNo, charge_movement_no AS chargeMovementNo,
+            cost_center_code AS costCenterCode, cost_center_name AS costCenterName,
+            income_account_code AS incomeAccountCode, income_account_name AS incomeAccountName,
+            amount
+     FROM member_dues_payment_allocations WHERE payment_no IN (${placeholders}) ORDER BY id`,
+    paymentNos
+  );
+  return payments.map((payment) => ({
+    ...payment,
+    paymentDate: formatDateOnly(payment.paymentDate),
+    allocations: allocations.filter((row) => row.paymentNo === payment.paymentNo)
+  }));
+}
+
+async function getMemberDuesPosition(memberNo) {
+  const member = (await listMembers()).find((item) => item.id === memberNo && item.status === "Active");
+  if (!member) return null;
+  const movements = await listMemberChargeMovements({ memberNo });
+  const payments = await listMemberDuesPayments({ memberNo });
+  const paidByCharge = new Map();
+  payments.filter((payment) => ["Teller Batch", "Posted"].includes(payment.status))
+    .flatMap((payment) => payment.allocations)
+    .forEach((allocation) => paidByCharge.set(
+      allocation.chargeMovementNo,
+      addMoney(paidByCharge.get(allocation.chargeMovementNo) || 0, allocation.amount)
+    ));
+  const reversalByCharge = new Map();
+  movements.filter((movement) => movement.movementType === "Reversal")
+    .forEach((movement) => reversalByCharge.set(
+      movement.reversesMovementNo,
+      addMoney(reversalByCharge.get(movement.reversesMovementNo) || 0, Math.abs(movement.amount))
+    ));
+  const charges = movements
+    .filter((movement) => movement.movementType === "Charge")
+    .map((movement) => {
+      const reversed = reversalByCharge.get(movement.movementNo) || 0;
+      const paid = paidByCharge.get(movement.movementNo) || 0;
+      return {
+        ...movement,
+        reversedAmount: reversed,
+        paidAmount: paid,
+        outstandingAmount: Math.max(0, subtractMoney(movement.amount, addMoney(reversed, paid)))
+      };
+    })
+    .filter((movement) => moneyCents(movement.outstandingAmount) > 0)
+    .sort((a, b) =>
+      String(a.transactionDate).localeCompare(String(b.transactionDate)) ||
+      String(a.createdAt).localeCompare(String(b.createdAt))
+    );
+  const centers = new Map();
+  for (const charge of charges) {
+    const row = centers.get(charge.costCenterCode) || {
+      costCenterCode: charge.costCenterCode,
+      costCenterName: charge.costCenterName,
+      outstandingAmount: 0
+    };
+    row.outstandingAmount = addMoney(row.outstandingAmount, charge.outstandingAmount);
+    centers.set(charge.costCenterCode, row);
+  }
+  return {
+    member,
+    centers: Array.from(centers.values()).sort((a, b) => a.costCenterName.localeCompare(b.costCenterName)),
+    charges,
+    totalOutstanding: sumMoney(charges.map((charge) => charge.outstandingAmount))
+  };
+}
+
+function memberDuesIncomeAccount(centerCode, sources) {
+  const source = sources.find((item) => item.status === "Active" && item.costCenterCode === centerCode);
+  return source
+    ? { code: source.incomeAccountCode, name: source.incomeAccountName }
+    : { code: "4080", name: "Other Operating Income" };
+}
+
+async function recordMemberDuesPayment(body, user) {
+  const memberNo = String(body.memberNo || "").trim();
+  const paymentDate = normalizeOptionalDate(body.paymentDate);
+  const referenceNo = normalizeReferenceNo(body.referenceNo);
+  const remarks = String(body.remarks || "").trim();
+  const requested = Array.isArray(body.allocations) ? body.allocations : [];
+  if (!memberNo || !paymentDate || !referenceNo) return { error: "Member, payment date, and OR/reference are required.", statusCode: 400 };
+  const allocationsByCenter = requested.map((row) => ({
+    costCenterCode: String(row.costCenterCode || "").trim().toUpperCase(),
+    amount: Number(row.amount)
+  })).filter((row) => row.costCenterCode && isMoney(row.amount, { positive: true }));
+  if (!allocationsByCenter.length) return { error: "Enter at least one positive cost-center payment.", statusCode: 400 };
+  const position = await getMemberDuesPosition(memberNo);
+  if (!position) return { error: "Active member was not found.", statusCode: 404 };
+  for (const allocation of allocationsByCenter) {
+    const center = position.centers.find((row) => row.costCenterCode === allocation.costCenterCode);
+    if (!center || moneyCents(allocation.amount) > moneyCents(center.outstandingAmount)) {
+      return { error: `${allocation.costCenterCode} payment exceeds the member's outstanding dues.`, statusCode: 409 };
+    }
+  }
+  const totalAmount = sumMoney(allocationsByCenter.map((row) => row.amount));
+  const cashReceived = Number(body.cashReceived);
+  if (!isMoney(cashReceived, { positive: true }) || !moneyEquals(totalAmount, cashReceived)) {
+    return { error: "Cash received must exactly equal the allocated payment total.", statusCode: 400 };
+  }
+  const batchResult = await getOpenTellerBatch(user);
+  if (batchResult.error) return batchResult;
+  const sources = await listRemittanceSources();
+  const detailedAllocations = [];
+  for (const requestedCenter of allocationsByCenter) {
+    let remaining = requestedCenter.amount;
+    for (const charge of position.charges.filter((row) => row.costCenterCode === requestedCenter.costCenterCode)) {
+      if (moneyCents(remaining) <= 0) break;
+      const amount = Math.min(remaining, charge.outstandingAmount);
+      const account = memberDuesIncomeAccount(charge.costCenterCode, sources);
+      detailedAllocations.push({
+        chargeMovementNo: charge.movementNo, costCenterCode: charge.costCenterCode,
+        costCenterName: charge.costCenterName, incomeAccountCode: account.code,
+        incomeAccountName: account.name, amount
+      });
+      remaining = subtractMoney(remaining, amount);
+    }
+  }
+  const db = await getPool();
+  const now = new Date().toISOString();
+  if (!db) {
+    if (hasCashInReference(referenceNo)) return { error: "OR/reference number already exists.", statusCode: 409 };
+    const paymentNo = `MDP-${new Date().getFullYear()}-${String(memberDuesPayments.length + 1).padStart(4, "0")}`;
+    const payment = { paymentNo, batchId: batchResult.batch.id, memberNo, memberName: position.member.name,
+      paymentDate, amount: totalAmount, cashReceived, referenceNo, remarks, receivedBy: user.username,
+      status: "Teller Batch", postedBy: "", postedEntryNo: "", postedAt: "", createdAt: now };
+    memberDuesPayments.unshift(payment);
+    detailedAllocations.forEach((row) => memberDuesPaymentAllocations.push({ ...row, paymentNo }));
+    return { payment: { ...payment, allocations: detailedAllocations }, position: await getMemberDuesPosition(memberNo) };
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (await hasCashInReferenceInDatabase(connection, referenceNo)) {
+      await connection.rollback(); return { error: "OR/reference number already exists.", statusCode: 409 };
+    }
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS countValue FROM member_dues_payments WHERE EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)`
+    );
+    const paymentNo = `MDP-${new Date().getFullYear()}-${String(Number(countRows[0].countValue) + 1).padStart(4, "0")}`;
+    await connection.execute(
+      `INSERT INTO member_dues_payments
+       (payment_no, batch_no, member_no, member_name, payment_date, amount, cash_received,
+        reference_no, remarks, received_by, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+      [paymentNo, batchResult.batch.id, memberNo, position.member.name, paymentDate, totalAmount,
+        cashReceived, referenceNo, remarks, user.username]
+    );
+    for (const row of detailedAllocations) {
+      await connection.execute(
+        `INSERT INTO member_dues_payment_allocations
+         (payment_no, charge_movement_no, cost_center_code, cost_center_name,
+          income_account_code, income_account_name, amount) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [paymentNo, row.chargeMovementNo, row.costCenterCode, row.costCenterName,
+          row.incomeAccountCode, row.incomeAccountName, row.amount]
+      );
+    }
+    await connection.commit();
+    return { payment: (await listMemberDuesPayments()).find((row) => row.paymentNo === paymentNo),
+      position: await getMemberDuesPosition(memberNo) };
+  } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
 }
 
 function nextCbuWithdrawalNumber() {
@@ -6897,8 +7102,12 @@ async function hasCashInReferenceInDatabase(connection, referenceNo) {
      SELECT source_reference AS referenceNo
      FROM daily_remittance_batches
      WHERE status <> 'Draft' AND UPPER(source_reference) = UPPER(?)
+     UNION ALL
+     SELECT reference_no AS referenceNo
+     FROM member_dues_payments
+     WHERE UPPER(reference_no) = UPPER(?)
      LIMIT 1`,
-    [referenceNo, referenceNo, referenceNo, referenceNo, referenceNo, referenceNo]
+    [referenceNo, referenceNo, referenceNo, referenceNo, referenceNo, referenceNo, referenceNo]
   );
 
   return rows.length > 0;
@@ -7578,6 +7787,13 @@ async function listTellerBatchRows(batchId = "") {
         membershipFeeAmount: 0,
         savingsDepositAmount: 0
       })),
+    ...(await listMemberDuesPayments())
+      .filter((payment) => payment.status === "Teller Batch")
+      .map((payment) => ({
+        ...payment, id: payment.paymentNo, batchType: "Cost Center Dues Payment",
+        cashReceived: payment.cashReceived, cashOut: 0, shareCapitalAmount: 0,
+        membershipFeeAmount: 0, savingsDepositAmount: 0
+      })),
     ...(await listSecuredSavingsWithdrawals())
       .filter((withdrawal) => withdrawal.status === "Teller Batch")
       .map((withdrawal) => ({ ...withdrawal, batchType: "Secured Savings Withdrawal",
@@ -7684,6 +7900,11 @@ async function listTellerBatchTransactions(batchId) {
       membershipFeeAmount: 0,
       savingsDepositAmount: 0
     })),
+    ...(await listMemberDuesPayments()).map((payment) => ({
+      ...payment, id: payment.paymentNo, batchType: "Cost Center Dues Payment",
+      cashReceived: payment.cashReceived, cashOut: 0, shareCapitalAmount: 0,
+      membershipFeeAmount: 0, savingsDepositAmount: 0
+    })),
     ...(await listSecuredSavingsWithdrawals()).map((withdrawal) => ({
       ...withdrawal, batchType: "Secured Savings Withdrawal", receivedBy: withdrawal.releasedBy,
       cashReceived: 0, cashOut: withdrawal.amount, shareCapitalAmount: 0,
@@ -7745,6 +7966,7 @@ function countBatchTransactions(batchId) {
     ...securedSavingsWithdrawals,
     ...loanReleases,
     ...loanCollections,
+    ...memberDuesPayments,
     ...monthlyContributionBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo })),
     ...dailyRemittanceBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo })),
     ...dailyDisbursementBatches.map((batch) => ({ ...batch, batchId: batch.tellerBatchNo }))
@@ -7805,6 +8027,8 @@ async function listTellerBatches() {
                 UNION ALL
                 SELECT batch_no, status, posted_entry_no FROM loan_collections
                 UNION ALL
+                SELECT batch_no, status, posted_entry_no FROM member_dues_payments
+                UNION ALL
                 SELECT teller_batch_no AS batch_no, status, NULLIF(posted_entry_no, '') AS posted_entry_no
                 FROM monthly_contribution_batches WHERE status <> 'Draft'
                 UNION ALL
@@ -7836,6 +8060,8 @@ async function listTellerBatches() {
                 SELECT batch_no, status FROM loan_releases
                 UNION ALL
                 SELECT batch_no, status FROM loan_collections
+                UNION ALL
+                SELECT batch_no, status FROM member_dues_payments
                 UNION ALL
                 SELECT teller_batch_no AS batch_no, status FROM monthly_contribution_batches WHERE status <> 'Draft'
                 UNION ALL
@@ -9255,6 +9481,8 @@ async function getMemberStatement(memberId) {
       .map(memberSystemLoanSummary);
     const previousLoanState = await getMemberPreviousLoanState(member.id);
     const memberCharges = await listMemberChargeMovements({ memberNo: member.id });
+    const memberDuesPosition = await getMemberDuesPosition(member.id);
+    const memberDuesPaymentRows = await listMemberDuesPayments({ memberNo: member.id });
     const memberSecuredSavingsWithdrawals = securedSavingsWithdrawals.filter(
       (withdrawal) => withdrawal.memberId === member.id
     );
@@ -9262,7 +9490,8 @@ async function getMemberStatement(memberId) {
       securedSavingsWithdrawals: memberSecuredSavingsWithdrawals,
       previousLoans, currentLoans, previousLoanControl: previousLoanState.control,
       previousLoanUnlockRequests: previousLoanState.unlockRequests, memberCharges,
-      memberChargePayableBalance: memberCharges.reduce((sum, item) => addMoney(sum, item.amount), 0), transactions };
+      memberDuesPayments: memberDuesPaymentRows,
+      memberChargePayableBalance: memberDuesPosition?.totalOutstanding || 0, transactions };
   }
 
   const [memberRows] = await db.execute(
@@ -9357,6 +9586,8 @@ async function getMemberStatement(memberId) {
     .filter((loan) => loan.memberNo === memberId)
     .map(memberSystemLoanSummary);
   const memberCharges = await listMemberChargeMovements({ memberNo: memberId });
+  const memberDuesPosition = await getMemberDuesPosition(memberId);
+  const memberDuesPaymentRows = await listMemberDuesPayments({ memberNo: memberId });
   const memberSecuredSavingsWithdrawals = (await listSecuredSavingsWithdrawals())
     .filter((withdrawal) => withdrawal.memberId === memberId);
   return {
@@ -9367,7 +9598,8 @@ async function getMemberStatement(memberId) {
     previousLoanControl: previousLoanState.control,
     previousLoanUnlockRequests: previousLoanState.unlockRequests,
     memberCharges,
-    memberChargePayableBalance: memberCharges.reduce((sum, item) => addMoney(sum, item.amount), 0),
+    memberDuesPayments: memberDuesPaymentRows,
+    memberChargePayableBalance: memberDuesPosition?.totalOutstanding || 0,
     transactions: [
       ...openingBalanceRows,
       ...initialPaymentRows,
@@ -11442,6 +11674,93 @@ function buildSecuredSavingsWithdrawalJournalLines(withdrawal) {
   ];
 }
 
+function buildMemberDuesPaymentJournalLines(payment) {
+  const credits = new Map();
+  for (const allocation of payment.allocations || []) {
+    const key = `${allocation.incomeAccountCode}|${allocation.incomeAccountName}`;
+    const current = credits.get(key) || {
+      accountCode: allocation.incomeAccountCode,
+      accountName: allocation.incomeAccountName,
+      debit: 0,
+      credit: 0
+    };
+    current.credit = addMoney(current.credit, allocation.amount);
+    credits.set(key, current);
+  }
+  return [
+    { accountCode: "1010", accountName: "Cash on Hand", debit: payment.cashReceived, credit: 0 },
+    ...credits.values()
+  ];
+}
+
+async function postMemberDuesPayment(paymentNo, user) {
+  const db = await getPool();
+  if (!db) {
+    const payment = (await listMemberDuesPayments()).find((row) => row.paymentNo === paymentNo);
+    if (!payment) return { error: "Member dues payment was not found.", statusCode: 404 };
+    if (payment.status !== "Teller Batch") return { error: "Only Teller Batch dues payments can be posted.", statusCode: 409 };
+    const batchResult = await ensureTellerBatchReviewedForPosting(payment.batchId);
+    if (batchResult.error) return batchResult;
+    const entry = {
+      id: nextJournalEntryNumber(), sourceType: "Cost Center Dues Payment", sourceNo: payment.paymentNo,
+      description: `Cost center dues payment - ${payment.memberName}`, postedBy: user.username,
+      postedAt: new Date().toISOString(), lines: buildMemberDuesPaymentJournalLines(payment)
+    };
+    Object.assign(memberDuesPayments.find((row) => row.paymentNo === paymentNo), {
+      status: "Posted", postedBy: user.username, postedEntryNo: entry.id, postedAt: entry.postedAt
+    });
+    journalEntries.unshift(entry);
+    return { payment: { ...payment, status: "Posted", postedEntryNo: entry.id }, entry };
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [paymentRows] = await connection.execute(
+      `SELECT payment_no AS paymentNo, batch_no AS batchId, member_no AS memberNo,
+              member_name AS memberName, cash_received AS cashReceived, status
+       FROM member_dues_payments WHERE payment_no = ? FOR UPDATE`, [paymentNo]
+    );
+    const payment = paymentRows[0];
+    if (!payment) { await connection.rollback(); return { error: "Member dues payment was not found.", statusCode: 404 }; }
+    if (payment.status !== "Teller Batch") {
+      await connection.rollback(); return { error: "Only Teller Batch dues payments can be posted.", statusCode: 409 };
+    }
+    const batchResult = await ensureTellerBatchReviewedForPosting(payment.batchId, connection);
+    if (batchResult.error) { await connection.rollback(); return batchResult; }
+    const [allocations] = await connection.execute(
+      `SELECT charge_movement_no AS chargeMovementNo, cost_center_code AS costCenterCode,
+              cost_center_name AS costCenterName, income_account_code AS incomeAccountCode,
+              income_account_name AS incomeAccountName, amount
+       FROM member_dues_payment_allocations WHERE payment_no = ? ORDER BY id`, [paymentNo]
+    );
+    payment.allocations = allocations;
+    const lines = buildMemberDuesPaymentJournalLines(payment);
+    const entryNo = await nextJournalEntryNumberInDatabase(connection);
+    const description = `Cost center dues payment - ${payment.memberName}`;
+    await connection.execute(
+      `INSERT INTO journal_entries (entry_no, source_type, source_no, description, posted_by)
+       VALUES (?, 'Cost Center Dues Payment', ?, ?, ?)`,
+      [entryNo, paymentNo, description, user.username]
+    );
+    for (const line of lines) {
+      await connection.execute(
+        `INSERT INTO journal_entry_lines (entry_no, account_code, account_name, debit, credit)
+         VALUES (?, ?, ?, ?, ?)`,
+        [entryNo, line.accountCode, line.accountName, line.debit, line.credit]
+      );
+    }
+    await connection.execute(
+      `UPDATE member_dues_payments SET status = 'Posted', posted_by = ?,
+       posted_entry_no = ?, posted_at = CURRENT_TIMESTAMP WHERE payment_no = ?`,
+      [user.username, entryNo, paymentNo]
+    );
+    await connection.commit();
+    return { payment: { ...payment, status: "Posted", postedBy: user.username, postedEntryNo: entryNo },
+      entry: { id: entryNo, sourceType: "Cost Center Dues Payment", sourceNo: paymentNo,
+        description, postedBy: user.username, postedAt: new Date().toISOString(), lines } };
+  } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
+}
+
 async function postTellerBatchRow(row, user) {
   if (row.batchType === "Daily Disbursement") {
     return postDailyDisbursementBatch(row.id, user);
@@ -11478,6 +11797,10 @@ async function postTellerBatchRow(row, user) {
 
   if (row.batchType === "Loan Collection") {
     return postLoanCollection(row.id, user);
+  }
+
+  if (row.batchType === "Cost Center Dues Payment") {
+    return postMemberDuesPayment(row.id, user);
   }
 
   return postInitialPayment(row.id, user);
@@ -13216,6 +13539,33 @@ app.get("/api/member-charge-batches", async (request, response) => {
   if (!user) { response.status(401).json({ error: "Login required" }); return; }
   if (!hasPermission(user, "member-charges:view")) { response.status(403).json({ error: "Access denied" }); return; }
   response.json(await listMemberChargeBatches());
+});
+
+app.get("/api/member-dues-payments", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "member-dues-payments:view")) return response.status(403).json({ error: "Access denied" });
+  return response.json(await listMemberDuesPayments({ memberNo: String(request.query.memberNo || "").trim() }));
+});
+
+app.get("/api/member-dues-position/:memberNo", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "member-dues-payments:view")) return response.status(403).json({ error: "Access denied" });
+  const result = await getMemberDuesPosition(request.params.memberNo);
+  if (!result) return response.status(404).json({ error: "Active member was not found." });
+  return response.json(result);
+});
+
+app.post("/api/member-dues-payments", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "member-dues-payments:create")) {
+    return response.status(403).json({ error: "Teller / Cashier access required" });
+  }
+  const result = await recordMemberDuesPayment(request.body, user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  return response.status(201).json(result);
 });
 
 app.get("/api/monthly-contribution-batches", async (request, response) => {

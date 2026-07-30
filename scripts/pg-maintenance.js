@@ -17,6 +17,8 @@ const connectionTimeoutMillis = Number(process.env.PGCONNECT_TIMEOUT_MS || 8000)
 const tables = [
   "journal_entry_lines",
   "journal_entries",
+  "member_dues_payment_allocations",
+  "member_dues_payments",
   "loan_collection_allocations",
   "loan_collections",
   "loan_releases",

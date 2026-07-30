@@ -4184,6 +4184,12 @@ async function run() {
       postTurnoverBatchBody.results[0]?.batchType !== "Savings Deposit") {
       throw new Error("Accepted Loan Officer collection should post through the normal reviewed Cashier batch.");
     }
+    const closeTurnoverBatch = await fetch(`${baseUrl}/api/teller-batches/${turnoverTargetBatchId}/close`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: bookkeeperCookie },
+      body: JSON.stringify({ closingNote: "Close turnover batch before dues-payment smoke test." })
+    });
+    if (!closeTurnoverBatch.ok) throw new Error("Completed turnover batch should close before the next Teller workflow.");
 
     const forbiddenLoanOfficerRelease = await fetch(`${baseUrl}/api/loans/${smokeLoanNo}/release`, {
       method: "POST",
@@ -4225,6 +4231,93 @@ async function run() {
 
     if (forbiddenMembershipCollections.status !== 403) {
       throw new Error("Membership Officer should not receive loan collection access.");
+    }
+
+    const duesChargeDraft = await fetch(`${baseUrl}/api/member-charge-batches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({
+        costCenterCode: "C1",
+        transactionDate: new Date().toISOString().slice(0, 10),
+        entries: [{
+          memberNo: approvalBody.member.id,
+          amount: 100,
+          referenceNo: "DUES-SMOKE-CHARGE",
+          remarks: "Cost-center dues settlement smoke"
+        }]
+      })
+    });
+    const duesChargeDraftBody = await duesChargeDraft.json();
+    if (!duesChargeDraft.ok) throw new Error(`Dues smoke charge should save: ${duesChargeDraftBody.error}`);
+    const finalizeDuesCharge = await fetch(
+      `${baseUrl}/api/member-charge-batches/${duesChargeDraftBody.batch.batchNo}/finalize`,
+      { method: "POST", headers: { Cookie: tellerCookie } }
+    );
+    if (!finalizeDuesCharge.ok) throw new Error("Dues smoke charge should finalize.");
+    const duesPosition = await fetch(`${baseUrl}/api/member-dues-position/${approvalBody.member.id}`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const duesPositionBody = await duesPosition.json();
+    const canteenOutstanding = duesPositionBody.centers?.find((row) => row.costCenterCode === "C1")?.outstandingAmount;
+    if (!duesPosition.ok || canteenOutstanding !== 100) {
+      throw new Error("Finalized cost-center charges should become available for dues collection.");
+    }
+    const duesPayment = await fetch(`${baseUrl}/api/member-dues-payments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({
+        memberNo: approvalBody.member.id,
+        paymentDate: new Date().toISOString().slice(0, 10),
+        referenceNo: "DUES-SMOKE-OR",
+        cashReceived: 75,
+        allocations: [{ costCenterCode: "C1", amount: 75 }]
+      })
+    });
+    const duesPaymentBody = await duesPayment.json();
+    if (!duesPayment.ok || duesPaymentBody.payment.status !== "Teller Batch" ||
+      duesPaymentBody.payment.allocations[0]?.amount !== 75 ||
+      duesPaymentBody.position.totalOutstanding !== 25) {
+      throw new Error(`Teller dues payment should allocate oldest charges and reserve the remaining balance: ${JSON.stringify(duesPaymentBody)}`);
+    }
+    const overpaidDues = await fetch(`${baseUrl}/api/member-dues-payments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({
+        memberNo: approvalBody.member.id,
+        paymentDate: new Date().toISOString().slice(0, 10),
+        referenceNo: "DUES-SMOKE-OVERPAY",
+        cashReceived: 30,
+        allocations: [{ costCenterCode: "C1", amount: 30 }]
+      })
+    });
+    if (overpaidDues.status !== 409) {
+      throw new Error("Dues collection must reject an allocation above the remaining cost-center balance.");
+    }
+    const duesCashCount = await fetch(`${baseUrl}/api/teller-cash-count`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: tellerCookie },
+      body: JSON.stringify({ actualCash: 75, tellerNote: "Cost-center dues collection smoke." })
+    });
+    const duesCashCountBody = await duesCashCount.json();
+    if (!duesCashCount.ok || duesCashCountBody.cashCount.variance !== 0) {
+      throw new Error("Dues payment must be included in Teller cash count.");
+    }
+    const duesBatchId = duesPaymentBody.payment.batchId;
+    const reviewDuesBatch = await fetch(`${baseUrl}/api/teller-batches/${duesBatchId}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: bookkeeperCookie },
+      body: JSON.stringify({ varianceNote: "" })
+    });
+    if (!reviewDuesBatch.ok) throw new Error("Bookkeeper should review the dues-payment Teller batch.");
+    const postDuesBatch = await fetch(`${baseUrl}/api/ledger/teller-batches/${duesBatchId}/post-reviewed`, {
+      method: "POST", headers: { Cookie: bookkeeperCookie }
+    });
+    const postDuesBatchBody = await postDuesBatch.json();
+    const duesPosting = postDuesBatchBody.results?.find((row) => row.batchType === "Cost Center Dues Payment");
+    if (!postDuesBatch.ok || !duesPosting ||
+      duesPosting.entry.lines.find((line) => line.accountCode === "1010")?.debit !== 75 ||
+      duesPosting.entry.lines.find((line) => line.accountCode === "4060")?.credit !== 75) {
+      throw new Error("Reviewed dues payment must debit cash and credit the snapshotted cost-center income account.");
     }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);

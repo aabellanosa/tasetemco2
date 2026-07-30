@@ -122,6 +122,7 @@ export const rolePermissions = {
     "cost-centers:view",
     "cost-centers:manage",
     "member-charges:view",
+    "member-dues-payments:view",
     "remittance-sources:view",
     "remittance-sources:manage",
     "daily-remittances:view",
@@ -152,6 +153,7 @@ export const rolePermissions = {
     "teller-fundings:approve",
     "cost-centers:view",
     "member-charges:view",
+    "member-dues-payments:view",
     "remittance-sources:view",
     "daily-remittances:view",
     "disbursement-categories:view",
@@ -171,6 +173,7 @@ export const rolePermissions = {
     "teller-fundings:prepare",
     "cost-centers:view",
     "member-charges:view",
+    "member-dues-payments:view",
     "remittance-sources:view",
     "daily-remittances:view",
     "disbursement-categories:view",
@@ -231,6 +234,8 @@ export const rolePermissions = {
     "member-charges:encode",
     "member-charges:finalize",
     "member-charges:reverse",
+    "member-dues-payments:view",
+    "member-dues-payments:create",
     "monthly-contributions:view",
     "monthly-contributions:encode",
     "monthly-contributions:finalize",
@@ -273,6 +278,7 @@ export const rolePermissions = {
     "teller-fundings:view",
     "cost-centers:view",
     "member-charges:view",
+    "member-dues-payments:view",
     "remittance-sources:view",
     "daily-remittances:view",
     "disbursement-categories:view",
@@ -663,6 +669,8 @@ export const costCenters = [
 export const memberChargeBatches = [];
 export const memberChargeEntries = [];
 export const memberChargeMovements = [];
+export const memberDuesPayments = [];
+export const memberDuesPaymentAllocations = [];
 export const remittanceSources = [
   { code: "CANTEEN-A", name: "Canteen A", reportingGroup: "Canteen A", costCenterCode: "C1", incomeAccountCode: "4060", incomeAccountName: "Canteen Income", displayOrder: 10, status: "Active" },
   { code: "CANTEEN-B", name: "Canteen B", reportingGroup: "Canteen B", costCenterCode: "C2", incomeAccountCode: "4060", incomeAccountName: "Canteen Income", displayOrder: 20, status: "Active" },

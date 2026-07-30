@@ -3062,6 +3062,106 @@ function MemberChargeReview() {
   </VStack>;
 }
 
+function MemberDuesPayments({ members, user }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [memberNo, setMemberNo] = useState("");
+  const [position, setPosition] = useState(null);
+  const [payments, setPayments] = useState([]);
+  const [form, setForm] = useState({ paymentDate: today, referenceNo: "", remarks: "", allocations: {} });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const canCreate = user.permissions.includes("member-dues-payments:create");
+  const activeMembers = members.filter((member) => member.status === "Active");
+  const loadPayments = useCallback(async () => {
+    try { setPayments(await api("/api/member-dues-payments")); setError(""); }
+    catch (requestError) { setError(requestError.message); }
+  }, []);
+  useEffect(() => { loadPayments(); }, [loadPayments]);
+  async function selectMember(nextMemberNo) {
+    setMemberNo(nextMemberNo); setMessage(""); setError("");
+    setForm((current) => ({ ...current, allocations: {} }));
+    if (!nextMemberNo) { setPosition(null); return; }
+    try { setPosition(await api(`/api/member-dues-position/${nextMemberNo}`)); }
+    catch (requestError) { setPosition(null); setError(requestError.message); }
+  }
+  const allocatedTotal = addMoney(...Object.values(form.allocations).map(Number));
+  async function submit(event) {
+    event.preventDefault(); setMessage(""); setError("");
+    try {
+      const result = await api("/api/member-dues-payments", {
+        method: "POST",
+        body: JSON.stringify({
+          memberNo, paymentDate: form.paymentDate, referenceNo: form.referenceNo,
+          remarks: form.remarks, cashReceived: allocatedTotal,
+          allocations: Object.entries(form.allocations).map(([costCenterCode, amount]) => ({ costCenterCode, amount }))
+        })
+      });
+      setMessage(`${result.payment.paymentNo} recorded in ${result.payment.batchId}.`);
+      setForm({ paymentDate: today, referenceNo: "", remarks: "", allocations: {} });
+      setPosition(result.position); await loadPayments();
+    } catch (requestError) { setError(requestError.message); }
+  }
+  return <VStack align="stretch" spacing={5}>
+    <Box as="form" onSubmit={submit} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Heading size="md">Cost Center Dues Collection</Heading>
+      <Text color="gray.600" mt={1} mb={4}>
+        Allocate a member&apos;s cash payment by cost center. Each allocation settles the oldest dues first.
+      </Text>
+      {message ? <Text color="green.700" mb={3}>{message}</Text> : null}
+      {error ? <Text color="red.700" mb={3}>{error}</Text> : null}
+      <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={4} mb={4}>
+        <FormControl isRequired><FormLabel>Member</FormLabel>
+          <MemberCombobox members={activeMembers} value={memberNo} onChange={selectMember}
+            placeholder="Search active member" /></FormControl>
+        <FormControl isRequired><FormLabel>Payment Date</FormLabel>
+          <Input type="date" max={today} value={form.paymentDate}
+            onChange={(event) => setForm({ ...form, paymentDate: event.target.value })} /></FormControl>
+        <FormControl isRequired><FormLabel>OR / Reference No.</FormLabel>
+          <Input value={form.referenceNo}
+            onChange={(event) => setForm({ ...form, referenceNo: event.target.value })} /></FormControl>
+      </Grid>
+      <TableContainer><Table size="sm">
+        <Thead><Tr><Th>Cost Center</Th><Th isNumeric>Outstanding</Th><Th isNumeric>Payment Allocation</Th></Tr></Thead>
+        <Tbody>
+          {(position?.centers || []).map((center) => <Tr key={center.costCenterCode}>
+            <Td>{center.costCenterName} ({center.costCenterCode})</Td>
+            <Td isNumeric>{formatMoney(center.outstandingAmount)}</Td>
+            <Td><NumberInput min={0} max={center.outstandingAmount} precision={2}
+              value={form.allocations[center.costCenterCode] || 0}
+              onChange={(value) => setForm((current) => ({ ...current, allocations: {
+                ...current.allocations, [center.costCenterCode]: Number(value || 0)
+              } }))}><NumberInputField textAlign="right" /></NumberInput></Td>
+          </Tr>)}
+          {memberNo && !(position?.centers || []).length ? <Tr><Td colSpan={3} color="gray.500">
+            This member has no outstanding cost-center dues.
+          </Td></Tr> : null}
+        </Tbody>
+      </Table></TableContainer>
+      <Grid templateColumns={{ base: "1fr", md: "2fr 1fr" }} gap={4} mt={4}>
+        <FormControl><FormLabel>Remarks</FormLabel><Input value={form.remarks}
+          onChange={(event) => setForm({ ...form, remarks: event.target.value })} /></FormControl>
+        <Box><Text color="gray.500" fontSize="sm">Cash received / allocated total</Text>
+          <Heading size="md">{formatMoney(allocatedTotal)}</Heading></Box>
+      </Grid>
+      {canCreate ? <Button mt={4} type="submit" colorScheme="green"
+        isDisabled={!memberNo || allocatedTotal <= 0}>Record Dues Payment</Button> : null}
+    </Box>
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Heading size="sm" mb={3}>Dues Payment History</Heading>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Payment</Th><Th>Date</Th><Th>Member</Th>
+        <Th>Allocation</Th><Th>Reference</Th><Th isNumeric>Cash</Th><Th>Status / Audit</Th></Tr></Thead>
+        <Tbody>{payments.map((payment) => <Tr key={payment.paymentNo}>
+          <Td>{payment.paymentNo}</Td><Td>{formatDate(payment.paymentDate)}</Td><Td>{payment.memberName}</Td>
+          <Td>{payment.allocations.map((row) => `${row.costCenterName}: ${formatMoney(row.amount)}`).join(", ")}</Td>
+          <Td>{payment.referenceNo}</Td><Td isNumeric>{formatMoney(payment.cashReceived)}</Td>
+          <Td><Badge colorScheme={payment.status === "Posted" ? "green" : "blue"}>{payment.status}</Badge>
+            <br />Received: {payment.receivedBy}<br />Posted: {payment.postedBy || "-"}</Td>
+        </Tr>)}{!payments.length ? <Tr><Td colSpan={7} color="gray.500">No dues payments recorded.</Td></Tr> : null}</Tbody>
+      </Table></TableContainer>
+    </Box>
+  </VStack>;
+}
+
 function Members({ user }) {
   const [members, setMembers] = useState([]);
   const [memberDirectorySearch, setMemberDirectorySearch] = useState("");
@@ -3073,6 +3173,7 @@ function Members({ user }) {
   const [monthlyContributionBatches, setMonthlyContributionBatches] = useState([]);
   const [dailyRemittanceBatches, setDailyRemittanceBatches] = useState([]);
   const [dailyDisbursementBatches, setDailyDisbursementBatches] = useState([]);
+  const [memberDuesPayments, setMemberDuesPayments] = useState([]);
   const [savingsDeposits, setSavingsDeposits] = useState([]);
   const [savingsWithdrawals, setSavingsWithdrawals] = useState([]);
   const [cbuWithdrawals, setCbuWithdrawals] = useState([]);
@@ -3180,6 +3281,7 @@ function Members({ user }) {
   const canCreateTellerCashCount = user.permissions.includes("teller-cash-counts:create");
   const canEncodeMemberCharges = user.permissions.includes("member-charges:encode");
   const canViewMemberCharges = user.permissions.includes("member-charges:view");
+  const canViewMemberDuesPayments = user.permissions.includes("member-dues-payments:view");
   const canViewMonthlyContributions = user.permissions.includes("monthly-contributions:view");
   const canViewDailyRemittances = user.permissions.includes("daily-remittances:view");
   const canViewDailyDisbursements = user.permissions.includes("daily-disbursements:view");
@@ -3287,6 +3389,14 @@ function Members({ user }) {
         savingsDepositAmount: 0,
         status: collection.status
       })),
+    ...memberDuesPayments
+      .filter((payment) => payment.status === "Teller Batch")
+      .map((payment) => ({
+        id: payment.paymentNo, memberName: payment.memberName, batchId: payment.batchId,
+        batchType: "Cost Center Dues Payment", cashReceived: payment.cashReceived,
+        cashOut: 0, shareCapitalAmount: 0, membershipFeeAmount: 0,
+        savingsDepositAmount: 0, status: payment.status
+      })),
     ...securedSavingsWithdrawals
       .filter((withdrawal) => withdrawal.status === "Teller Batch")
       .map((withdrawal) => ({ ...withdrawal, batchType: "Secured Savings Withdrawal",
@@ -3346,6 +3456,7 @@ function Members({ user }) {
           monthlyContributionRows,
           dailyRemittanceRows,
           dailyDisbursementRows,
+          memberDuesPaymentRows,
           cashCountData
         ] =
           await Promise.all([
@@ -3363,6 +3474,7 @@ function Members({ user }) {
           canViewMonthlyContributions ? api("/api/monthly-contribution-batches") : [],
           canViewDailyRemittances ? api("/api/daily-remittance-batches") : [],
           canViewDailyDisbursements ? api("/api/daily-disbursement-batches") : [],
+          canViewMemberDuesPayments ? api("/api/member-dues-payments") : [],
           canViewTellerCashCount ? api("/api/teller-cash-count") : { latestCashCount: null }
         ]);
         setMembers(memberRows);
@@ -3379,6 +3491,7 @@ function Members({ user }) {
         setMonthlyContributionBatches(monthlyContributionRows);
         setDailyRemittanceBatches(dailyRemittanceRows);
         setDailyDisbursementBatches(dailyDisbursementRows);
+        setMemberDuesPayments(memberDuesPaymentRows);
         setActiveBatch(cashCountData.activeBatch);
         setOpeningFunding(Number(cashCountData.expected?.openingFunding || 0));
         setLatestCashCount(cashCountData.latestCashCount);
@@ -3408,6 +3521,7 @@ function Members({ user }) {
       canViewMonthlyContributions,
       canViewDailyRemittances,
       canViewDailyDisbursements,
+      canViewMemberDuesPayments,
       canViewTellerCashCount
     ]
   );
@@ -3818,6 +3932,7 @@ function Members({ user }) {
           {canEditMemberProfile ? <Tab flexShrink={0}>Imports</Tab> : null}
           {canUseTellerWorkspace ? <Tab flexShrink={0}>Teller Transactions</Tab> : null}
           {canViewMemberCharges ? <Tab flexShrink={0}>Cost Center Charges</Tab> : null}
+          {canViewMemberDuesPayments ? <Tab flexShrink={0}>Cost Center Payments</Tab> : null}
           {canViewMonthlyContributions ? <Tab flexShrink={0}>Monthly Contributions</Tab> : null}
           {canViewDailyRemittances ? <Tab flexShrink={0}>Daily Remittance</Tab> : null}
           {canViewDailyDisbursements ? <Tab flexShrink={0}>Daily Disbursement</Tab> : null}
@@ -4391,6 +4506,9 @@ function Members({ user }) {
               ? <MemberChargeCapture members={members} user={user} />
               : <MemberChargeReview />}</TabPanel>
           ) : null}
+          {canViewMemberDuesPayments ? (
+            <TabPanel px={0}><MemberDuesPayments members={members} user={user} /></TabPanel>
+          ) : null}
 
           {canViewMonthlyContributions ? (
             <TabPanel px={0}><MonthlyContributionCapture members={members} user={user} /></TabPanel>
@@ -4961,6 +5079,22 @@ function Members({ user }) {
                 <Td isNumeric>{formatMoney(movement.amount)}</Td>
                 <Td>{movement.createdBy}<br />{movement.reason || "-"}<br />{formatDateTime(movement.createdAt)}</Td>
               </Tr>)}{!(statement.memberCharges || []).length ? <Tr><Td colSpan={6} color="gray.500">No finalized cost-center payables.</Td></Tr> : null}</Tbody>
+            </Table></TableContainer>
+          </Box>
+
+          <Box borderWidth="1px" borderRadius="md" p={4} mb={5}>
+            <Heading size="sm" mb={1}>Cost Center Dues Payments</Heading>
+            <Text color="gray.600" fontSize="sm" mb={3}>Cash settlements allocated against the oldest cost-center dues.</Text>
+            <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Payment / Reference</Th>
+              <Th>Allocation</Th><Th isNumeric>Amount</Th><Th>Status / Audit</Th></Tr></Thead>
+              <Tbody>{(statement.memberDuesPayments || []).map((payment) => <Tr key={payment.paymentNo}>
+                <Td>{formatDate(payment.paymentDate)}</Td><Td>{payment.paymentNo}<br />{payment.referenceNo}</Td>
+                <Td>{payment.allocations.map((row) => `${row.costCenterName}: ${formatMoney(row.amount)}`).join(", ")}</Td>
+                <Td isNumeric>{formatMoney(payment.amount)}</Td><Td>{payment.status}<br />
+                  Received: {payment.receivedBy}<br />Posted: {payment.postedBy || "-"}</Td>
+              </Tr>)}{!(statement.memberDuesPayments || []).length ? <Tr><Td colSpan={5} color="gray.500">
+                No cost-center dues payments.
+              </Td></Tr> : null}</Tbody>
             </Table></TableContainer>
           </Box>
 
