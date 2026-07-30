@@ -205,6 +205,7 @@
         </div>
         <div class="capability-grid">
           <article><h3>Teller Receipts and Payouts</h3><p>Members -> Teller Transactions for initial payments, share capital, savings deposits, savings withdrawals, and guarded CBU withdrawals. Loan Officers may encode cash-in types only.</p></article>
+          <article><h3>Cost Center Payments</h3><p>Members -> Cost Center Payments settles finalized Canteen A, Canteen B, WRS, G-mar, and other member dues through the normal Teller batch.</p></article>
           <article><h3>Monthly Contributions</h3><p>Members -> Monthly Contributions for cash-paid TFEA, CBU, and Secured Savings entered by Teller/Cashier or Loan Officer.</p></article>
           <article><h3>Daily Remittance</h3><p>Members -> Daily Remittance for fixed-grid cash turnover from operating units and Admin-configured sources.</p></article>
           <article><h3>Daily Disbursement</h3><p>Members -> Daily Disbursement for fixed-grid cash expenses attributed to cost centers or cooperative operations.</p></article>
@@ -254,6 +255,9 @@
               <li>A CBU withdrawal must leave PHP 5,000 plus manual and Posted system-loan exposure; pending requests also reserve CBU.</li>
               <li>Cash-covered CBU requests enter the Teller batch. Others wait For Funding, then Teller releases them after acknowledged funding.</li>
               <li>Bookkeeper posting reduces member CBU and debits Share Capital while crediting Cash on Hand; request, release, and posting actors remain auditable.</li>
+              <li>Cost Center Payments shows member dues per center and lets Teller allocate a receipt across one or more centers.</li>
+              <li>Allocations settle the oldest charge in each selected center first; partial payments are allowed and overpayments are blocked.</li>
+              <li>The receipt is Teller cash-in. Posting debits Cash on Hand and credits the center's snapshotted collection income account.</li>
               <li>Share capital contribution is available after onboarding.</li>
               <li>Selected transaction is encoded and validated.</li>
               <li>System blocks reused OR or voucher reference numbers.</li>
