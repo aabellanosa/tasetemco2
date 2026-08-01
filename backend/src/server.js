@@ -6935,7 +6935,7 @@ async function getMemberDuesPosition(memberNo) {
       movement.reversesMovementNo,
       addMoney(reversalByCharge.get(movement.reversesMovementNo) || 0, Math.abs(movement.amount))
     ));
-  const charges = movements
+  const chargeStatuses = movements
     .filter((movement) => movement.movementType === "Charge")
     .map((movement) => {
       const reversed = reversalByCharge.get(movement.movementNo) || 0;
@@ -6944,14 +6944,21 @@ async function getMemberDuesPosition(memberNo) {
         ...movement,
         reversedAmount: reversed,
         paidAmount: paid,
-        outstandingAmount: Math.max(0, subtractMoney(movement.amount, addMoney(reversed, paid)))
+        outstandingAmount: Math.max(0, subtractMoney(movement.amount, addMoney(reversed, paid))),
+        paymentStatus:
+          moneyCents(reversed) >= moneyCents(movement.amount) ? "Reversed" :
+          moneyCents(paid) <= 0 ? "Unpaid" :
+          moneyCents(paid) >= moneyCents(subtractMoney(movement.amount, reversed)) ? "Paid" :
+          "Partially Paid"
       };
     })
-    .filter((movement) => moneyCents(movement.outstandingAmount) > 0)
     .sort((a, b) =>
       String(a.transactionDate).localeCompare(String(b.transactionDate)) ||
       String(a.createdAt).localeCompare(String(b.createdAt))
     );
+  const charges = chargeStatuses
+    .filter((movement) => moneyCents(movement.outstandingAmount) > 0)
+    ;
   const centers = new Map();
   for (const charge of charges) {
     const row = centers.get(charge.costCenterCode) || {
@@ -6966,8 +6973,25 @@ async function getMemberDuesPosition(memberNo) {
     member,
     centers: Array.from(centers.values()).sort((a, b) => a.costCenterName.localeCompare(b.costCenterName)),
     charges,
+    chargeStatuses,
     totalOutstanding: sumMoney(charges.map((charge) => charge.outstandingAmount))
   };
+}
+
+function withMemberDuesStatuses(movements, position) {
+  const statuses = new Map((position?.chargeStatuses || []).map((charge) => [charge.movementNo, charge]));
+  return movements.map((movement) => {
+    if (movement.movementType !== "Charge") {
+      return { ...movement, paidAmount: 0, outstandingAmount: 0, paymentStatus: "Reversed" };
+    }
+    const status = statuses.get(movement.movementNo);
+    return {
+      ...movement,
+      paidAmount: status?.paidAmount || 0,
+      outstandingAmount: status?.outstandingAmount ?? movement.amount,
+      paymentStatus: status?.paymentStatus || "Unpaid"
+    };
+  });
 }
 
 function memberDuesIncomeAccount(centerCode, sources) {
@@ -9480,8 +9504,9 @@ async function getMemberStatement(memberId) {
       .filter((loan) => loan.memberNo === member.id)
       .map(memberSystemLoanSummary);
     const previousLoanState = await getMemberPreviousLoanState(member.id);
-    const memberCharges = await listMemberChargeMovements({ memberNo: member.id });
+    const memberChargeMovementsForMember = await listMemberChargeMovements({ memberNo: member.id });
     const memberDuesPosition = await getMemberDuesPosition(member.id);
+    const memberCharges = withMemberDuesStatuses(memberChargeMovementsForMember, memberDuesPosition);
     const memberDuesPaymentRows = await listMemberDuesPayments({ memberNo: member.id });
     const memberSecuredSavingsWithdrawals = securedSavingsWithdrawals.filter(
       (withdrawal) => withdrawal.memberId === member.id
@@ -9585,8 +9610,9 @@ async function getMemberStatement(memberId) {
   const currentLoans = (await listLoans())
     .filter((loan) => loan.memberNo === memberId)
     .map(memberSystemLoanSummary);
-  const memberCharges = await listMemberChargeMovements({ memberNo: memberId });
+  const memberChargeMovementsForMember = await listMemberChargeMovements({ memberNo: memberId });
   const memberDuesPosition = await getMemberDuesPosition(memberId);
+  const memberCharges = withMemberDuesStatuses(memberChargeMovementsForMember, memberDuesPosition);
   const memberDuesPaymentRows = await listMemberDuesPayments({ memberNo: memberId });
   const memberSecuredSavingsWithdrawals = (await listSecuredSavingsWithdrawals())
     .filter((withdrawal) => withdrawal.memberId === memberId);

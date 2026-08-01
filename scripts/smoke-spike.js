@@ -4319,6 +4319,17 @@ async function run() {
       duesPosting.entry.lines.find((line) => line.accountCode === "4060")?.credit !== 75) {
       throw new Error("Reviewed dues payment must debit cash and credit the snapshotted cost-center income account.");
     }
+    const duesMemberStatement = await fetch(`${baseUrl}/api/members/${approvalBody.member.id}/statement`, {
+      headers: { Cookie: tellerCookie }
+    });
+    const duesMemberStatementBody = await duesMemberStatement.json();
+    const settledCharge = duesMemberStatementBody.memberCharges?.find(
+      (movement) => movement.batchNo === duesChargeDraftBody.batch.batchNo && movement.movementType === "Charge"
+    );
+    if (!duesMemberStatement.ok || settledCharge?.paymentStatus !== "Partially Paid" ||
+      settledCharge?.paidAmount !== 75 || settledCharge?.outstandingAmount !== 25) {
+      throw new Error("Member payable movements must show derived paid amount, balance, and payment status.");
+    }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
   } catch (error) {

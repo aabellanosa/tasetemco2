@@ -5107,15 +5107,22 @@ function Members({ user }) {
 
           <Box borderWidth="1px" borderRadius="md" p={4} mb={5}>
             <Heading size="sm" mb={1}>Cost Center Payable Movements</Heading>
-            <Text color="gray.600" fontSize="sm" mb={3}>Finalized charges and immutable reversing movements.</Text>
-            <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Cost Center</Th><Th>Batch / Movement</Th><Th>Type</Th><Th isNumeric>Amount</Th><Th>Audit</Th></Tr></Thead>
+            <Text color="gray.600" fontSize="sm" mb={3}>Original charge activity with its current payment status and remaining balance.</Text>
+            <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Cost Center</Th><Th>Batch / Movement</Th>
+              <Th>Type</Th><Th isNumeric>Original</Th><Th isNumeric>Paid</Th><Th isNumeric>Balance</Th>
+              <Th>Payment Status</Th><Th>Audit</Th></Tr></Thead>
               <Tbody>{(statement.memberCharges || []).map((movement) => <Tr key={movement.movementNo}>
                 <Td>{formatDate(movement.transactionDate)}</Td><Td>{movement.costCenterName}</Td>
                 <Td>{movement.batchNo}<br /><Text color="gray.500" fontSize="xs">{movement.movementNo}</Text></Td>
                 <Td><Badge colorScheme={movement.movementType === "Reversal" ? "red" : "green"}>{movement.movementType}</Badge></Td>
                 <Td isNumeric>{formatMoney(movement.amount)}</Td>
+                <Td isNumeric>{movement.movementType === "Charge" ? formatMoney(movement.paidAmount || 0) : "-"}</Td>
+                <Td isNumeric>{movement.movementType === "Charge" ? formatMoney(movement.outstandingAmount || 0) : "-"}</Td>
+                <Td><Badge colorScheme={movement.paymentStatus === "Paid" ? "green" :
+                  movement.paymentStatus === "Partially Paid" ? "orange" :
+                  movement.paymentStatus === "Reversed" ? "red" : "gray"}>{movement.paymentStatus}</Badge></Td>
                 <Td>{movement.createdBy}<br />{movement.reason || "-"}<br />{formatDateTime(movement.createdAt)}</Td>
-              </Tr>)}{!(statement.memberCharges || []).length ? <Tr><Td colSpan={6} color="gray.500">No finalized cost-center payables.</Td></Tr> : null}</Tbody>
+              </Tr>)}{!(statement.memberCharges || []).length ? <Tr><Td colSpan={9} color="gray.500">No finalized cost-center payables.</Td></Tr> : null}</Tbody>
             </Table></TableContainer>
           </Box>
 
