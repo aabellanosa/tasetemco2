@@ -3729,6 +3729,43 @@ function Members({ user }) {
     }
   }
 
+  async function submitCbuWithdrawal(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      const data = await api("/api/cbu-withdrawals", {
+        method: "POST",
+        body: JSON.stringify(cbuWithdrawalForm)
+      });
+      setMessage(data.withdrawal.status === "For Funding"
+        ? `${data.withdrawal.id} saved for funding. Cashier funding shortage: ${formatMoney(data.fundingShortage)}.`
+        : `${data.withdrawal.id} released into the Teller batch for ${data.withdrawal.memberName}.`);
+      setCbuWithdrawalForm((current) => ({ ...current, amount: 500, referenceNo: "" }));
+      await loadMembersWorkflow();
+    } catch (withdrawalError) {
+      if (withdrawalError.code === "CBU_RETENTION_GUARDRAIL") {
+        setCbuGuardrailDetails(withdrawalError.details || null);
+        cbuGuardrailNotice.onOpen();
+      } else setError(withdrawalError.message);
+    }
+  }
+
+  async function releaseCbuWithdrawalRequest(withdrawalId) {
+    setError("");
+    setMessage("");
+    try {
+      const data = await api(`/api/cbu-withdrawals/${withdrawalId}/release`, { method: "POST" });
+      setMessage(`${data.withdrawal.id} released into the current Teller batch.`);
+      await loadMembersWorkflow();
+    } catch (withdrawalError) {
+      if (withdrawalError.code === "CBU_RETENTION_GUARDRAIL") {
+        setCbuGuardrailDetails(withdrawalError.details || null);
+        cbuGuardrailNotice.onOpen();
+      } else setError(withdrawalError.message);
+    }
+  }
+
   async function submitSecuredSavingsWithdrawal(event) {
     event.preventDefault(); setError(""); setMessage("");
     try {
@@ -5399,6 +5436,28 @@ function Members({ user }) {
               Got it
             </Button>
           </ModalFooter>
+        </ModalContent>
+      </Modal>
+      <Modal isOpen={cbuGuardrailNotice.isOpen} onClose={cbuGuardrailNotice.onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>CBU Withdrawal Not Allowed</ModalHeader>
+          <ModalBody>
+            <Text mb={4}>This withdrawal would reduce retained CBU below the required amount.
+              Please refer this transaction to the System Administrator.</Text>
+            <VStack align="stretch" spacing={2} fontSize="sm">
+              {[
+                ["Membership minimum", cbuGuardrailDetails?.membershipMinimum || 5000],
+                ["Manual loan exposure", cbuGuardrailDetails?.manualLoanExposure || 0],
+                ["System loan exposure", cbuGuardrailDetails?.systemLoanExposure || 0],
+                ["Pending CBU withdrawals", cbuGuardrailDetails?.pendingWithdrawalExposure || 0],
+                ["Maximum withdrawable", cbuGuardrailDetails?.withdrawableAmount || 0]
+              ].map(([label, value]) => <Flex key={label} justify="space-between">
+                <Text>{label}</Text><Text fontWeight="bold">{formatMoney(value)}</Text>
+              </Flex>)}
+            </VStack>
+          </ModalBody>
+          <ModalFooter><Button colorScheme="green" onClick={cbuGuardrailNotice.onClose}>Close</Button></ModalFooter>
         </ModalContent>
       </Modal>
     </VStack>
@@ -10586,49 +10645,6 @@ function LoanReleases({ user }) {
     releaseModal.onOpen();
   }
 
-  async function submitCbuWithdrawal(event) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    try {
-      const data = await api("/api/cbu-withdrawals", {
-        method: "POST",
-        body: JSON.stringify(cbuWithdrawalForm)
-      });
-      setMessage(
-        data.withdrawal.status === "For Funding"
-          ? `${data.withdrawal.id} saved for funding. Cashier funding shortage: ${formatMoney(data.fundingShortage)}.`
-          : `${data.withdrawal.id} released into the Teller batch for ${data.withdrawal.memberName}.`
-      );
-      setCbuWithdrawalForm((current) => ({ ...current, amount: 500, referenceNo: "" }));
-      await loadMembersWorkflow();
-    } catch (withdrawalError) {
-      if (withdrawalError.code === "CBU_RETENTION_GUARDRAIL") {
-        setCbuGuardrailDetails(withdrawalError.details || null);
-        cbuGuardrailNotice.onOpen();
-      } else {
-        setError(withdrawalError.message);
-      }
-    }
-  }
-
-  async function releaseCbuWithdrawalRequest(withdrawalId) {
-    setError("");
-    setMessage("");
-    try {
-      const data = await api(`/api/cbu-withdrawals/${withdrawalId}/release`, { method: "POST" });
-      setMessage(`${data.withdrawal.id} released into the current Teller batch.`);
-      await loadMembersWorkflow();
-    } catch (withdrawalError) {
-      if (withdrawalError.code === "CBU_RETENTION_GUARDRAIL") {
-        setCbuGuardrailDetails(withdrawalError.details || null);
-        cbuGuardrailNotice.onOpen();
-      } else {
-        setError(withdrawalError.message);
-      }
-    }
-  }
-
   function viewSchedule(loan) {
     setSelectedDetailLoan(loan);
     scheduleModal.onOpen();
@@ -11001,29 +11017,6 @@ function LoanReleases({ user }) {
           </ModalFooter>
         </ModalContent>
       </Modal>
-      <Modal isOpen={cbuGuardrailNotice.isOpen} onClose={cbuGuardrailNotice.onClose} isCentered>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>CBU Withdrawal Not Allowed</ModalHeader>
-          <ModalBody>
-            <Text mb={4}>This withdrawal would reduce retained CBU below the required amount.
-              Please refer this transaction to the System Administrator.</Text>
-            <VStack align="stretch" spacing={2} fontSize="sm">
-              {[
-                ["Membership minimum", cbuGuardrailDetails?.membershipMinimum || 5000],
-                ["Manual loan exposure", cbuGuardrailDetails?.manualLoanExposure || 0],
-                ["System loan exposure", cbuGuardrailDetails?.systemLoanExposure || 0],
-                ["Pending CBU withdrawals", cbuGuardrailDetails?.pendingWithdrawalExposure || 0],
-                ["Maximum withdrawable", cbuGuardrailDetails?.withdrawableAmount || 0]
-              ].map(([label, value]) => <Flex key={label} justify="space-between">
-                <Text>{label}</Text><Text fontWeight="bold">{formatMoney(value)}</Text>
-              </Flex>)}
-            </VStack>
-          </ModalBody>
-          <ModalFooter><Button colorScheme="green" onClick={cbuGuardrailNotice.onClose}>Close</Button></ModalFooter>
-        </ModalContent>
-      </Modal>
-
       <Modal isOpen={printModal.isOpen} onClose={printModal.onClose} size="6xl" scrollBehavior="inside">
         <ModalOverlay />
         <ModalContent>
