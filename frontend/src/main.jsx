@@ -3192,6 +3192,9 @@ function Members({ user }) {
     gender: "",
     idType: "",
     idNumber: "",
+    beneficiaryName: "",
+    beneficiaryAge: 0,
+    beneficiaryRelationship: "",
     initialShareCapital: 5000
   });
   const [paymentForm, setPaymentForm] = useState({
@@ -3239,6 +3242,9 @@ function Members({ user }) {
     gender: "",
     idType: "",
     idNumber: "",
+    beneficiaryName: "",
+    beneficiaryAge: 0,
+    beneficiaryRelationship: "",
     civilStatus: "",
     occupation: "",
     membershipDate: "",
@@ -3611,6 +3617,9 @@ function Members({ user }) {
         gender: "",
         idType: "",
         idNumber: "",
+        beneficiaryName: "",
+        beneficiaryAge: 0,
+        beneficiaryRelationship: "",
         initialShareCapital: 5000
       });
       await loadMembersWorkflow();
@@ -3814,6 +3823,9 @@ function Members({ user }) {
         gender: data.member.gender || "",
         idType: data.member.idType || "",
         idNumber: data.member.idNumber || "",
+        beneficiaryName: data.member.beneficiaryName || "",
+        beneficiaryAge: Number(data.member.beneficiaryAge || 0),
+        beneficiaryRelationship: data.member.beneficiaryRelationship || "",
         civilStatus: data.member.civilStatus || "",
         occupation: data.member.occupation || "",
         membershipDate: data.member.membershipDate ? String(data.member.membershipDate).slice(0, 10) : "",
@@ -4040,6 +4052,23 @@ function Members({ user }) {
               <FormLabel>ID Number</FormLabel>
               <Input value={form.idNumber} onChange={(event) => updateForm("idNumber", event.target.value)} />
             </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Beneficiary Name</FormLabel>
+              <Input value={form.beneficiaryName}
+                onChange={(event) => updateForm("beneficiaryName", event.target.value)} />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Beneficiary Age</FormLabel>
+              <NumberInput min={0} max={150} precision={0} value={form.beneficiaryAge}
+                onChange={(value) => updateForm("beneficiaryAge", Number(value || 0))}>
+                <NumberInputField />
+              </NumberInput>
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel>Relationship to Member</FormLabel>
+              <Input value={form.beneficiaryRelationship}
+                onChange={(event) => updateForm("beneficiaryRelationship", event.target.value)} />
+            </FormControl>
             <FormControl>
               <FormLabel>Required Initial Share Capital</FormLabel>
               <NumberInput
@@ -4078,6 +4107,7 @@ function Members({ user }) {
                   <Th>Contact</Th>
                   <Th>Gender</Th>
                   <Th>ID</Th>
+                  <Th>Beneficiary</Th>
                 <Th isNumeric>Required Initial Share Capital</Th>
                 <Th>Status</Th>
                 {canApproveApplication ? <Th>Action</Th> : null}
@@ -4092,6 +4122,7 @@ function Members({ user }) {
                     <Td>{application.contactNumber}</Td>
                     <Td>{application.gender}</Td>
                     <Td>{application.idType}<br />{application.idNumber}</Td>
+                    <Td>{application.beneficiaryName}<br />Age {application.beneficiaryAge} · {application.beneficiaryRelationship}</Td>
                     <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
                   <Td>
                     <Badge colorScheme="yellow">{application.status}</Badge>
@@ -4112,7 +4143,7 @@ function Members({ user }) {
                 ))}
                 {pendingApplications.length === 0 ? (
                   <Tr>
-                    <Td colSpan={canApproveApplication ? 9 : 8} color="gray.500">
+                    <Td colSpan={canApproveApplication ? 10 : 9} color="gray.500">
                       No pending applications.
                     </Td>
                   </Tr>
@@ -4846,6 +4877,26 @@ function Members({ user }) {
                   onChange={(event) => updateMemberProfileForm("idNumber", event.target.value)}
                   isReadOnly={!canEditMemberProfile}
                 />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Beneficiary Name</FormLabel>
+                <Input value={memberProfileForm.beneficiaryName}
+                  onChange={(event) => updateMemberProfileForm("beneficiaryName", event.target.value)}
+                  isReadOnly={!canEditMemberProfile} />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Beneficiary Age</FormLabel>
+                <NumberInput min={0} max={150} precision={0} value={memberProfileForm.beneficiaryAge}
+                  onChange={(value) => updateMemberProfileForm("beneficiaryAge", Number(value || 0))}
+                  isReadOnly={!canEditMemberProfile}>
+                  <NumberInputField />
+                </NumberInput>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Relationship to Member</FormLabel>
+                <Input value={memberProfileForm.beneficiaryRelationship}
+                  onChange={(event) => updateMemberProfileForm("beneficiaryRelationship", event.target.value)}
+                  isReadOnly={!canEditMemberProfile} />
               </FormControl>
               <FormControl>
                 <FormLabel>Civil Status</FormLabel>

@@ -130,6 +130,9 @@ async function run() {
         gender: "Female",
         idType: "PhilSys ID / ePhilID",
         idNumber: "1234-5678-9012",
+        beneficiaryName: "Smoke Test Child",
+        beneficiaryAge: 12,
+        beneficiaryRelationship: "Child",
         initialShareCapital: 5000
       })
     });
@@ -140,7 +143,10 @@ async function run() {
       createBody.application.status !== "Pending Approval" ||
       createBody.application.gender !== "Female" ||
       createBody.application.idType !== "PhilSys ID / ePhilID" ||
-      createBody.application.idNumber !== "1234-5678-9012"
+      createBody.application.idNumber !== "1234-5678-9012" ||
+      createBody.application.beneficiaryName !== "Smoke Test Child" ||
+      createBody.application.beneficiaryAge !== 12 ||
+      createBody.application.beneficiaryRelationship !== "Child"
     ) {
       throw new Error("Member application was not created as Pending Approval.");
     }
@@ -489,6 +495,9 @@ async function run() {
         gender: "Male",
         idType: "Philippine Passport",
         idNumber: "P1234567A",
+        beneficiaryName: "Updated Beneficiary",
+        beneficiaryAge: 35,
+        beneficiaryRelationship: "Sibling",
         civilStatus: "Single",
         occupation: "Prototype tester",
         membershipDate: "2026-06-14",
@@ -507,6 +516,9 @@ async function run() {
       memberProfileUpdateBody.member.gender !== "Male" ||
       memberProfileUpdateBody.member.idType !== "Philippine Passport" ||
       memberProfileUpdateBody.member.idNumber !== "P1234567A" ||
+      memberProfileUpdateBody.member.beneficiaryName !== "Updated Beneficiary" ||
+      memberProfileUpdateBody.member.beneficiaryAge !== 35 ||
+      memberProfileUpdateBody.member.beneficiaryRelationship !== "Sibling" ||
       memberProfileUpdateBody.member.previousLoanBalance !== 1250.75 ||
       memberProfileUpdateBody.member.share !== 0 ||
       memberProfileUpdateBody.member.savings !== 0
@@ -673,6 +685,9 @@ async function run() {
         gender: "Male",
         idType: "Driver's License",
         idNumber: "N01-23-456789",
+        beneficiaryName: "Second Beneficiary",
+        beneficiaryAge: 40,
+        beneficiaryRelationship: "Spouse",
         initialShareCapital: 5000
       })
     });
@@ -692,7 +707,10 @@ async function run() {
       !/^M-\d{6}$/.test(postImportApprovalBody.member?.id || "") ||
       postImportApprovalBody.member?.gender !== "Male" ||
       postImportApprovalBody.member?.idType !== "Driver's License" ||
-      postImportApprovalBody.member?.idNumber !== "N01-23-456789"
+      postImportApprovalBody.member?.idNumber !== "N01-23-456789" ||
+      postImportApprovalBody.member?.beneficiaryName !== "Second Beneficiary" ||
+      postImportApprovalBody.member?.beneficiaryAge !== 40 ||
+      postImportApprovalBody.member?.beneficiaryRelationship !== "Spouse"
     ) {
       throw new Error("Admin approval should ignore nonnumeric imported member IDs when assigning the next member number.");
     }

@@ -267,7 +267,10 @@ const requiredSchemaColumns = {
     "occupation",
     "membership_date",
     "previous_loan_balance",
-    "secured_savings_balance"
+    "secured_savings_balance",
+    "beneficiary_name",
+    "beneficiary_age",
+    "beneficiary_relationship"
   ],
   member_import_batches: [
     "import_no",
@@ -3494,6 +3497,8 @@ async function listMembers() {
             secured_savings_balance AS securedSavings, status,
             contact_number AS contactNumber, address, birthdate,
             gender, id_type AS idType, id_number AS idNumber,
+            beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
+            beneficiary_relationship AS beneficiaryRelationship,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
             previous_loan_balance AS previousLoanBalance
      FROM members
@@ -3604,6 +3609,9 @@ function validateMemberProfileInput(body) {
   const gender = String(body.gender || "").trim();
   const idType = String(body.idType || "").trim();
   const idNumber = String(body.idNumber || "").trim();
+  const beneficiaryName = String(body.beneficiaryName || "").trim();
+  const beneficiaryAge = Number(body.beneficiaryAge || 0);
+  const beneficiaryRelationship = String(body.beneficiaryRelationship || "").trim();
   const civilStatus = String(body.civilStatus || "").trim();
   const occupation = String(body.occupation || "").trim();
   const membershipDate = normalizeOptionalDate(body.membershipDate);
@@ -3634,6 +3642,12 @@ function validateMemberProfileInput(body) {
     return { error: "ID type and ID number must be provided together." };
   }
 
+  const hasBeneficiary = Boolean(beneficiaryName || beneficiaryAge || beneficiaryRelationship);
+  if (hasBeneficiary && (!beneficiaryName || !beneficiaryRelationship ||
+      !Number.isInteger(beneficiaryAge) || beneficiaryAge < 0 || beneficiaryAge > 150)) {
+    return { error: "Beneficiary name, whole-number age from 0 to 150, and relationship must be provided together." };
+  }
+
   if (!isMoney(previousLoanBalance)) {
     return { error: "Previous Loan Balance must be a valid money amount." };
   }
@@ -3648,6 +3662,9 @@ function validateMemberProfileInput(body) {
       gender,
       idType,
       idNumber,
+      beneficiaryName,
+      beneficiaryAge,
+      beneficiaryRelationship,
       civilStatus,
       occupation,
       membershipDate,
@@ -3687,6 +3704,7 @@ async function updateMemberProfile(memberId, input) {
     `UPDATE members
      SET full_name = ?, cluster_name = ?, contact_number = ?, address = ?,
          birthdate = ?, gender = ?, id_type = ?, id_number = ?,
+         beneficiary_name = ?, beneficiary_age = ?, beneficiary_relationship = ?,
          civil_status = ?, occupation = ?, membership_date = ?,
          previous_loan_balance = ?, status = ?
      WHERE member_no = ?`,
@@ -3699,6 +3717,9 @@ async function updateMemberProfile(memberId, input) {
       input.gender,
       input.idType,
       input.idNumber,
+      input.beneficiaryName,
+      input.beneficiaryAge,
+      input.beneficiaryRelationship,
       input.civilStatus,
       input.occupation,
       input.membershipDate,
@@ -3713,6 +3734,8 @@ async function updateMemberProfile(memberId, input) {
             share_capital AS share, savings_balance AS savings, status,
             contact_number AS contactNumber, address, birthdate,
             gender, id_type AS idType, id_number AS idNumber,
+            beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
+            beneficiary_relationship AS beneficiaryRelationship,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
             previous_loan_balance AS previousLoanBalance
      FROM members
@@ -6712,6 +6735,8 @@ async function listMemberApplications() {
   const [rows] = await db.execute(
     `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
             contact_number AS contactNumber, gender, id_type AS idType, id_number AS idNumber,
+            beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
+            beneficiary_relationship AS beneficiaryRelationship,
             initial_share_capital AS initialShareCapital,
             status, created_by AS createdBy, created_at AS createdAt
      FROM member_applications
@@ -6731,6 +6756,9 @@ async function createMemberApplication(input, user) {
     gender: input.gender,
     idType: input.idType,
     idNumber: input.idNumber,
+    beneficiaryName: input.beneficiaryName,
+    beneficiaryAge: input.beneficiaryAge,
+    beneficiaryRelationship: input.beneficiaryRelationship,
     initialShareCapital: input.initialShareCapital,
     status: "Pending Approval",
     createdBy: user.username
@@ -6744,9 +6772,10 @@ async function createMemberApplication(input, user) {
   await db.execute(
     `INSERT INTO member_applications (
        application_no, full_name, cluster_name, contact_number, gender, id_type, id_number,
+       beneficiary_name, beneficiary_age, beneficiary_relationship,
        initial_share_capital, status, created_by
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       application.id,
       application.fullName,
@@ -6755,6 +6784,9 @@ async function createMemberApplication(input, user) {
       application.gender,
       application.idType,
       application.idNumber,
+      application.beneficiaryName,
+      application.beneficiaryAge,
+      application.beneficiaryRelationship,
       application.initialShareCapital,
       application.status,
       application.createdBy
@@ -7420,6 +7452,9 @@ async function approveMemberApplication(applicationId, user) {
       gender: application.gender || "",
       idType: application.idType || "",
       idNumber: application.idNumber || "",
+      beneficiaryName: application.beneficiaryName || "",
+      beneficiaryAge: Number(application.beneficiaryAge || 0),
+      beneficiaryRelationship: application.beneficiaryRelationship || "",
       address: "",
       birthdate: "",
       civilStatus: "",
@@ -7443,6 +7478,8 @@ async function approveMemberApplication(applicationId, user) {
     const [rows] = await connection.execute(
       `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
               contact_number AS contactNumber, gender, id_type AS idType, id_number AS idNumber,
+              beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
+              beneficiary_relationship AS beneficiaryRelationship,
               initial_share_capital AS initialShareCapital,
               status
        FROM member_applications
@@ -7477,9 +7514,10 @@ async function approveMemberApplication(applicationId, user) {
     await connection.execute(
       `INSERT INTO members (
          member_no, full_name, cluster_name, status, share_capital, savings_balance,
-         contact_number, gender, id_type, id_number, membership_date
+         contact_number, gender, id_type, id_number,
+         beneficiary_name, beneficiary_age, beneficiary_relationship, membership_date
        )
-       VALUES (?, ?, ?, 'Active', ?, 0, ?, ?, ?, ?, CURRENT_DATE)`,
+       VALUES (?, ?, ?, 'Active', ?, 0, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE)`,
       [
         memberNo,
         application.fullName,
@@ -7488,7 +7526,10 @@ async function approveMemberApplication(applicationId, user) {
         application.contactNumber || "",
         application.gender || "",
         application.idType || "",
-        application.idNumber || ""
+        application.idNumber || "",
+        application.beneficiaryName || "",
+        Number(application.beneficiaryAge || 0),
+        application.beneficiaryRelationship || ""
       ]
     );
 
@@ -7520,6 +7561,9 @@ async function approveMemberApplication(applicationId, user) {
         gender: application.gender || "",
         idType: application.idType || "",
         idNumber: application.idNumber || "",
+        beneficiaryName: application.beneficiaryName || "",
+        beneficiaryAge: Number(application.beneficiaryAge || 0),
+        beneficiaryRelationship: application.beneficiaryRelationship || "",
         address: "",
         birthdate: "",
         civilStatus: "",
@@ -9525,6 +9569,8 @@ async function getMemberStatement(memberId) {
             secured_savings_balance AS securedSavings, status,
             contact_number AS contactNumber, address, birthdate,
             gender, id_type AS idType, id_number AS idNumber,
+            beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
+            beneficiary_relationship AS beneficiaryRelationship,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
             previous_loan_balance AS previousLoanBalance
      FROM members
@@ -12236,6 +12282,9 @@ function validateMemberApplication(body) {
   const gender = String(body.gender || "").trim();
   const idType = String(body.idType || "").trim();
   const idNumber = String(body.idNumber || "").trim();
+  const beneficiaryName = String(body.beneficiaryName || "").trim();
+  const beneficiaryAge = Number(body.beneficiaryAge);
+  const beneficiaryRelationship = String(body.beneficiaryRelationship || "").trim();
   const initialShareCapital = Number(body.initialShareCapital || 0);
 
   if (!fullName) {
@@ -12262,6 +12311,18 @@ function validateMemberApplication(body) {
     return { error: "ID number is required." };
   }
 
+  if (!beneficiaryName) {
+    return { error: "Beneficiary name is required." };
+  }
+
+  if (!Number.isInteger(beneficiaryAge) || beneficiaryAge < 0 || beneficiaryAge > 150) {
+    return { error: "Beneficiary age must be a whole number from 0 to 150." };
+  }
+
+  if (!beneficiaryRelationship) {
+    return { error: "Beneficiary relationship is required." };
+  }
+
   if (!isMoney(initialShareCapital)) {
     return { error: "Initial share capital must have no more than two decimal places." };
   }
@@ -12274,6 +12335,9 @@ function validateMemberApplication(body) {
       gender,
       idType,
       idNumber,
+      beneficiaryName,
+      beneficiaryAge,
+      beneficiaryRelationship,
       initialShareCapital: moneyValue(initialShareCapital)
     }
   };
