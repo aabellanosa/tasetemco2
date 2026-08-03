@@ -179,6 +179,8 @@ const sessions = new Map();
 let pool = null;
 
 const persistedTables = [
+  "member_application_beneficiaries",
+  "member_beneficiaries",
   "daily_disbursement_entries",
   "daily_disbursement_batches",
   "disbursement_categories",
@@ -230,6 +232,8 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  member_application_beneficiaries: ["application_no", "display_order", "beneficiary_name", "beneficiary_age", "beneficiary_relationship"],
+  member_beneficiaries: ["member_no", "display_order", "beneficiary_name", "beneficiary_age", "beneficiary_relationship"],
   disbursement_categories: ["code", "name", "reporting_group", "expense_account_code", "status"],
   daily_disbursement_batches: ["batch_no", "disbursement_date", "cash_disbursed_date", "source_reference", "status", "teller_batch_no", "posted_entry_no"],
   daily_disbursement_entries: ["batch_no", "category_code", "category_name", "expense_account_code", "amount"],
@@ -1999,6 +2003,7 @@ function loanCollectionAllocationRows(collections) {
         }))
       : [collection]
   );
+
 }
 
 async function listLoans() {
@@ -3488,7 +3493,14 @@ async function listMembers() {
   const db = await getPool();
 
   if (!db) {
-    return members.map((member) => ({ ...member, securedSavings: Number(member.securedSavings || 0) }));
+    return members.map((member) => ({
+      ...member,
+      securedSavings: Number(member.securedSavings || 0),
+      beneficiaries: member.beneficiaries || (member.beneficiaryName ? [{
+        displayOrder: 1, name: member.beneficiaryName, age: Number(member.beneficiaryAge || 0),
+        relationship: member.beneficiaryRelationship || ""
+      }] : [])
+    }));
   }
 
   const [rows] = await db.execute(
@@ -3505,7 +3517,16 @@ async function listMembers() {
      ORDER BY member_no`
   );
 
-  return rows;
+  const [beneficiaryRows] = await db.execute(
+    `SELECT member_no AS memberNo, display_order AS displayOrder, beneficiary_name AS name,
+            beneficiary_age AS age, beneficiary_relationship AS relationship
+     FROM member_beneficiaries ORDER BY member_no, display_order`
+  );
+  return rows.map((member) => ({
+    ...member,
+    beneficiaries: beneficiaryRows.filter((row) => row.memberNo === member.id)
+      .map((row) => ({ displayOrder: row.displayOrder, name: row.name, age: Number(row.age), relationship: row.relationship }))
+  }));
 }
 
 async function listLedgerMemberLookup() {
@@ -3609,9 +3630,7 @@ function validateMemberProfileInput(body) {
   const gender = String(body.gender || "").trim();
   const idType = String(body.idType || "").trim();
   const idNumber = String(body.idNumber || "").trim();
-  const beneficiaryName = String(body.beneficiaryName || "").trim();
-  const beneficiaryAge = Number(body.beneficiaryAge || 0);
-  const beneficiaryRelationship = String(body.beneficiaryRelationship || "").trim();
+  const beneficiaryValidation = validateBeneficiaryRows(body.beneficiaries);
   const civilStatus = String(body.civilStatus || "").trim();
   const occupation = String(body.occupation || "").trim();
   const membershipDate = normalizeOptionalDate(body.membershipDate);
@@ -3642,11 +3661,7 @@ function validateMemberProfileInput(body) {
     return { error: "ID type and ID number must be provided together." };
   }
 
-  const hasBeneficiary = Boolean(beneficiaryName || beneficiaryAge || beneficiaryRelationship);
-  if (hasBeneficiary && (!beneficiaryName || !beneficiaryRelationship ||
-      !Number.isInteger(beneficiaryAge) || beneficiaryAge < 0 || beneficiaryAge > 150)) {
-    return { error: "Beneficiary name, whole-number age from 0 to 150, and relationship must be provided together." };
-  }
+  if (beneficiaryValidation.error) return beneficiaryValidation;
 
   if (!isMoney(previousLoanBalance)) {
     return { error: "Previous Loan Balance must be a valid money amount." };
@@ -3662,9 +3677,10 @@ function validateMemberProfileInput(body) {
       gender,
       idType,
       idNumber,
-      beneficiaryName,
-      beneficiaryAge,
-      beneficiaryRelationship,
+      beneficiaries: beneficiaryValidation.value,
+      beneficiaryName: beneficiaryValidation.value[0].name,
+      beneficiaryAge: beneficiaryValidation.value[0].age,
+      beneficiaryRelationship: beneficiaryValidation.value[0].relationship,
       civilStatus,
       occupation,
       membershipDate,
@@ -3729,6 +3745,18 @@ async function updateMemberProfile(memberId, input) {
     ]
   );
 
+  const beneficiaryConnection = await db.getConnection();
+  try {
+    await beneficiaryConnection.beginTransaction();
+    await replaceBeneficiaries(beneficiaryConnection, "member", memberId, input.beneficiaries);
+    await beneficiaryConnection.commit();
+  } catch (error) {
+    await beneficiaryConnection.rollback();
+    throw error;
+  } finally {
+    beneficiaryConnection.release();
+  }
+
   const [rows] = await db.execute(
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
             share_capital AS share, savings_balance AS savings, status,
@@ -3744,7 +3772,7 @@ async function updateMemberProfile(memberId, input) {
     [memberId]
   );
 
-  return { member: rows[0] };
+  return { member: { ...rows[0], beneficiaries: await listBeneficiaries("member", memberId) } };
 }
 
 function mapMemberPreviousLoan(row) {
@@ -4006,7 +4034,6 @@ async function replaceMemberPreviousLoans(memberId, rows, user) {
   if (!member) {
     return { error: "Member was not found.", statusCode: 404 };
   }
-
   const validation = validateMemberPreviousLoanRows(rows);
 
   if (validation.error) {
@@ -6743,7 +6770,10 @@ async function listMemberApplications() {
      ORDER BY created_at DESC, id DESC`
   );
 
-  return rows;
+  return Promise.all(rows.map(async (application) => ({
+    ...application,
+    beneficiaries: await listBeneficiaries("application", application.id)
+  })));
 }
 
 async function createMemberApplication(input, user) {
@@ -6759,6 +6789,7 @@ async function createMemberApplication(input, user) {
     beneficiaryName: input.beneficiaryName,
     beneficiaryAge: input.beneficiaryAge,
     beneficiaryRelationship: input.beneficiaryRelationship,
+    beneficiaries: input.beneficiaries,
     initialShareCapital: input.initialShareCapital,
     status: "Pending Approval",
     createdBy: user.username
@@ -6792,6 +6823,18 @@ async function createMemberApplication(input, user) {
       application.createdBy
     ]
   );
+
+  const beneficiaryConnection = await db.getConnection();
+  try {
+    await beneficiaryConnection.beginTransaction();
+    await replaceBeneficiaries(beneficiaryConnection, "application", application.id, application.beneficiaries);
+    await beneficiaryConnection.commit();
+  } catch (error) {
+    await beneficiaryConnection.rollback();
+    throw error;
+  } finally {
+    beneficiaryConnection.release();
+  }
 
   return application;
 }
@@ -6903,6 +6946,52 @@ function hasCashInReference(referenceNo) {
 function nextSecuredSavingsWithdrawalNumber() {
   const next = securedSavingsWithdrawals.length + 1;
   return `SSW-${new Date().getFullYear()}-${String(next).padStart(4, "0")}`;
+}
+
+function validateBeneficiaryRows(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 3) {
+    return { error: "Provide between one and three beneficiaries." };
+  }
+  const beneficiaries = value.map((row, index) => ({
+    displayOrder: index + 1,
+    name: String(row?.name || row?.beneficiaryName || "").trim(),
+    age: Number(row?.age ?? row?.beneficiaryAge),
+    relationship: String(row?.relationship || row?.beneficiaryRelationship || "").trim()
+  }));
+  for (const beneficiary of beneficiaries) {
+    if (!beneficiary.name || !beneficiary.relationship || !Number.isInteger(beneficiary.age) ||
+        beneficiary.age < 0 || beneficiary.age > 150) {
+      return { error: "Each beneficiary requires a name, whole-number age from 0 to 150, and relationship." };
+    }
+  }
+  return { value: beneficiaries };
+}
+
+async function listBeneficiaries(ownerType, ownerNo) {
+  const table = ownerType === "application" ? "member_application_beneficiaries" : "member_beneficiaries";
+  const ownerColumn = ownerType === "application" ? "application_no" : "member_no";
+  const db = await getPool();
+  if (!db) return [];
+  const [rows] = await db.execute(
+    `SELECT display_order AS displayOrder, beneficiary_name AS name,
+            beneficiary_age AS age, beneficiary_relationship AS relationship
+     FROM ${table} WHERE ${ownerColumn} = ? ORDER BY display_order`, [ownerNo]
+  );
+  return rows.map((row) => ({ ...row, age: Number(row.age) }));
+}
+
+async function replaceBeneficiaries(connection, ownerType, ownerNo, beneficiaries) {
+  const table = ownerType === "application" ? "member_application_beneficiaries" : "member_beneficiaries";
+  const ownerColumn = ownerType === "application" ? "application_no" : "member_no";
+  await connection.execute(`DELETE FROM ${table} WHERE ${ownerColumn} = ?`, [ownerNo]);
+  for (const beneficiary of beneficiaries) {
+    await connection.execute(
+      `INSERT INTO ${table}
+       (${ownerColumn}, display_order, beneficiary_name, beneficiary_age, beneficiary_relationship)
+       VALUES (?, ?, ?, ?, ?)`,
+      [ownerNo, beneficiary.displayOrder, beneficiary.name, beneficiary.age, beneficiary.relationship]
+    );
+  }
 }
 
 async function listMemberDuesPayments({ memberNo = "" } = {}) {
@@ -7455,6 +7544,7 @@ async function approveMemberApplication(applicationId, user) {
       beneficiaryName: application.beneficiaryName || "",
       beneficiaryAge: Number(application.beneficiaryAge || 0),
       beneficiaryRelationship: application.beneficiaryRelationship || "",
+      beneficiaries: application.beneficiaries || [],
       address: "",
       birthdate: "",
       civilStatus: "",
@@ -7500,6 +7590,8 @@ async function approveMemberApplication(applicationId, user) {
       return { error: "Only pending applications can be approved.", statusCode: 409 };
     }
 
+    application.beneficiaries = await listBeneficiaries("application", applicationId);
+
     const [lastMemberRows] = await connection.execute(
       `SELECT member_no AS id
        FROM members
@@ -7540,6 +7632,8 @@ async function approveMemberApplication(applicationId, user) {
       [user.username, memberNo, applicationId]
     );
 
+    await replaceBeneficiaries(connection, "member", memberNo, application.beneficiaries);
+
     await connection.commit();
 
     return {
@@ -7564,6 +7658,7 @@ async function approveMemberApplication(applicationId, user) {
         beneficiaryName: application.beneficiaryName || "",
         beneficiaryAge: Number(application.beneficiaryAge || 0),
         beneficiaryRelationship: application.beneficiaryRelationship || "",
+        beneficiaries: application.beneficiaries,
         address: "",
         birthdate: "",
         civilStatus: "",
@@ -9583,6 +9678,7 @@ async function getMemberStatement(memberId) {
   if (!member) {
     return { error: "Member was not found.", statusCode: 404 };
   }
+  member.beneficiaries = await listBeneficiaries("member", memberId);
 
   const [initialPaymentRows] = await db.execute(
     `SELECT payment_no AS id, 'Initial Payment' AS type, reference_no AS referenceNo,
@@ -12282,9 +12378,7 @@ function validateMemberApplication(body) {
   const gender = String(body.gender || "").trim();
   const idType = String(body.idType || "").trim();
   const idNumber = String(body.idNumber || "").trim();
-  const beneficiaryName = String(body.beneficiaryName || "").trim();
-  const beneficiaryAge = Number(body.beneficiaryAge);
-  const beneficiaryRelationship = String(body.beneficiaryRelationship || "").trim();
+  const beneficiaryValidation = validateBeneficiaryRows(body.beneficiaries);
   const initialShareCapital = Number(body.initialShareCapital || 0);
 
   if (!fullName) {
@@ -12311,17 +12405,7 @@ function validateMemberApplication(body) {
     return { error: "ID number is required." };
   }
 
-  if (!beneficiaryName) {
-    return { error: "Beneficiary name is required." };
-  }
-
-  if (!Number.isInteger(beneficiaryAge) || beneficiaryAge < 0 || beneficiaryAge > 150) {
-    return { error: "Beneficiary age must be a whole number from 0 to 150." };
-  }
-
-  if (!beneficiaryRelationship) {
-    return { error: "Beneficiary relationship is required." };
-  }
+  if (beneficiaryValidation.error) return beneficiaryValidation;
 
   if (!isMoney(initialShareCapital)) {
     return { error: "Initial share capital must have no more than two decimal places." };
@@ -12335,9 +12419,10 @@ function validateMemberApplication(body) {
       gender,
       idType,
       idNumber,
-      beneficiaryName,
-      beneficiaryAge,
-      beneficiaryRelationship,
+      beneficiaries: beneficiaryValidation.value,
+      beneficiaryName: beneficiaryValidation.value[0].name,
+      beneficiaryAge: beneficiaryValidation.value[0].age,
+      beneficiaryRelationship: beneficiaryValidation.value[0].relationship,
       initialShareCapital: moneyValue(initialShareCapital)
     }
   };

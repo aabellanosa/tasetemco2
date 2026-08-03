@@ -130,9 +130,10 @@ async function run() {
         gender: "Female",
         idType: "PhilSys ID / ePhilID",
         idNumber: "1234-5678-9012",
-        beneficiaryName: "Smoke Test Child",
-        beneficiaryAge: 12,
-        beneficiaryRelationship: "Child",
+        beneficiaries: [
+          { name: "Smoke Test Child", age: 12, relationship: "Child" },
+          { name: "Smoke Test Parent", age: 60, relationship: "Parent" }
+        ],
         initialShareCapital: 5000
       })
     });
@@ -144,9 +145,8 @@ async function run() {
       createBody.application.gender !== "Female" ||
       createBody.application.idType !== "PhilSys ID / ePhilID" ||
       createBody.application.idNumber !== "1234-5678-9012" ||
-      createBody.application.beneficiaryName !== "Smoke Test Child" ||
-      createBody.application.beneficiaryAge !== 12 ||
-      createBody.application.beneficiaryRelationship !== "Child"
+      createBody.application.beneficiaries?.length !== 2 ||
+      createBody.application.beneficiaries[1]?.name !== "Smoke Test Parent"
     ) {
       throw new Error("Member application was not created as Pending Approval.");
     }
@@ -158,6 +158,26 @@ async function run() {
 
     if (!applications.some((application) => application.id === createBody.application.id)) {
       throw new Error("Created member application was not returned by the list endpoint.");
+    }
+
+    const tooManyBeneficiaries = await fetch(`${baseUrl}/api/member-applications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        fullName: "Too Many Beneficiaries",
+        clusterName: "COMMUNITY A MEMBERS",
+        contactNumber: "0999-999-9999",
+        gender: "Female",
+        idType: "PhilSys ID / ePhilID",
+        idNumber: "TOO-MANY-BENEFICIARIES",
+        beneficiaries: [1, 2, 3, 4].map((number) => ({
+          name: `Beneficiary ${number}`, age: 20 + number, relationship: "Sibling"
+        })),
+        initialShareCapital: 5000
+      })
+    });
+    if (tooManyBeneficiaries.status !== 400) {
+      throw new Error("Membership application must reject more than three beneficiaries.");
     }
 
     const managerLogin = await fetch(`${baseUrl}/api/login`, {
@@ -495,9 +515,11 @@ async function run() {
         gender: "Male",
         idType: "Philippine Passport",
         idNumber: "P1234567A",
-        beneficiaryName: "Updated Beneficiary",
-        beneficiaryAge: 35,
-        beneficiaryRelationship: "Sibling",
+        beneficiaries: [
+          { name: "Updated Beneficiary", age: 35, relationship: "Sibling" },
+          { name: "Second Updated Beneficiary", age: 10, relationship: "Child" },
+          { name: "Third Updated Beneficiary", age: 65, relationship: "Parent" }
+        ],
         civilStatus: "Single",
         occupation: "Prototype tester",
         membershipDate: "2026-06-14",
@@ -516,9 +538,8 @@ async function run() {
       memberProfileUpdateBody.member.gender !== "Male" ||
       memberProfileUpdateBody.member.idType !== "Philippine Passport" ||
       memberProfileUpdateBody.member.idNumber !== "P1234567A" ||
-      memberProfileUpdateBody.member.beneficiaryName !== "Updated Beneficiary" ||
-      memberProfileUpdateBody.member.beneficiaryAge !== 35 ||
-      memberProfileUpdateBody.member.beneficiaryRelationship !== "Sibling" ||
+      memberProfileUpdateBody.member.beneficiaries?.length !== 3 ||
+      memberProfileUpdateBody.member.beneficiaries[2]?.name !== "Third Updated Beneficiary" ||
       memberProfileUpdateBody.member.previousLoanBalance !== 1250.75 ||
       memberProfileUpdateBody.member.share !== 0 ||
       memberProfileUpdateBody.member.savings !== 0
@@ -685,9 +706,7 @@ async function run() {
         gender: "Male",
         idType: "Driver's License",
         idNumber: "N01-23-456789",
-        beneficiaryName: "Second Beneficiary",
-        beneficiaryAge: 40,
-        beneficiaryRelationship: "Spouse",
+        beneficiaries: [{ name: "Second Beneficiary", age: 40, relationship: "Spouse" }],
         initialShareCapital: 5000
       })
     });
@@ -708,9 +727,8 @@ async function run() {
       postImportApprovalBody.member?.gender !== "Male" ||
       postImportApprovalBody.member?.idType !== "Driver's License" ||
       postImportApprovalBody.member?.idNumber !== "N01-23-456789" ||
-      postImportApprovalBody.member?.beneficiaryName !== "Second Beneficiary" ||
-      postImportApprovalBody.member?.beneficiaryAge !== 40 ||
-      postImportApprovalBody.member?.beneficiaryRelationship !== "Spouse"
+      postImportApprovalBody.member?.beneficiaries?.length !== 1 ||
+      postImportApprovalBody.member?.beneficiaries[0]?.relationship !== "Spouse"
     ) {
       throw new Error("Admin approval should ignore nonnumeric imported member IDs when assigning the next member number.");
     }

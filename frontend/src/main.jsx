@@ -3192,9 +3192,7 @@ function Members({ user }) {
     gender: "",
     idType: "",
     idNumber: "",
-    beneficiaryName: "",
-    beneficiaryAge: 0,
-    beneficiaryRelationship: "",
+    beneficiaries: [{ name: "", age: 0, relationship: "" }],
     initialShareCapital: 5000
   });
   const [paymentForm, setPaymentForm] = useState({
@@ -3242,9 +3240,7 @@ function Members({ user }) {
     gender: "",
     idType: "",
     idNumber: "",
-    beneficiaryName: "",
-    beneficiaryAge: 0,
-    beneficiaryRelationship: "",
+    beneficiaries: [{ name: "", age: 0, relationship: "" }],
     civilStatus: "",
     occupation: "",
     membershipDate: "",
@@ -3545,6 +3541,16 @@ function Members({ user }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function updateBeneficiaryForm(index, field, value) {
+    setForm((current) => ({ ...current, beneficiaries: current.beneficiaries.map((row, rowIndex) =>
+      rowIndex === index ? { ...row, [field]: value } : row) }));
+  }
+
+  function updateProfileBeneficiary(index, field, value) {
+    setMemberProfileForm((current) => ({ ...current, beneficiaries: current.beneficiaries.map((row, rowIndex) =>
+      rowIndex === index ? { ...row, [field]: value } : row) }));
+  }
+
   function selectTellerMember(memberId) {
     setSelectedTellerMemberId(memberId);
     updatePaymentForm("memberId", memberId);
@@ -3617,9 +3623,7 @@ function Members({ user }) {
         gender: "",
         idType: "",
         idNumber: "",
-        beneficiaryName: "",
-        beneficiaryAge: 0,
-        beneficiaryRelationship: "",
+        beneficiaries: [{ name: "", age: 0, relationship: "" }],
         initialShareCapital: 5000
       });
       await loadMembersWorkflow();
@@ -3823,9 +3827,11 @@ function Members({ user }) {
         gender: data.member.gender || "",
         idType: data.member.idType || "",
         idNumber: data.member.idNumber || "",
-        beneficiaryName: data.member.beneficiaryName || "",
-        beneficiaryAge: Number(data.member.beneficiaryAge || 0),
-        beneficiaryRelationship: data.member.beneficiaryRelationship || "",
+        beneficiaries: data.member.beneficiaries?.length
+          ? data.member.beneficiaries.map((row) => ({
+              name: row.name || "", age: Number(row.age || 0), relationship: row.relationship || ""
+            }))
+          : [{ name: "", age: 0, relationship: "" }],
         civilStatus: data.member.civilStatus || "",
         occupation: data.member.occupation || "",
         membershipDate: data.member.membershipDate ? String(data.member.membershipDate).slice(0, 10) : "",
@@ -4052,23 +4058,29 @@ function Members({ user }) {
               <FormLabel>ID Number</FormLabel>
               <Input value={form.idNumber} onChange={(event) => updateForm("idNumber", event.target.value)} />
             </FormControl>
-            <FormControl isRequired>
-              <FormLabel>Beneficiary Name</FormLabel>
-              <Input value={form.beneficiaryName}
-                onChange={(event) => updateForm("beneficiaryName", event.target.value)} />
-            </FormControl>
-            <FormControl isRequired>
-              <FormLabel>Beneficiary Age</FormLabel>
-              <NumberInput min={0} max={150} precision={0} value={form.beneficiaryAge}
-                onChange={(value) => updateForm("beneficiaryAge", Number(value || 0))}>
-                <NumberInputField />
-              </NumberInput>
-            </FormControl>
-            <FormControl isRequired>
-              <FormLabel>Relationship to Member</FormLabel>
-              <Input value={form.beneficiaryRelationship}
-                onChange={(event) => updateForm("beneficiaryRelationship", event.target.value)} />
-            </FormControl>
+            <Box gridColumn={{ base: "1", lg: "1 / -1" }} borderWidth="1px" borderRadius="md" p={4}>
+              <Flex justify="space-between" align="center" mb={3}>
+                <Box><FormLabel mb={0}>Beneficiaries</FormLabel><Text fontSize="xs" color="gray.500">Add one to three beneficiaries.</Text></Box>
+                <Button type="button" size="sm" variant="outline" isDisabled={form.beneficiaries.length >= 3}
+                  onClick={() => setForm((current) => ({ ...current, beneficiaries: [
+                    ...current.beneficiaries, { name: "", age: 0, relationship: "" }
+                  ] }))}>Add Beneficiary</Button>
+              </Flex>
+              <VStack align="stretch" spacing={3}>{form.beneficiaries.map((beneficiary, index) =>
+                <Grid key={index} templateColumns={{ base: "1fr", md: "2fr 0.7fr 1.5fr auto" }} gap={3} alignItems="end">
+                  <FormControl isRequired><FormLabel>Name</FormLabel><Input value={beneficiary.name}
+                    onChange={(event) => updateBeneficiaryForm(index, "name", event.target.value)} /></FormControl>
+                  <FormControl isRequired><FormLabel>Age</FormLabel><NumberInput min={0} max={150} precision={0}
+                    value={beneficiary.age} onChange={(value) => updateBeneficiaryForm(index, "age", Number(value || 0))}>
+                    <NumberInputField /></NumberInput></FormControl>
+                  <FormControl isRequired><FormLabel>Relationship</FormLabel><Input value={beneficiary.relationship}
+                    onChange={(event) => updateBeneficiaryForm(index, "relationship", event.target.value)} /></FormControl>
+                  <Button type="button" variant="outline" colorScheme="red" isDisabled={form.beneficiaries.length === 1}
+                    onClick={() => setForm((current) => ({ ...current,
+                      beneficiaries: current.beneficiaries.filter((_, rowIndex) => rowIndex !== index)
+                    }))}>Remove</Button>
+                </Grid>)}</VStack>
+            </Box>
             <FormControl>
               <FormLabel>Required Initial Share Capital</FormLabel>
               <NumberInput
@@ -4122,7 +4134,8 @@ function Members({ user }) {
                     <Td>{application.contactNumber}</Td>
                     <Td>{application.gender}</Td>
                     <Td>{application.idType}<br />{application.idNumber}</Td>
-                    <Td>{application.beneficiaryName}<br />Age {application.beneficiaryAge} · {application.beneficiaryRelationship}</Td>
+                    <Td>{(application.beneficiaries || []).map((beneficiary, index) =>
+                      <Text key={index}>{index + 1}. {beneficiary.name}, age {beneficiary.age} · {beneficiary.relationship}</Text>)}</Td>
                     <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
                   <Td>
                     <Badge colorScheme="yellow">{application.status}</Badge>
@@ -4878,26 +4891,33 @@ function Members({ user }) {
                   isReadOnly={!canEditMemberProfile}
                 />
               </FormControl>
-              <FormControl>
-                <FormLabel>Beneficiary Name</FormLabel>
-                <Input value={memberProfileForm.beneficiaryName}
-                  onChange={(event) => updateMemberProfileForm("beneficiaryName", event.target.value)}
-                  isReadOnly={!canEditMemberProfile} />
-              </FormControl>
-              <FormControl>
-                <FormLabel>Beneficiary Age</FormLabel>
-                <NumberInput min={0} max={150} precision={0} value={memberProfileForm.beneficiaryAge}
-                  onChange={(value) => updateMemberProfileForm("beneficiaryAge", Number(value || 0))}
-                  isReadOnly={!canEditMemberProfile}>
-                  <NumberInputField />
-                </NumberInput>
-              </FormControl>
-              <FormControl>
-                <FormLabel>Relationship to Member</FormLabel>
-                <Input value={memberProfileForm.beneficiaryRelationship}
-                  onChange={(event) => updateMemberProfileForm("beneficiaryRelationship", event.target.value)}
-                  isReadOnly={!canEditMemberProfile} />
-              </FormControl>
+              <Box gridColumn={{ base: "1", md: "1 / -1" }} borderWidth="1px" borderRadius="md" p={4}>
+                <Flex justify="space-between" align="center" mb={3}>
+                  <Box><FormLabel mb={0}>Beneficiaries</FormLabel><Text fontSize="xs" color="gray.500">One to three beneficiary records.</Text></Box>
+                  {canEditMemberProfile ? <Button type="button" size="sm" variant="outline"
+                    isDisabled={memberProfileForm.beneficiaries.length >= 3}
+                    onClick={() => setMemberProfileForm((current) => ({ ...current, beneficiaries: [
+                      ...current.beneficiaries, { name: "", age: 0, relationship: "" }
+                    ] }))}>Add Beneficiary</Button> : null}
+                </Flex>
+                <VStack align="stretch" spacing={3}>{memberProfileForm.beneficiaries.map((beneficiary, index) =>
+                  <Grid key={index} templateColumns={{ base: "1fr", md: "2fr 0.7fr 1.5fr auto" }} gap={3} alignItems="end">
+                    <FormControl isRequired><FormLabel>Name</FormLabel><Input value={beneficiary.name}
+                      onChange={(event) => updateProfileBeneficiary(index, "name", event.target.value)}
+                      isReadOnly={!canEditMemberProfile} /></FormControl>
+                    <FormControl isRequired><FormLabel>Age</FormLabel><NumberInput min={0} max={150} precision={0}
+                      value={beneficiary.age} onChange={(value) => updateProfileBeneficiary(index, "age", Number(value || 0))}
+                      isReadOnly={!canEditMemberProfile}><NumberInputField /></NumberInput></FormControl>
+                    <FormControl isRequired><FormLabel>Relationship</FormLabel><Input value={beneficiary.relationship}
+                      onChange={(event) => updateProfileBeneficiary(index, "relationship", event.target.value)}
+                      isReadOnly={!canEditMemberProfile} /></FormControl>
+                    {canEditMemberProfile ? <Button type="button" variant="outline" colorScheme="red"
+                      isDisabled={memberProfileForm.beneficiaries.length === 1}
+                      onClick={() => setMemberProfileForm((current) => ({ ...current,
+                        beneficiaries: current.beneficiaries.filter((_, rowIndex) => rowIndex !== index)
+                      }))}>Remove</Button> : null}
+                  </Grid>)}</VStack>
+              </Box>
               <FormControl>
                 <FormLabel>Civil Status</FormLabel>
                 <Select
