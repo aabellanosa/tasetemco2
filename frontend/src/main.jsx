@@ -2614,7 +2614,7 @@ function MonthlyContributionCapture({ members, user }) {
     } catch (requestError) { setError(requestError.message); }
   }
   async function finalizeBatch() {
-    if (!batchNo || !window.confirm(`Add ${batchNo} to the Open teller batch as a cash collection?`)) return;
+    if (!batchNo || !window.confirm(`Add ${batchNo} to the Open teller batch as a ${sourceType.toLowerCase()} collection?`)) return;
     setMessage(""); setError("");
     try {
       const data = await api(`/api/monthly-contribution-batches/${batchNo}/finalize`, { method: "POST" });
@@ -2625,7 +2625,7 @@ function MonthlyContributionCapture({ members, user }) {
   return <VStack align="stretch" spacing={5}>
     <Box as="form" onSubmit={saveDraft} bg="white" borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" wrap="wrap" gap={3} mb={4}><Box><Heading size="md">Monthly Member Contributions</Heading>
-        <Text color="gray.600">Collect cash for TFEA, CBU, and Secured Savings without creating member payables.</Text></Box>
+        <Text color="gray.600">Record Cash Payment or Payroll Deduction funding for TFEA, CBU, and Secured Savings without creating member payables.</Text></Box>
         <HStack><Badge colorScheme={batchStatus === "Finalized" ? "green" : "blue"}>{batchNo || "New Draft"} · {batchStatus}</Badge>
           <Button type="button" variant="outline" onClick={reset}>New</Button>
           {canEditDraft ? <Button type="submit" colorScheme="green">Save Draft</Button> : null}
@@ -2636,8 +2636,8 @@ function MonthlyContributionCapture({ members, user }) {
           onChange={(event) => { setContributionPeriod(event.target.value); setTransactionDate(`${event.target.value}-01`); }} /></FormControl>
         <FormControl isRequired><FormLabel>Transaction Date</FormLabel><Input isDisabled={!canEditDraft} type="date" max={today} value={transactionDate} onChange={(event) => setTransactionDate(event.target.value)} /></FormControl>
         <FormControl isRequired><FormLabel>Source</FormLabel><Select isDisabled={!canEditDraft} value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-          <option>Cash Payment</option></Select></FormControl>
-        <FormControl isRequired><FormLabel>Official Receipt / Reference</FormLabel><Input isDisabled={!canEditDraft} value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} placeholder="e.g. OR-2026-00125" /></FormControl>
+          <option>Cash Payment</option><option>Payroll Deduction</option></Select></FormControl>
+        <FormControl isRequired><FormLabel>Receipt / Payroll Reference</FormLabel><Input isDisabled={!canEditDraft} value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} placeholder="e.g. OR-2026-00125 or PAYROLL-2026-06" /></FormControl>
       </Grid>
       <FormControl mb={4}><FormLabel>Batch Remarks</FormLabel><Input isDisabled={!canEditDraft} value={remarks} onChange={(event) => setRemarks(event.target.value)} /></FormControl>
       <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3} mb={4}>
@@ -2657,8 +2657,8 @@ function MonthlyContributionCapture({ members, user }) {
       {canEditDraft ? <Button mt={3} type="button" variant="outline" onClick={() => setEntries([...entries, emptyEntry()])}>Add Member</Button> : null}
     </Box>
     <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}><Heading size="sm" mb={3}>Contribution Batch History</Heading>
-      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Month</Th><Th>OR / Reference</Th><Th>Status</Th><Th isNumeric>Members</Th><Th isNumeric>TFEA</Th><Th isNumeric>CBU</Th><Th isNumeric>Secured Savings</Th><Th /></Tr></Thead>
-        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{batch.contributionPeriod}</Td><Td>{batch.sourceReference}</Td>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Batch</Th><Th>Month</Th><Th>Source</Th><Th>Reference</Th><Th>Status</Th><Th isNumeric>Members</Th><Th isNumeric>TFEA</Th><Th isNumeric>CBU</Th><Th isNumeric>Secured Savings</Th><Th /></Tr></Thead>
+        <Tbody>{batches.map((batch) => <Tr key={batch.batchNo}><Td>{batch.batchNo}</Td><Td>{batch.contributionPeriod}</Td><Td>{batch.sourceType}</Td><Td>{batch.sourceReference}</Td>
           <Td><Badge colorScheme={batch.status === "Finalized" ? "green" : "blue"}>{batch.status}</Badge></Td><Td isNumeric>{batch.entryCount}</Td>
           <Td isNumeric>{formatMoney(batch.tfeaTotal)}</Td><Td isNumeric>{formatMoney(batch.cbuTotal)}</Td><Td isNumeric>{formatMoney(batch.securedSavingsTotal)}</Td>
           <Td><Button size="sm" onClick={() => openBatch(batch.batchNo)}>{batch.status === "Draft" && batch.createdBy === user.username ? "Edit" : "View"}</Button></Td></Tr>)}</Tbody>

@@ -4835,8 +4835,10 @@ async function validateMonthlyContributionDraft(body) {
     return { error: "Transaction date is required and cannot be in the future." };
   }
   if (transactionDate.slice(0, 7) !== contributionPeriod) return { error: "Transaction date must be within the contribution month." };
-  if (sourceType !== "Cash Payment") return { error: "Monthly member contributions must be recorded as Cash Payment." };
-  if (!sourceReference) return { error: "Official receipt/reference number is required." };
+  if (!["Cash Payment", "Payroll Deduction"].includes(sourceType)) {
+    return { error: "Monthly member contribution source must be Cash Payment or Payroll Deduction." };
+  }
+  if (!sourceReference) return { error: "Receipt or payroll reference number is required." };
   if (!Array.isArray(body.entries) || !body.entries.length) return { error: "Add at least one member contribution." };
   const activeMembers = (await listMembers()).filter((member) => member.status === "Active");
   const seenMembers = new Set();
@@ -4878,7 +4880,7 @@ async function saveMonthlyContributionDraft(body, user, batchNo = "") {
     const duplicate = monthlyContributionBatches.find((item) => item.batchNo !== nextBatchNo &&
       item.contributionPeriod === input.contributionPeriod && item.sourceType === input.sourceType &&
       item.sourceReference.toLowerCase() === input.sourceReference.toLowerCase());
-    if (duplicate) return { error: "That cash receipt/reference already exists for this contribution month.", statusCode: 409 };
+    if (duplicate) return { error: "That source reference already exists for this contribution month.", statusCode: 409 };
     if (!batch) { batch = { batchNo: nextBatchNo, status: "Draft", createdBy: user.username, createdAt: now }; monthlyContributionBatches.push(batch); }
     Object.assign(batch, input, { entries: undefined, updatedBy: user.username, updatedAt: now });
     for (let index = monthlyContributionEntries.length - 1; index >= 0; index -= 1) {
@@ -4895,7 +4897,7 @@ async function saveMonthlyContributionDraft(body, user, batchNo = "") {
        WHERE contribution_period = ? AND source_type = ? AND LOWER(source_reference) = LOWER(?) AND batch_no <> ? LIMIT 1`,
       [input.contributionPeriod, input.sourceType, input.sourceReference, nextBatchNo]
     );
-    if (duplicates[0]) { await connection.rollback(); return { error: "That cash receipt/reference already exists for this contribution month.", statusCode: 409 }; }
+    if (duplicates[0]) { await connection.rollback(); return { error: "That source reference already exists for this contribution month.", statusCode: 409 }; }
     if (batchNo) {
       const [rows] = await connection.execute(
         `SELECT status, created_by AS createdBy FROM monthly_contribution_batches WHERE batch_no = ? FOR UPDATE`, [batchNo]
@@ -11631,13 +11633,13 @@ async function postMonthlyContributionBatch(batchNo, user) {
   if (!db) {
     const batch = monthlyContributionBatches.find((item) => item.batchNo === batchNo);
     const entry = { id: nextJournalEntryNumber(), sourceType: "Monthly Member Contributions", sourceNo: batchNo,
-      description: `Monthly cash contributions - ${batch.contributionPeriod}`,
+      description: `Monthly ${batch.sourceType.toLowerCase()} contributions - ${batch.contributionPeriod}`,
       postedBy: user.username, postedAt: new Date().toISOString(), lines: buildMonthlyContributionJournalLines(source.batch) };
     for (const contribution of source.entries) {
       for (const [contributionType, field] of types) if (contribution[field] > 0) monthlyContributionMovements.push({
         movementNo: `MCO-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, sourceEntryId: contribution.id,
         memberNo: contribution.memberNo, contributionPeriod: batch.contributionPeriod,
-        transactionDate: batch.transactionDate, sourceType: "Cash Payment", contributionType,
+        transactionDate: batch.transactionDate, sourceType: batch.sourceType, contributionType,
         amount: contribution[field], createdBy: user.username, createdAt: entry.postedAt
       });
       const member = members.find((item) => item.id === contribution.memberNo);
@@ -11676,7 +11678,7 @@ async function postMonthlyContributionBatch(batchNo, user) {
     await connection.execute(
       `INSERT INTO journal_entries (entry_no, source_type, source_no, description, posted_by)
        VALUES (?, 'Monthly Member Contributions', ?, ?, ?)`,
-      [entryNo, batchNo, `Monthly cash contributions - ${batch.contributionPeriod}`, user.username]
+      [entryNo, batchNo, `Monthly ${batch.sourceType.toLowerCase()} contributions - ${batch.contributionPeriod}`, user.username]
     );
     for (const line of lines) await connection.execute(
       `INSERT INTO journal_entry_lines (entry_no, account_code, account_name, debit, credit) VALUES (?, ?, ?, ?, ?)`,
@@ -11688,7 +11690,7 @@ async function postMonthlyContributionBatch(batchNo, user) {
          (movement_no, batch_no, source_entry_id, member_no, contribution_period, transaction_date,
           source_type, contribution_type, amount, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [`MCO-${crypto.randomUUID().slice(0, 12).toUpperCase()}`, batchNo, contribution.id, contribution.memberNo,
-          batch.contributionPeriod, formatDateOnly(batch.transactionDate), "Cash Payment",
+          batch.contributionPeriod, formatDateOnly(batch.transactionDate), batch.sourceType,
           contributionType, Number(contribution[field]), user.username]
       );
       await connection.execute(
@@ -11705,7 +11707,7 @@ async function postMonthlyContributionBatch(batchNo, user) {
     await connection.commit();
     return { batch: { ...source.batch, status: "Posted", postedBy: user.username, postedEntryNo: entryNo },
       entry: { id: entryNo, sourceType: "Monthly Member Contributions", sourceNo: batchNo,
-        description: `Monthly cash contributions - ${batch.contributionPeriod}`, postedBy: user.username,
+        description: `Monthly ${batch.sourceType.toLowerCase()} contributions - ${batch.contributionPeriod}`, postedBy: user.username,
         postedAt: new Date().toISOString(), lines } };
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
 }

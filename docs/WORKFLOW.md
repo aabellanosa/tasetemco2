@@ -865,6 +865,8 @@ Cash Payment is the required source and an official receipt/reference must be un
 
 Posted LBP Loan installments populate the native LBP amount and earliest due date in the analytical report and columns G and F of the controlled client workbook. LBP is no longer accepted in new External Movement Imports. If legacy finalized LBP imports overlap native LBP schedules, SUMMO cannot be locked until the duplicate external source is removed.
 
+Monthly Member Contributions accept either `Cash Payment` or `Payroll Deduction` as the funding source and require the corresponding receipt or payroll reference. The selected source is retained on the batch and its posted contribution movements.
+
 Secured Savings Subsidiary v1 keeps `secured_savings_balance` separate from regular member savings. Posted Monthly Contributions increase the secured balance. Teller/Cashier may record a Secured Savings Withdrawal against the posted balance less pending withdrawals; recording reserves availability and adds cash-out to the Open teller batch without reducing the posted balance. Bookkeeper posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases the member secured balance. Member statements and subsidiary reports show Secured Savings separately. Run `npm run pg:migrate` before deployment; no seed or reset is required.
 
 ## 10A. Daily Remittance
