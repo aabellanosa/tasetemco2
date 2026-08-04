@@ -272,10 +272,12 @@ const requiredSchemaColumns = {
     "membership_date",
     "previous_loan_balance",
     "secured_savings_balance",
+    "spouse_name",
     "beneficiary_name",
     "beneficiary_age",
     "beneficiary_relationship"
   ],
+  member_applications: ["spouse_name"],
   member_import_batches: [
     "import_no",
     "source_label",
@@ -3508,7 +3510,7 @@ async function listMembers() {
             share_capital AS share, savings_balance AS savings,
             secured_savings_balance AS securedSavings, status,
             contact_number AS contactNumber, address, birthdate,
-            gender, id_type AS idType, id_number AS idNumber,
+            gender, id_type AS idType, id_number AS idNumber, spouse_name AS spouseName,
             beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
             beneficiary_relationship AS beneficiaryRelationship,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
@@ -3630,6 +3632,7 @@ function validateMemberProfileInput(body) {
   const gender = String(body.gender || "").trim();
   const idType = String(body.idType || "").trim();
   const idNumber = String(body.idNumber || "").trim();
+  const spouseName = String(body.spouseName || "").trim();
   const beneficiaryValidation = validateBeneficiaryRows(body.beneficiaries);
   const civilStatus = String(body.civilStatus || "").trim();
   const occupation = String(body.occupation || "").trim();
@@ -3661,6 +3664,10 @@ function validateMemberProfileInput(body) {
     return { error: "ID type and ID number must be provided together." };
   }
 
+  if (spouseName.length > 180) {
+    return { error: "Spouse name must be 180 characters or fewer." };
+  }
+
   if (beneficiaryValidation.error) return beneficiaryValidation;
 
   if (!isMoney(previousLoanBalance)) {
@@ -3677,6 +3684,7 @@ function validateMemberProfileInput(body) {
       gender,
       idType,
       idNumber,
+      spouseName,
       beneficiaries: beneficiaryValidation.value,
       beneficiaryName: beneficiaryValidation.value[0].name,
       beneficiaryAge: beneficiaryValidation.value[0].age,
@@ -3719,7 +3727,7 @@ async function updateMemberProfile(memberId, input) {
   await db.execute(
     `UPDATE members
      SET full_name = ?, cluster_name = ?, contact_number = ?, address = ?,
-         birthdate = ?, gender = ?, id_type = ?, id_number = ?,
+         birthdate = ?, gender = ?, id_type = ?, id_number = ?, spouse_name = ?,
          beneficiary_name = ?, beneficiary_age = ?, beneficiary_relationship = ?,
          civil_status = ?, occupation = ?, membership_date = ?,
          previous_loan_balance = ?, status = ?
@@ -3733,6 +3741,7 @@ async function updateMemberProfile(memberId, input) {
       input.gender,
       input.idType,
       input.idNumber,
+      input.spouseName,
       input.beneficiaryName,
       input.beneficiaryAge,
       input.beneficiaryRelationship,
@@ -3761,7 +3770,7 @@ async function updateMemberProfile(memberId, input) {
     `SELECT member_no AS id, full_name AS name, cluster_name AS \`group\`,
             share_capital AS share, savings_balance AS savings, status,
             contact_number AS contactNumber, address, birthdate,
-            gender, id_type AS idType, id_number AS idNumber,
+            gender, id_type AS idType, id_number AS idNumber, spouse_name AS spouseName,
             beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
             beneficiary_relationship AS beneficiaryRelationship,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
@@ -6762,6 +6771,7 @@ async function listMemberApplications() {
   const [rows] = await db.execute(
     `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
             contact_number AS contactNumber, gender, id_type AS idType, id_number AS idNumber,
+            spouse_name AS spouseName,
             beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
             beneficiary_relationship AS beneficiaryRelationship,
             initial_share_capital AS initialShareCapital,
@@ -6786,6 +6796,7 @@ async function createMemberApplication(input, user) {
     gender: input.gender,
     idType: input.idType,
     idNumber: input.idNumber,
+    spouseName: input.spouseName,
     beneficiaryName: input.beneficiaryName,
     beneficiaryAge: input.beneficiaryAge,
     beneficiaryRelationship: input.beneficiaryRelationship,
@@ -6802,11 +6813,11 @@ async function createMemberApplication(input, user) {
 
   await db.execute(
     `INSERT INTO member_applications (
-       application_no, full_name, cluster_name, contact_number, gender, id_type, id_number,
+       application_no, full_name, cluster_name, contact_number, gender, id_type, id_number, spouse_name,
        beneficiary_name, beneficiary_age, beneficiary_relationship,
        initial_share_capital, status, created_by
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       application.id,
       application.fullName,
@@ -6815,6 +6826,7 @@ async function createMemberApplication(input, user) {
       application.gender,
       application.idType,
       application.idNumber,
+      application.spouseName,
       application.beneficiaryName,
       application.beneficiaryAge,
       application.beneficiaryRelationship,
@@ -7541,6 +7553,7 @@ async function approveMemberApplication(applicationId, user) {
       gender: application.gender || "",
       idType: application.idType || "",
       idNumber: application.idNumber || "",
+      spouseName: application.spouseName || "",
       beneficiaryName: application.beneficiaryName || "",
       beneficiaryAge: Number(application.beneficiaryAge || 0),
       beneficiaryRelationship: application.beneficiaryRelationship || "",
@@ -7568,6 +7581,7 @@ async function approveMemberApplication(applicationId, user) {
     const [rows] = await connection.execute(
       `SELECT application_no AS id, full_name AS fullName, cluster_name AS clusterName,
               contact_number AS contactNumber, gender, id_type AS idType, id_number AS idNumber,
+              spouse_name AS spouseName,
               beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
               beneficiary_relationship AS beneficiaryRelationship,
               initial_share_capital AS initialShareCapital,
@@ -7606,10 +7620,10 @@ async function approveMemberApplication(applicationId, user) {
     await connection.execute(
       `INSERT INTO members (
          member_no, full_name, cluster_name, status, share_capital, savings_balance,
-         contact_number, gender, id_type, id_number,
+         contact_number, gender, id_type, id_number, spouse_name,
          beneficiary_name, beneficiary_age, beneficiary_relationship, membership_date
        )
-       VALUES (?, ?, ?, 'Active', ?, 0, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE)`,
+       VALUES (?, ?, ?, 'Active', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE)`,
       [
         memberNo,
         application.fullName,
@@ -7619,6 +7633,7 @@ async function approveMemberApplication(applicationId, user) {
         application.gender || "",
         application.idType || "",
         application.idNumber || "",
+        application.spouseName || "",
         application.beneficiaryName || "",
         Number(application.beneficiaryAge || 0),
         application.beneficiaryRelationship || ""
@@ -7655,6 +7670,7 @@ async function approveMemberApplication(applicationId, user) {
         gender: application.gender || "",
         idType: application.idType || "",
         idNumber: application.idNumber || "",
+        spouseName: application.spouseName || "",
         beneficiaryName: application.beneficiaryName || "",
         beneficiaryAge: Number(application.beneficiaryAge || 0),
         beneficiaryRelationship: application.beneficiaryRelationship || "",
@@ -9663,7 +9679,7 @@ async function getMemberStatement(memberId) {
             share_capital AS share, savings_balance AS savings,
             secured_savings_balance AS securedSavings, status,
             contact_number AS contactNumber, address, birthdate,
-            gender, id_type AS idType, id_number AS idNumber,
+            gender, id_type AS idType, id_number AS idNumber, spouse_name AS spouseName,
             beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
             beneficiary_relationship AS beneficiaryRelationship,
             civil_status AS civilStatus, occupation, membership_date AS membershipDate,
@@ -12378,6 +12394,7 @@ function validateMemberApplication(body) {
   const gender = String(body.gender || "").trim();
   const idType = String(body.idType || "").trim();
   const idNumber = String(body.idNumber || "").trim();
+  const spouseName = String(body.spouseName || "").trim();
   const beneficiaryValidation = validateBeneficiaryRows(body.beneficiaries);
   const initialShareCapital = Number(body.initialShareCapital || 0);
 
@@ -12405,6 +12422,10 @@ function validateMemberApplication(body) {
     return { error: "ID number is required." };
   }
 
+  if (spouseName.length > 180) {
+    return { error: "Spouse name must be 180 characters or fewer." };
+  }
+
   if (beneficiaryValidation.error) return beneficiaryValidation;
 
   if (!isMoney(initialShareCapital)) {
@@ -12419,6 +12440,7 @@ function validateMemberApplication(body) {
       gender,
       idType,
       idNumber,
+      spouseName,
       beneficiaries: beneficiaryValidation.value,
       beneficiaryName: beneficiaryValidation.value[0].name,
       beneficiaryAge: beneficiaryValidation.value[0].age,

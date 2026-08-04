@@ -3192,6 +3192,7 @@ function Members({ user }) {
     gender: "",
     idType: "",
     idNumber: "",
+    spouseName: "",
     beneficiaries: [{ name: "", age: 0, relationship: "" }],
     initialShareCapital: 5000
   });
@@ -3240,6 +3241,7 @@ function Members({ user }) {
     gender: "",
     idType: "",
     idNumber: "",
+    spouseName: "",
     beneficiaries: [{ name: "", age: 0, relationship: "" }],
     civilStatus: "",
     occupation: "",
@@ -3623,6 +3625,7 @@ function Members({ user }) {
         gender: "",
         idType: "",
         idNumber: "",
+        spouseName: "",
         beneficiaries: [{ name: "", age: 0, relationship: "" }],
         initialShareCapital: 5000
       });
@@ -3827,6 +3830,7 @@ function Members({ user }) {
         gender: data.member.gender || "",
         idType: data.member.idType || "",
         idNumber: data.member.idNumber || "",
+        spouseName: data.member.spouseName || "",
         beneficiaries: data.member.beneficiaries?.length
           ? data.member.beneficiaries.map((row) => ({
               name: row.name || "", age: Number(row.age || 0), relationship: row.relationship || ""
@@ -4059,6 +4063,13 @@ function Members({ user }) {
               <Input value={form.idNumber} onChange={(event) => updateForm("idNumber", event.target.value)} />
             </FormControl>
             <Box gridColumn={{ base: "1", lg: "1 / -1" }} borderWidth="1px" borderRadius="md" p={4}>
+              <FormControl>
+                <FormLabel>Spouse</FormLabel>
+                <Input placeholder="Full name (if applicable)" value={form.spouseName}
+                  onChange={(event) => updateForm("spouseName", event.target.value)} />
+              </FormControl>
+            </Box>
+            <Box gridColumn={{ base: "1", lg: "1 / -1" }} borderWidth="1px" borderRadius="md" p={4}>
               <Flex justify="space-between" align="center" mb={3}>
                 <Box><FormLabel mb={0}>Beneficiaries</FormLabel><Text fontSize="xs" color="gray.500">Add one to three beneficiaries.</Text></Box>
                 <Button type="button" size="sm" variant="outline" isDisabled={form.beneficiaries.length >= 3}
@@ -4119,6 +4130,7 @@ function Members({ user }) {
                   <Th>Contact</Th>
                   <Th>Gender</Th>
                   <Th>ID</Th>
+                  <Th>Spouse</Th>
                   <Th>Beneficiary</Th>
                 <Th isNumeric>Required Initial Share Capital</Th>
                 <Th>Status</Th>
@@ -4134,6 +4146,7 @@ function Members({ user }) {
                     <Td>{application.contactNumber}</Td>
                     <Td>{application.gender}</Td>
                     <Td>{application.idType}<br />{application.idNumber}</Td>
+                    <Td>{application.spouseName || "—"}</Td>
                     <Td>{(application.beneficiaries || []).map((beneficiary, index) =>
                       <Text key={index}>{index + 1}. {beneficiary.name}, age {beneficiary.age} · {beneficiary.relationship}</Text>)}</Td>
                     <Td isNumeric>{formatMoney(application.initialShareCapital)}</Td>
@@ -4891,6 +4904,14 @@ function Members({ user }) {
                   isReadOnly={!canEditMemberProfile}
                 />
               </FormControl>
+              <Box gridColumn={{ base: "1", md: "1 / -1" }} borderWidth="1px" borderRadius="md" p={4}>
+                <FormControl>
+                  <FormLabel>Spouse</FormLabel>
+                  <Input placeholder="Full name (if applicable)" value={memberProfileForm.spouseName}
+                    onChange={(event) => updateMemberProfileForm("spouseName", event.target.value)}
+                    isReadOnly={!canEditMemberProfile} />
+                </FormControl>
+              </Box>
               <Box gridColumn={{ base: "1", md: "1 / -1" }} borderWidth="1px" borderRadius="md" p={4}>
                 <Flex justify="space-between" align="center" mb={3}>
                   <Box><FormLabel mb={0}>Beneficiaries</FormLabel><Text fontSize="xs" color="gray.500">One to three beneficiary records.</Text></Box>

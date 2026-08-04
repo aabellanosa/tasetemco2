@@ -130,6 +130,7 @@ async function run() {
         gender: "Female",
         idType: "PhilSys ID / ePhilID",
         idNumber: "1234-5678-9012",
+        spouseName: "Smoke Test Spouse",
         beneficiaries: [
           { name: "Smoke Test Child", age: 12, relationship: "Child" },
           { name: "Smoke Test Parent", age: 60, relationship: "Parent" }
@@ -145,6 +146,7 @@ async function run() {
       createBody.application.gender !== "Female" ||
       createBody.application.idType !== "PhilSys ID / ePhilID" ||
       createBody.application.idNumber !== "1234-5678-9012" ||
+      createBody.application.spouseName !== "Smoke Test Spouse" ||
       createBody.application.beneficiaries?.length !== 2 ||
       createBody.application.beneficiaries[1]?.name !== "Smoke Test Parent"
     ) {
@@ -515,6 +517,7 @@ async function run() {
         gender: "Male",
         idType: "Philippine Passport",
         idNumber: "P1234567A",
+        spouseName: "Updated Smoke Spouse",
         beneficiaries: [
           { name: "Updated Beneficiary", age: 35, relationship: "Sibling" },
           { name: "Second Updated Beneficiary", age: 10, relationship: "Child" },
@@ -538,6 +541,7 @@ async function run() {
       memberProfileUpdateBody.member.gender !== "Male" ||
       memberProfileUpdateBody.member.idType !== "Philippine Passport" ||
       memberProfileUpdateBody.member.idNumber !== "P1234567A" ||
+      memberProfileUpdateBody.member.spouseName !== "Updated Smoke Spouse" ||
       memberProfileUpdateBody.member.beneficiaries?.length !== 3 ||
       memberProfileUpdateBody.member.beneficiaries[2]?.name !== "Third Updated Beneficiary" ||
       memberProfileUpdateBody.member.previousLoanBalance !== 1250.75 ||
