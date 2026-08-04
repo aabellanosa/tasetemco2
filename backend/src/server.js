@@ -176,9 +176,11 @@ const clientSummoTemplateCandidates = [
 ];
 const clientSummoTemplatePath = clientSummoTemplateCandidates.find((candidate) => fs.existsSync(candidate)) || "";
 const sessions = new Map();
+const memoryUserSecurityEvents = [];
 let pool = null;
 
 const persistedTables = [
+  "user_security_events",
   "member_application_beneficiaries",
   "member_beneficiaries",
   "daily_disbursement_entries",
@@ -258,7 +260,8 @@ const requiredSchemaColumns = {
   summo_import_batches: ["import_no", "report_period", "status", "created_by"],
   summo_import_rows: ["import_no", "member_no", "movement_type", "amount", "row_status"],
   summo_periods: ["report_period", "cluster_name", "status", "snapshot"],
-  users: ["additional_roles"],
+  users: ["additional_roles", "password_hash", "must_change_password", "password_changed_at", "password_reset_at", "updated_at"],
+  user_security_events: ["username", "event_type", "performed_by", "details", "created_at"],
   member_previous_loan_controls: ["member_no", "status", "revision", "locked_by", "locked_at"],
   member_previous_loan_unlock_requests: [
     "request_no", "member_no", "reason", "status", "requested_by", "requested_at", "decided_by", "decided_at"
@@ -546,6 +549,15 @@ const requiredSchemaColumns = {
 };
 
 app.use(express.json());
+app.use((request, response, next) => {
+  const user = parseSession(request);
+  const allowedWhileChanging = ["/api/me", "/api/logout", "/api/change-password"];
+  if (user?.mustChangePassword && !allowedWhileChanging.includes(request.path)) {
+    response.status(403).json({ error: "Password change is required before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
+    return;
+  }
+  next();
+});
 
 function parseAdditionalRoles(value) {
   if (Array.isArray(value)) {
@@ -687,6 +699,7 @@ function setSession(response, user) {
     cookie.serialize("tasetemco_spike_session", sessionId, {
       httpOnly: true,
       sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 28800
     })
@@ -701,24 +714,89 @@ function clearSession(request, response) {
     cookie.serialize("tasetemco_spike_session", "", {
       httpOnly: true,
       sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 0
     })
   );
 }
 
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(`scrypt$${salt}$${derivedKey.toString("hex")}`);
+    });
+  });
+}
+
+function verifyPassword(password, storedHash) {
+  const [algorithm, salt, expectedHex] = String(storedHash || "").split("$");
+  if (algorithm !== "scrypt" || !salt || !expectedHex) return Promise.resolve(false);
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+      if (error) return reject(error);
+      const expected = Buffer.from(expectedHex, "hex");
+      resolve(expected.length === derivedKey.length && crypto.timingSafeEqual(expected, derivedKey));
+    });
+  });
+}
+
+function validatePassword(password) {
+  if (password.length < 10 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) ||
+      !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    return "Password must be at least 10 characters and include uppercase, lowercase, number, and special characters.";
+  }
+  return "";
+}
+
+function generateTemporaryPassword() {
+  return `Ta${crypto.randomBytes(7).toString("base64url")}9!`;
+}
+
+function invalidateUserSessions(username, exceptSessionId = "") {
+  for (const [sessionId, sessionUser] of sessions.entries()) {
+    if (sessionUser.username === username && sessionId !== exceptSessionId) sessions.delete(sessionId);
+  }
+}
+
+async function recordUserSecurityEvent(username, eventType, performedBy, details = "") {
+  const db = await getPool();
+  if (!db) {
+    memoryUserSecurityEvents.unshift({ username, eventType, performedBy, details, createdAt: new Date().toISOString() });
+    return;
+  }
+  await db.execute(
+    `INSERT INTO user_security_events (username, event_type, performed_by, details)
+     VALUES (?, ?, ?, ?)`, [username, eventType, performedBy, details]
+  );
+}
+
+async function listUserSecurityEvents() {
+  const db = await getPool();
+  if (!db) return memoryUserSecurityEvents.slice(0, 50);
+  const [rows] = await db.execute(
+    `SELECT username, event_type AS eventType, performed_by AS performedBy,
+            details, created_at AS createdAt
+     FROM user_security_events ORDER BY created_at DESC, id DESC LIMIT 50`
+  );
+  return rows;
+}
+
 async function findUser(username) {
   const db = await getPool();
 
   if (!db) {
-    return users.find((user) => user.username === username && (user.status || "Active") === "Active") || null;
+    return users.find((user) => user.username === username) || null;
   }
 
   const [rows] = await db.execute(
     `SELECT id, full_name AS name, username, role_name AS role,
-            additional_roles AS additionalRoles, default_view AS defaultView
+            additional_roles AS additionalRoles, default_view AS defaultView, status,
+            password_hash AS passwordHash, must_change_password AS mustChangePassword
      FROM users
-     WHERE username = ? AND status = 'Active'
+     WHERE username = ?
      LIMIT 1`,
     [username]
   );
@@ -729,6 +807,7 @@ async function findUser(username) {
 
   return {
     ...rows[0],
+    mustChangePassword: Boolean(rows[0].mustChangePassword),
     additionalRoles: normalizeAdditionalRoles(rows[0].role, rows[0].additionalRoles)
   };
 }
@@ -744,14 +823,18 @@ async function listSystemUsers() {
       role: user.role,
       additionalRoles: normalizeAdditionalRoles(user.role, user.additionalRoles),
       status: user.status || "Active",
-      defaultView: user.defaultView
+      defaultView: user.defaultView,
+      mustChangePassword: Boolean(user.mustChangePassword),
+      passwordChangedAt: user.passwordChangedAt || null,
+      passwordResetAt: user.passwordResetAt || null
     }));
   }
 
   const [rows] = await db.execute(
     `SELECT id, full_name AS name, username, role_name AS role, status,
             additional_roles AS additionalRoles, default_view AS defaultView,
-            created_at AS createdAt
+            must_change_password AS mustChangePassword, password_changed_at AS passwordChangedAt,
+            password_reset_at AS passwordResetAt, created_at AS createdAt
      FROM users
      ORDER BY username`
   );
@@ -3351,8 +3434,10 @@ function validateSystemUserInput(body) {
   };
 }
 
-async function createSystemUser(input) {
+async function createSystemUser(input, performedBy) {
   const db = await getPool();
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
 
   if (!db) {
     if (users.some((user) => user.username === input.username)) {
@@ -3367,22 +3452,28 @@ async function createSystemUser(input) {
       role: input.role,
       additionalRoles: input.additionalRoles,
       defaultView: input.defaultView,
-      status: "Active"
+      status: "Pending Activation",
+      passwordHash,
+      mustChangePassword: true,
+      passwordResetAt: new Date().toISOString()
     };
     users.push(user);
-    return { user };
+    await recordUserSecurityEvent(input.username, "Account Created", performedBy, "Temporary password issued");
+    return { user, temporaryPassword };
   }
 
   try {
     await db.execute(
-      `INSERT INTO users (full_name, username, role_name, additional_roles, status, default_view)
-       VALUES (?, ?, ?, ?::jsonb, 'Active', ?)`,
+      `INSERT INTO users (full_name, username, role_name, additional_roles, status, default_view,
+                          password_hash, must_change_password, password_reset_at)
+       VALUES (?, ?, ?, ?::jsonb, 'Pending Activation', ?, ?, TRUE, CURRENT_TIMESTAMP)`,
       [
         input.name,
         input.username,
         input.role,
         JSON.stringify(input.additionalRoles || []),
-        input.defaultView
+        input.defaultView,
+        passwordHash
       ]
     );
   } catch (error) {
@@ -3395,13 +3486,17 @@ async function createSystemUser(input) {
 
   const [rows] = await db.execute(
     `SELECT id, full_name AS name, username, role_name AS role, status,
-            additional_roles AS additionalRoles, default_view AS defaultView, created_at AS createdAt
+            additional_roles AS additionalRoles, default_view AS defaultView,
+            must_change_password AS mustChangePassword, password_changed_at AS passwordChangedAt,
+            password_reset_at AS passwordResetAt, created_at AS createdAt
      FROM users
      WHERE username = ?`,
     [input.username]
   );
 
+  await recordUserSecurityEvent(input.username, "Account Created", performedBy, "Temporary password issued");
   return {
+    temporaryPassword,
     user: {
       ...rows[0],
       additionalRoles: normalizeAdditionalRoles(rows[0].role, rows[0].additionalRoles)
@@ -3412,12 +3507,12 @@ async function createSystemUser(input) {
 async function updateSystemUser(username, input) {
   const db = await getPool();
 
-  if (username === "admin" && input.status !== "Active") {
-    return { error: "The built-in admin account cannot be deactivated.", statusCode: 409 };
+  if (username === "admin" && !["Active", "Pending Activation"].includes(input.status)) {
+    return { error: "The built-in admin account cannot be locked or disabled.", statusCode: 409 };
   }
 
-  if (!["Active", "Inactive"].includes(input.status)) {
-    return { error: "Status must be Active or Inactive.", statusCode: 400 };
+  if (!["Pending Activation", "Active", "Locked", "Disabled"].includes(input.status)) {
+    return { error: "Status must be Pending Activation, Active, Locked, or Disabled.", statusCode: 400 };
   }
 
   if (!roles.includes(input.role)) {
@@ -3443,6 +3538,7 @@ async function updateSystemUser(username, input) {
     user.additionalRoles = additionalRoles;
     user.defaultView = defaultView;
     user.status = input.status;
+    if (["Locked", "Disabled"].includes(input.status)) invalidateUserSessions(username);
 
     return {
       user: {
@@ -3474,6 +3570,7 @@ async function updateSystemUser(username, input) {
      WHERE username = ?`,
     [input.role, JSON.stringify(additionalRoles), input.status, defaultView, username]
   );
+  if (["Locked", "Disabled"].includes(input.status)) invalidateUserSessions(username);
 
   const [rows] = await db.execute(
     `SELECT id, full_name AS name, username, role_name AS role, status,
@@ -3489,6 +3586,59 @@ async function updateSystemUser(username, input) {
       additionalRoles: normalizeAdditionalRoles(rows[0].role, rows[0].additionalRoles)
     }
   };
+}
+
+async function resetSystemUserPassword(username, performedBy) {
+  const db = await getPool();
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+  if (!db) {
+    const user = users.find((item) => item.username === username);
+    if (!user) return { error: "User was not found.", statusCode: 404 };
+    user.passwordHash = passwordHash;
+    user.mustChangePassword = true;
+    user.passwordResetAt = new Date().toISOString();
+    if (user.status === "Locked") user.status = "Active";
+  } else {
+    const [result] = await db.execute(
+      `UPDATE users SET password_hash = ?, must_change_password = TRUE,
+              password_reset_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP,
+              status = CASE WHEN status = 'Locked' THEN 'Active' ELSE status END
+       WHERE username = ? RETURNING username`, [passwordHash, username]
+    );
+    if (!result[0]) return { error: "User was not found.", statusCode: 404 };
+  }
+  invalidateUserSessions(username);
+  await recordUserSecurityEvent(username, "Password Reset", performedBy, "Temporary password issued");
+  return { temporaryPassword };
+}
+
+async function changeOwnPassword(user, currentPassword, newPassword) {
+  const passwordError = validatePassword(newPassword);
+  if (passwordError) return { error: passwordError, statusCode: 400 };
+  if (currentPassword === newPassword) return { error: "New password must differ from the current password.", statusCode: 400 };
+  const account = await findUser(user.username);
+  const currentMatches = account?.passwordHash
+    ? await verifyPassword(currentPassword, account.passwordHash)
+    : currentPassword === defaultPassword;
+  if (!currentMatches) return { error: "Current password is incorrect.", statusCode: 400 };
+  const passwordHash = await hashPassword(newPassword);
+  const db = await getPool();
+  if (!db) {
+    account.passwordHash = passwordHash;
+    account.mustChangePassword = false;
+    account.passwordChangedAt = new Date().toISOString();
+    account.status = "Active";
+  } else {
+    await db.execute(
+      `UPDATE users SET password_hash = ?, must_change_password = FALSE, status = 'Active',
+              password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE username = ?`, [passwordHash, user.username]
+    );
+  }
+  invalidateUserSessions(user.username);
+  await recordUserSecurityEvent(user.username, "Password Changed", user.username, "Self-service password change");
+  return { user: publicUser({ ...account, status: "Active", mustChangePassword: false }) };
 }
 
 async function listMembers() {
@@ -12767,14 +12917,47 @@ app.post("/api/login", async (request, response) => {
   const password = String(request.body.password || "");
   const user = await findUser(username);
 
-  if (!user || password !== defaultPassword) {
+  if (!user || ["Locked", "Disabled", "Inactive"].includes(user.status || "Active")) {
     response.status(401).json({ error: "Invalid username or password" });
     return;
   }
 
+  const passwordMatches = user.passwordHash
+    ? await verifyPassword(password, user.passwordHash)
+    : password === defaultPassword;
+  if (!passwordMatches) {
+    await recordUserSecurityEvent(username, "Login Failed", username, "Invalid credentials");
+    response.status(401).json({ error: "Invalid username or password" });
+    return;
+  }
+
+  if (!user.passwordHash) {
+    const db = await getPool();
+    if (db) {
+      user.passwordHash = await hashPassword(password);
+      await db.execute(`UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?`,
+        [user.passwordHash, username]);
+    }
+  }
+
   const signedInUser = publicUser(user);
   setSession(response, signedInUser);
+  await recordUserSecurityEvent(username, "Login Succeeded", username,
+    signedInUser.mustChangePassword ? "Password change required" : "");
   response.json({ user: signedInUser });
+});
+
+app.post("/api/change-password", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  const newPassword = String(request.body.newPassword || "");
+  if (newPassword !== String(request.body.confirmPassword || "")) {
+    return response.status(400).json({ error: "New password and confirmation do not match." });
+  }
+  const result = await changeOwnPassword(user, String(request.body.currentPassword || ""), newPassword);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  setSession(response, result.user);
+  response.json(result);
 });
 
 app.post("/api/logout", (request, response) => {
@@ -13317,12 +13500,12 @@ app.get("/api/admin/users", async (request, response) => {
 
   response.json({
     users: await listSystemUsers(),
+    securityEvents: await listUserSecurityEvents(),
     roles: roles.map((role) => ({
       name: role,
       defaultViews: roleViews[role] || [],
       permissions: rolePermissions[role] || []
-    })),
-    defaultPassword: isAdminUser(user) ? defaultPassword : ""
+    }))
   });
 });
 
@@ -13346,7 +13529,7 @@ app.post("/api/admin/users", async (request, response) => {
     return;
   }
 
-  const result = await createSystemUser(validation.value);
+  const result = await createSystemUser(validation.value, user.username);
 
   if (result.error) {
     response.status(result.statusCode).json({ error: result.error });
@@ -13381,6 +13564,17 @@ app.patch("/api/admin/users/:username", async (request, response) => {
     return;
   }
 
+  await recordUserSecurityEvent(request.params.username, "Account Updated", user.username,
+    `Status: ${result.user.status}; role: ${result.user.role}`);
+  response.json(result);
+});
+
+app.post("/api/admin/users/:username/reset-password", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!isAdminUser(user)) return response.status(403).json({ error: "Admin access required" });
+  const result = await resetSystemUserPassword(request.params.username, user.username);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
   response.json(result);
 });
 

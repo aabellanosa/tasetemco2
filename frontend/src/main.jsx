@@ -890,8 +890,8 @@ function buildTellerBatchSummary(rows) {
 }
 
 function Login({ onLogin }) {
-  const [username, setUsername] = useState("membership");
-  const [password, setPassword] = useState("p@55@LL");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   async function submit(event) {
@@ -1082,15 +1082,9 @@ function Login({ onLogin }) {
                   Login
                 </Button>
               </VStack>
-              <Box mt={6} pt={5} borderTop="1px solid" borderColor="gray.200">
-                <Text fontSize="xs" fontWeight="700" color="gray.600" textTransform="uppercase">
-                  Demo access
-                </Text>
-                <Text mt={2} fontSize="sm" color="gray.500">
-                  Try admin, manager, bookkeeper, loanofficer, teller01,
-                  membership, auditor, or board. Password: p@55@LL
-                </Text>
-              </Box>
+              <Text mt={6} pt={5} borderTop="1px solid" borderColor="gray.200" fontSize="sm" color="gray.500">
+                Use the individual credentials issued by the System Administrator.
+              </Text>
             </Box>
           </GridItem>
 
@@ -7176,7 +7170,8 @@ function Reports({ user }) {
 function AdminUserManagement({ user }) {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [defaultPassword, setDefaultPassword] = useState("");
+  const [securityEvents, setSecurityEvents] = useState([]);
+  const [issuedCredential, setIssuedCredential] = useState(null);
   const [form, setForm] = useState({
     name: "",
     username: "",
@@ -7212,7 +7207,7 @@ function AdminUserManagement({ user }) {
       const data = await api("/api/admin/users");
       setUsers(data.users);
       setRoles(data.roles);
-      setDefaultPassword(data.defaultPassword);
+      setSecurityEvents(data.securityEvents || []);
       setDrafts(
         Object.fromEntries(
           data.users.map((item) => [
@@ -7287,7 +7282,7 @@ function AdminUserManagement({ user }) {
     setError("");
 
     try {
-      await api("/api/admin/users", {
+      const data = await api("/api/admin/users", {
         method: "POST",
         body: JSON.stringify(form)
       });
@@ -7298,7 +7293,8 @@ function AdminUserManagement({ user }) {
         additionalRoles: [],
         defaultView: "members"
       });
-      setMessage(`Created ${form.username}. Temporary password is ${defaultPassword}.`);
+      setIssuedCredential({ username: form.username, password: data.temporaryPassword });
+      setMessage(`Created ${form.username}. Copy the one-time temporary password shown below.`);
       await loadUsers();
     } catch (requestError) {
       setError(requestError.message);
@@ -7326,6 +7322,22 @@ function AdminUserManagement({ user }) {
     }
   }
 
+  async function resetPassword(username) {
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const data = await api(`/api/admin/users/${username}/reset-password`, { method: "POST" });
+      setIssuedCredential({ username, password: data.temporaryPassword });
+      setMessage(`Password reset for ${username}. Copy the one-time temporary password shown below.`);
+      await loadUsers();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!canViewUsers) {
     return null;
   }
@@ -7337,7 +7349,7 @@ function AdminUserManagement({ user }) {
           <Heading size="md">{canManageUsers ? "User Management" : "User / Security Review"}</Heading>
           <Text color="gray.600" mt={1}>
             {canManageUsers
-              ? "Staff accounts use a shared temporary password during demonstration and access review."
+              ? "Provision individual staff accounts, roles, activation status, and password resets."
               : "Read-only staff account directory for compliance and access review."}
           </Text>
         </Box>
@@ -7349,6 +7361,13 @@ function AdminUserManagement({ user }) {
           <Text color="green.800">{message}</Text>
         </Box>
       ) : null}
+
+      {issuedCredential ? <Box mb={4} borderWidth="2px" borderColor="orange.300" bg="orange.50" borderRadius="md" p={4}>
+        <Text fontWeight="bold">One-time credential for @{issuedCredential.username}</Text>
+        <Text fontFamily="mono" fontSize="lg" mt={2}>{issuedCredential.password}</Text>
+        <Text fontSize="sm" color="gray.600" mt={2}>Copy this now. It will not be shown again, and the user must replace it on first login.</Text>
+        <Button size="xs" mt={3} variant="outline" onClick={() => setIssuedCredential(null)}>Dismiss</Button>
+      </Box> : null}
 
       {error ? (
         <Box mb={4} borderWidth="1px" borderColor="red.200" bg="red.50" borderRadius="md" p={3}>
@@ -7434,7 +7453,7 @@ function AdminUserManagement({ user }) {
         </Box>
         <Flex justify="space-between" align="center" gap={4} wrap="wrap" mt={4}>
           <Text color="gray.600" fontSize="sm">
-            New users sign in with the temporary password: {defaultPassword}
+            A unique temporary password is generated when the account is created.
           </Text>
           <Button colorScheme="green" type="submit" isLoading={busy}>
             Create User
@@ -7549,8 +7568,10 @@ function AdminUserManagement({ user }) {
                         onChange={(event) => updateDraft(item.username, { status: event.target.value })}
                         isDisabled={item.username === "admin"}
                       >
+                        <option value="Pending Activation">Pending Activation</option>
                         <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
+                        <option value="Locked">Locked</option>
+                        <option value="Disabled">Disabled</option>
                       </Select>
                     ) : (
                       <Badge colorScheme={item.status === "Active" ? "green" : "gray"}>{item.status}</Badge>
@@ -7558,9 +7579,10 @@ function AdminUserManagement({ user }) {
                   </Td>
                   <Td textAlign="right">
                     {canManageUsers ? (
-                      <Button size="sm" onClick={() => saveUser(item.username)} isLoading={busy}>
-                        Save
-                      </Button>
+                      <VStack align="stretch" spacing={2}>
+                        <Button size="sm" onClick={() => saveUser(item.username)} isLoading={busy}>Save</Button>
+                        <Button size="sm" variant="outline" onClick={() => resetPassword(item.username)} isLoading={busy}>Reset Password</Button>
+                      </VStack>
                     ) : (
                       <Text color="gray.500" fontSize="sm">Read only</Text>
                     )}
@@ -7571,6 +7593,14 @@ function AdminUserManagement({ user }) {
           </Tbody>
         </Table>
       </TableContainer>
+      <Box mt={6} borderTopWidth="1px" pt={5}>
+        <Heading size="sm" mb={3}>Recent Account Security Events</Heading>
+        <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>User</Th><Th>Event</Th><Th>Performed By</Th><Th>Details</Th></Tr></Thead>
+          <Tbody>{securityEvents.map((event, index) => <Tr key={`${event.createdAt}-${index}`}>
+            <Td whiteSpace="nowrap">{event.createdAt ? new Date(event.createdAt).toLocaleString("en-PH") : "—"}</Td>
+            <Td>@{event.username}</Td><Td>{event.eventType}</Td><Td>@{event.performedBy}</Td><Td>{event.details || "—"}</Td>
+          </Tr>)}</Tbody></Table></TableContainer>
+      </Box>
     </Box>
   );
 }
@@ -10980,8 +11010,8 @@ function LoanReleases({ user }) {
                 ) : null}
               </Tbody>
             </Table>
-          </TableContainer>
-        </Box>
+      </TableContainer>
+    </Box>
 
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Heading size="sm" mb={4}>Release History</Heading>
@@ -11792,6 +11822,62 @@ function Shell({ user, onLogout }) {
   );
 }
 
+function RequiredPasswordChange({ user, onChanged, onLogout }) {
+  const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api("/api/change-password", { method: "POST", body: JSON.stringify(form) });
+      onChanged(data.user);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetPassword(username) {
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const data = await api(`/api/admin/users/${username}/reset-password`, { method: "POST" });
+      setIssuedCredential({ username, password: data.temporaryPassword });
+      setMessage(`Password reset for ${username}. Copy the one-time temporary password shown below.`);
+      await loadUsers();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <Flex minH="100vh" bg="gray.50" align="center" justify="center" p={6}>
+    <Box as="form" onSubmit={submit} bg="white" borderWidth="1px" borderRadius="lg" boxShadow="lg" p={7} w="full" maxW="480px">
+      <Badge colorScheme="orange">Activation required</Badge>
+      <Heading size="lg" mt={3}>Create your password</Heading>
+      <Text color="gray.600" mt={2} mb={6}>Welcome, {user.name}. Replace your temporary password before accessing TASETEMCO.</Text>
+      <VStack spacing={4}>
+        <FormControl isRequired><FormLabel>Temporary password</FormLabel><Input type="password" autoComplete="current-password"
+          value={form.currentPassword} onChange={(event) => setForm((current) => ({ ...current, currentPassword: event.target.value }))} /></FormControl>
+        <FormControl isRequired><FormLabel>New password</FormLabel><Input type="password" autoComplete="new-password"
+          value={form.newPassword} onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))} /></FormControl>
+        <FormControl isRequired><FormLabel>Confirm new password</FormLabel><Input type="password" autoComplete="new-password"
+          value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} /></FormControl>
+        <Text fontSize="sm" color="gray.600">Use at least 10 characters with uppercase, lowercase, a number, and a special character.</Text>
+        {error ? <Text color="red.500" alignSelf="stretch">{error}</Text> : null}
+        <Button type="submit" colorScheme="green" width="full" isLoading={busy}>Change Password and Continue</Button>
+        <Button type="button" variant="ghost" width="full" onClick={onLogout}>Logout</Button>
+      </VStack>
+    </Box>
+  </Flex>;
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
@@ -11813,6 +11899,10 @@ function App() {
 
   if (!user) {
     return <Login onLogin={setUser} />;
+  }
+
+  if (user.mustChangePassword) {
+    return <RequiredPasswordChange user={user} onChanged={setUser} onLogout={logout} />;
   }
 
   return <Shell user={user} onLogout={logout} />;

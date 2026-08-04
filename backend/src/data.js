@@ -901,6 +901,8 @@ export function publicUser(user) {
     assignedRoles,
     defaultView: allowedViews.includes(user.defaultView) ? user.defaultView : allowedViews[0],
     allowedViews,
-    permissions
+    permissions,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    status: user.status || "Active"
   };
 }

@@ -14,7 +14,7 @@ ON CONFLICT (username) DO UPDATE SET
   default_view = EXCLUDED.default_view;
 
 UPDATE users
-SET status = 'Inactive'
+SET status = 'Disabled'
 WHERE username = 'approver';
 
 INSERT INTO members (

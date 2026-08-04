@@ -353,7 +353,9 @@ async function run() {
     if (
       !createSystemUser.ok ||
       createSystemUserBody.user.username !== smokeUsername ||
-      createSystemUserBody.user.status !== "Active" ||
+      createSystemUserBody.user.status !== "Pending Activation" ||
+      !createSystemUserBody.user.mustChangePassword ||
+      !createSystemUserBody.temporaryPassword ||
       !createSystemUserBody.user.additionalRoles.includes("Teller / Cashier")
     ) {
       throw new Error("Admin should be able to create a system user with additional roles.");
@@ -362,18 +364,84 @@ async function run() {
     const combinedRoleLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: smokeUsername, password: "p@55@LL" })
+      body: JSON.stringify({ username: smokeUsername, password: createSystemUserBody.temporaryPassword })
     });
     const combinedRoleBody = await combinedRoleLogin.json();
+    const combinedRoleCookie = combinedRoleLogin.headers.get("set-cookie")?.split(";")[0];
 
     if (
       !combinedRoleLogin.ok ||
-      !combinedRoleBody.user.permissions.includes("members:applications:create") ||
-      !combinedRoleBody.user.permissions.includes("members:savings-deposits:create") ||
-      !combinedRoleBody.user.allowedViews.includes("members") ||
-      !combinedRoleBody.user.allowedViews.includes("loans")
+      !combinedRoleBody.user.mustChangePassword ||
+      !combinedRoleCookie
     ) {
-      throw new Error("Additional roles should extend login permissions and screens.");
+      throw new Error("New users should sign in with a unique temporary password and require a password change.");
+    }
+
+    const restrictedBeforePasswordChange = await fetch(`${baseUrl}/api/dashboard`, {
+      headers: { Cookie: combinedRoleCookie }
+    });
+    if (restrictedBeforePasswordChange.status !== 403) {
+      throw new Error("Temporary-password sessions must be restricted until the password changes.");
+    }
+
+    const permanentPassword = "SmokeTest9!Secure";
+    const changePassword = await fetch(`${baseUrl}/api/change-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: combinedRoleCookie },
+      body: JSON.stringify({
+        currentPassword: createSystemUserBody.temporaryPassword,
+        newPassword: permanentPassword,
+        confirmPassword: permanentPassword
+      })
+    });
+    const changePasswordBody = await changePassword.json();
+    if (!changePassword.ok || changePasswordBody.user.mustChangePassword) {
+      throw new Error("First-login password change should activate the user.");
+    }
+
+    const permanentLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: smokeUsername, password: permanentPassword })
+    });
+    const permanentLoginBody = await permanentLogin.json();
+    if (!permanentLogin.ok ||
+      !permanentLoginBody.user.permissions.includes("members:applications:create") ||
+      !permanentLoginBody.user.permissions.includes("members:savings-deposits:create") ||
+      !permanentLoginBody.user.allowedViews.includes("members") ||
+      !permanentLoginBody.user.allowedViews.includes("loans")) {
+      throw new Error("Additional roles should extend permissions after account activation.");
+    }
+
+    const permanentCookie = permanentLogin.headers.get("set-cookie")?.split(";")[0];
+    const resetPassword = await fetch(`${baseUrl}/api/admin/users/${smokeUsername}/reset-password`, {
+      method: "POST",
+      headers: { Cookie: adminCookie }
+    });
+    const resetPasswordBody = await resetPassword.json();
+    if (!resetPassword.ok || !resetPasswordBody.temporaryPassword) {
+      throw new Error("Admin password reset should issue a new temporary password.");
+    }
+    const oldPasswordAfterReset = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: smokeUsername, password: permanentPassword })
+    });
+    if (oldPasswordAfterReset.status !== 401) {
+      throw new Error("The prior password must stop working immediately after an admin reset.");
+    }
+    const invalidatedSession = await fetch(`${baseUrl}/api/dashboard`, { headers: { Cookie: permanentCookie } });
+    if (invalidatedSession.status !== 401) {
+      throw new Error("Admin password reset must invalidate existing user sessions.");
+    }
+    const resetLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: smokeUsername, password: resetPasswordBody.temporaryPassword })
+    });
+    const resetLoginBody = await resetLogin.json();
+    if (!resetLogin.ok || !resetLoginBody.user.mustChangePassword) {
+      throw new Error("The reset temporary password should require another password change.");
     }
 
     const duplicateSystemUser = await fetch(`${baseUrl}/api/admin/users`, {
@@ -403,24 +471,24 @@ async function run() {
       body: JSON.stringify({
         role: "Membership Officer",
         additionalRoles: ["Teller / Cashier"],
-        status: "Inactive",
+        status: "Disabled",
         defaultView: "dashboard"
       })
     });
     const deactivateSystemUserBody = await deactivateSystemUser.json();
 
-    if (!deactivateSystemUser.ok || deactivateSystemUserBody.user.status !== "Inactive") {
-      throw new Error("Admin should be able to deactivate a non-admin system user.");
+    if (!deactivateSystemUser.ok || deactivateSystemUserBody.user.status !== "Disabled") {
+      throw new Error("Admin should be able to disable a non-admin system user.");
     }
 
     const inactiveLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: smokeUsername, password: "p@55@LL" })
+      body: JSON.stringify({ username: smokeUsername, password: permanentPassword })
     });
 
     if (inactiveLogin.status !== 401) {
-      throw new Error("Inactive users should not be able to log in.");
+      throw new Error("Disabled users should not be able to log in.");
     }
 
     const forbiddenMaintenance = await fetch(`${baseUrl}/api/admin/demo-maintenance`, {
