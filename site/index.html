@@ -475,12 +475,12 @@
             app is deployed first, Prepare Form shows a migration message.
           </p>
           <p>
-            The System Administrator can create demonstration staff users, assign roles and
-            default screens, and deactivate non-admin accounts. Demonstration accounts use
-            a shared temporary password until individual password management is introduced.
-            The Auditor / Compliance Officer can review usernames, roles, default screens,
-            and account status through a read-only User / Security directory without password,
-            maintenance, backup, or reset access.
+            The System Administrator provisions individual staff accounts, assigns roles and
+            default screens, and copies a unique temporary password that is shown only once.
+            New or reset users must change that password before reaching operational screens.
+            Admin can lock, disable, or reset accounts; these actions invalidate existing sessions.
+            Passwords are stored as salted hashes, while recent account security events remain
+            reviewable by the System Administrator and Auditor / Compliance Officer.
           </p>
           <p>
             Loan Portfolio Watch contains sensitive borrower collection information, so

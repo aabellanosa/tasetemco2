@@ -117,13 +117,13 @@ The Postgres smoke test resets the configured database to the demo seed, confirm
 
 The public screen is a staff login page. No operational data is shown until a user signs in.
 
-All seeded users currently use this prototype password:
+After the production-user migration, existing seeded users use the former prototype password once:
 
 ```text
 p@55@LL
 ```
 
-The current spike uses one shared prototype password in code. Production behavior should move passwords into the database as salted hashes with forced password changes.
+The first successful login requires the user to replace that password. Newly provisioned users receive a unique, one-time temporary password from the System Administrator. Passwords are stored only as salted scrypt hashes.
 
 | Username | Role | Default Screen |
 | --- | --- | --- |
@@ -159,9 +159,9 @@ Members Workspace UI Refactor v1 organizes the Members screen into role-aware ta
 
 Only the `admin` user can access Demo Maintenance controls. Other roles are blocked by the API even if they attempt to call the maintenance endpoints directly.
 
-The `admin` user can also manage prototype staff accounts under Users. Admin can create staff users, assign role/default screen, and activate or deactivate non-admin accounts. All prototype accounts still use the shared test password `p@55@LL`; production password storage is intentionally left for a later security spike.
+The System Administrator manages staff accounts under Users. New accounts start as `Pending Activation` with a unique temporary password that is displayed only once. The user cannot enter operational screens until replacing it with a compliant password. Admin can maintain roles/default screens, set accounts to Active, Locked, or Disabled, and issue a fresh temporary password. Locking, disabling, and password reset invalidate the user's existing sessions. Recent creation, update, login, password-change, and reset events are visible in the account security trail.
 
-The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, and account status, but cannot see the shared prototype password, create or modify users, download backups, or reset demo data.
+The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, account status, and security events, but cannot create or modify users, issue temporary passwords, download backups, or reset demo data.
 
 Member Profile v1 expands member master data with contact number, address, birthdate, gender, civil status, occupation/source of income, membership date, cluster/group, Philippine ID type, ID number, spouse name (when applicable), one to three beneficiaries (each with name, age, and relationship), and status. The spouse input appears immediately before beneficiaries. ID type uses the same searchable selection available in membership applications. `admin` and `membership` can update profile fields; other member-view roles can inspect them read-only. Share capital and savings balances stay read-only because they are derived from transactions.
 

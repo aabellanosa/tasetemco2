@@ -731,7 +731,7 @@ Recommended rules:
 
 - Every staff member has a unique username.
 - Passwords are never shared.
-- Inactive staff accounts are deactivated, not deleted.
+- Former staff accounts are disabled, not deleted.
 - Critical transactions use maker-checker approval.
 - Posted entries are reversed, not edited directly.
 - User actions are recorded in an audit trail.
@@ -743,9 +743,9 @@ Recommended rules:
 
 Before anyone logs in, the system should show a public staff login screen. This screen should show the cooperative identity, system name, and login form only. Operational data such as member balances, loans, reports, teller activity, and user lists should not be visible before authentication.
 
-For this prototype, eight seeded users can sign in with the same temporary password: `p@55@LL`. The former dedicated loan-approver login has been removed; System Administrator owns the explicit decision step in the current workflow.
+After migration, the eight seeded users may use the former prototype password `p@55@LL` only for their first login and must immediately replace it. The former dedicated loan-approver login has been removed; System Administrator owns the explicit decision step in the current workflow.
 
-Best-practice production behavior:
+Production User Provisioning v1 behavior:
 
 - Initial passwords are temporary.
 - Users are forced to change temporary passwords at first login.
@@ -753,6 +753,11 @@ Best-practice production behavior:
 - Sessions expire after a defined idle period.
 - Failed login attempts are logged and eventually locked out.
 - Role restrictions are enforced in both the user interface and backend API.
+- New accounts start as Pending Activation and receive a unique temporary password displayed to Admin only once.
+- Only the password-change and logout endpoints are available while a password change is required.
+- Successful activation changes the account to Active.
+- Admin may lock, disable, or reset an account; these operations invalidate existing sessions.
+- Account creation, updates, logins, password changes, and resets produce security events for review.
 
 Current seeded users:
 
@@ -834,9 +839,9 @@ The `admin` user has a Demo Maintenance panel under Users. This panel shows Post
 
 Maintenance controls are intentionally limited to the System Administrator. Other users should not be able to access these actions through the UI or direct API calls.
 
-The System Administrator also manages prototype staff users under Users. Admin can create a staff user, assign role and default screen, and activate or deactivate non-admin accounts. All users continue to share the prototype password `p@55@LL` until a later authentication security spike introduces per-user password storage and reset flows.
+The System Administrator manages staff users under Users. Admin can create an account, assign roles and default screen, copy its one-time temporary password, lock or disable access, and issue password resets. New and reset credentials require a password change before operational access. Passwords are salted hashes and are never returned after the one-time credential display. Security-sensitive account actions are listed in Recent Account Security Events.
 
-The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, and account status, but cannot see the shared prototype password, create or modify users, download backups, or reset demo data.
+The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, account status, and security events, but cannot create or modify users, issue temporary passwords, download backups, or reset demo data.
 
 Member Profile v1 adds editable master-data fields for contact number, address, birthdate, gender, civil status, occupation/source of income, membership date, cluster/group, Philippine ID type, ID number, spouse name (when applicable), one to three beneficiaries (each with name, age, and relationship), and status. The spouse input appears immediately before beneficiaries. ID type uses the same searchable selection available in membership applications. The System Administrator and Membership Officer can update these fields. Manager, Auditor, and other member-view roles can review the profile read-only. Financial balances remain transaction-derived and cannot be edited from the profile panel.
 

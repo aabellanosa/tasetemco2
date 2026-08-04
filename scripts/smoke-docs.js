@@ -59,6 +59,8 @@ function validateSite(directory) {
   assert(index.includes("Allocations settle the oldest charge"), "Cost-center dues settlement flow is missing.");
   assert(index.includes("Unpaid/Partially Paid/Paid/Reversed"), "Cost-center payment-status guidance is missing.");
   assert(index.includes("one to three beneficiaries with name, age, and relationship"), "Member beneficiary workflow is missing.");
+  assert(index.includes("unique temporary password that is shown only once"), "Production user provisioning workflow is missing.");
+  assert(index.includes("must change that password before reaching operational screens"), "Required first-login password change is missing.");
   assert(index.includes("Spouse appears immediately before beneficiaries"), "Member spouse workflow is missing.");
   assert(index.includes("SUMMO — Regular Members Capture"), "SUMMO report listing is missing.");
   assert(index.includes("Daily Cost-Center Payables"), "Cost-center payable workflow is missing.");
