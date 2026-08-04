@@ -399,7 +399,7 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 
 ## Documentation
 
-Monthly Member Contributions are recorded by Teller/Cashier or Loan Officer as cash-paid TFEA, CBU, and Secured Savings. A Loan Officer contribution enters their separate collection batch and reaches Cashier expected cash only after physical turnover acceptance. A Draft has no effect. Reviewed-batch posting creates the balanced journal, feeds SUMMO columns U, V, and AE, and increases member CBU/share-capital balances. Run `npm run pg:migrate` before deploying the application build that introduces this workflow.
+Monthly Member Contributions are recorded by Teller/Cashier or Loan Officer for TFEA, CBU, and Secured Savings. Staff choose either Cash Payment or Payroll Deduction and enter the matching receipt or payroll reference. A Loan Officer contribution enters their separate collection batch and reaches Cashier expected cash only after physical turnover acceptance. A Draft has no effect. Reviewed-batch posting creates the balanced journal, feeds SUMMO columns U, V, and AE, and increases member CBU/share-capital balances. Run `npm run pg:migrate` before deploying the application build that introduces this workflow.
 
 Secured Savings is a separate member subsidiary from regular savings. Posted Monthly Contributions increase the secured balance. Teller/Cashier may record a Secured Savings Withdrawal up to the posted balance less pending withdrawals; it enters the Open teller batch as cash-out. Reviewed-batch posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the member's secured-savings balance.
 

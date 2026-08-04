@@ -379,7 +379,7 @@ General Manager, Accountant / Bookkeeper, and Auditor can reconcile cost-center 
 
 Cost-center movements are routed by member cluster. The current SUMMO consumes only Active `REGULAR MEMBERS CAPTURE` members. Transactions for Non Capture, LGU, Retirees, Community A, and Community B remain recorded and reconcilable but await their respective cluster reports; their absence from Regular Capture SUMMO does not mean the transactions were lost.
 
-Monthly Member Contributions v1 gives Teller/Cashier or Loan Officer a separate multi-member Draft for cash-paid TFEA, CBU, and Secured Savings. Saving a Draft has no cash, balance, payable, journal, or SUMMO effect. A Teller finalization enters the Teller's Open batch directly. A Loan Officer finalization enters their collection batch and affects Cashier expected cash only after physical turnover acceptance. After final cash count and Bookkeeper review, posting debits `1010 - Cash on Hand`, credits `2030 - TFEA Payable`, `3010 - Share Capital`, and `2040 - Secured Savings Payable`, creates immutable SUMMO movements, and increases each member's CBU/share-capital balance by the posted CBU amount. These contributions never aggregate into member payables.
+Monthly Member Contributions v1 gives Teller/Cashier or Loan Officer a separate multi-member Draft for TFEA, CBU, and Secured Savings funded by Cash Payment or Payroll Deduction. Staff enter the matching receipt or payroll reference. Saving a Draft has no cash, balance, payable, journal, or SUMMO effect. A Teller finalization enters the Teller's Open batch directly. A Loan Officer finalization enters their collection batch and affects Cashier expected cash only after physical turnover acceptance. After final cash count and Bookkeeper review, posting debits `1010 - Cash on Hand`, credits `2030 - TFEA Payable`, `3010 - Share Capital`, and `2040 - Secured Savings Payable`, creates immutable SUMMO movements, and increases each member's CBU/share-capital balance by the posted CBU amount. These contributions never aggregate into member payables.
 
 Secured Savings Subsidiary v1 maintains a member `secured_savings_balance` independently from regular savings. Posted Monthly Contributions increase this secured balance. Teller/Cashier may record a Secured Savings Withdrawal against the posted balance less pending withdrawals. Recording reserves availability and adds a cash-out row to the Open teller batch without reducing the posted balance. Bookkeeper posting debits `2040 - Secured Savings Payable`, credits `1010 - Cash on Hand`, and decreases only the secured balance. Member statements, transaction history, the Member Subsidiary Ledger, and Control Account Reconciliation show Secured Savings separately.
 
@@ -637,10 +637,10 @@ Status and correction flow:
 - `Finalized Charge -> Linked Reversal`
 - A finalized source row is never edited or deleted.
 
-### 4.12 Monthly Member Contribution Cash Capture
+### 4.12 Monthly Member Contribution Capture
 
 1. Teller opens Members -> Monthly Contributions and selects the contribution month.
-2. Teller enters a unique official receipt/reference and one or more Active member rows.
+2. Teller chooses Cash Payment or Payroll Deduction, enters the matching unique receipt or payroll reference, and adds one or more Active member rows.
 3. Each row may contain TFEA, CBU, Secured Savings, or any combination; at least one amount must be positive.
 4. Teller saves a Draft. The Draft has no cash, balance, payable, journal, or SUMMO effect.
 5. The creating Teller adds the Draft to the current Open teller batch.

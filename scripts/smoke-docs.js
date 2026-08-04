@@ -39,6 +39,7 @@ function validateSite(directory) {
   assert(index.includes("SUMMO Monthly Report"), "SUMMO workflow is missing.");
   assert(index.includes("LBP due date and amount in columns F and G"), "Native LBP SUMMO coverage is missing.");
   assert(index.includes('id="monthly-contributions"'), "Monthly Contributions workflow is missing.");
+  assert(index.includes("Choose Cash Payment or Payroll Deduction"), "Monthly contribution payment-source guidance is missing.");
   assert(index.includes('id="daily-remittance"'), "Daily Remittance workflow is missing.");
   assert(index.includes("fixed grid containing every Active configured source"), "Daily Remittance grid guidance is missing.");
   assert(index.includes("snapshotted income account"), "Daily Remittance posting guidance is missing.");
