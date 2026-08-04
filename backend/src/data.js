@@ -80,13 +80,13 @@ export const users = [
 ];
 
 export const roleViews = {
-  "System Administrator": ["dashboard", "members", "loans", "ledger", "reports", "users"],
+  "System Administrator": ["dashboard", "members", "loans", "ledger", "reports", "users", "setup"],
   "General Manager": ["dashboard", "members", "loans", "ledger", "reports"],
   "Accountant / Bookkeeper": ["dashboard", "ledger", "reports"],
   "Loan Officer": ["dashboard", "members", "loans"],
   "Teller / Cashier": ["dashboard", "members", "loans"],
   "Membership Officer": ["dashboard", "members"],
-  "Auditor / Compliance Officer": ["dashboard", "members", "loans", "ledger", "reports", "users"],
+  "Auditor / Compliance Officer": ["dashboard", "members", "loans", "ledger", "reports", "users", "setup"],
   "Board / Read-Only Executive": ["dashboard", "reports"]
 };
 

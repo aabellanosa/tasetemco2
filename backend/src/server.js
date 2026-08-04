@@ -773,15 +773,56 @@ async function recordUserSecurityEvent(username, eventType, performedBy, details
   );
 }
 
-async function listUserSecurityEvents() {
+async function listUserSecurityEvents({ search = "", eventType = "", dateFrom = "", dateTo = "", page = 1, pageSize = 25 } = {}) {
+  const normalizedSearch = String(search || "").trim().toLowerCase();
+  const normalizedEventType = String(eventType || "").trim();
+  const normalizedDateFrom = String(dateFrom || "").trim();
+  const normalizedDateTo = String(dateTo || "").trim();
+  const normalizedPageSize = [25, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 25;
+  const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
   const db = await getPool();
-  if (!db) return memoryUserSecurityEvents.slice(0, 50);
+  if (!db) {
+    const eventTypes = Array.from(new Set(memoryUserSecurityEvents.map((event) => event.eventType))).sort();
+    const filteredEvents = memoryUserSecurityEvents.filter((event) => {
+      const searchable = `${event.username} ${event.performedBy} ${event.details}`.toLowerCase();
+      const eventDate = String(event.createdAt || "").slice(0, 10);
+      return (!normalizedSearch || searchable.includes(normalizedSearch))
+        && (!normalizedEventType || event.eventType === normalizedEventType)
+        && (!normalizedDateFrom || eventDate >= normalizedDateFrom)
+        && (!normalizedDateTo || eventDate <= normalizedDateTo);
+    });
+    const total = filteredEvents.length;
+    const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize));
+    const currentPage = Math.min(normalizedPage, totalPages);
+    const offset = (currentPage - 1) * normalizedPageSize;
+    return { events: filteredEvents.slice(offset, offset + normalizedPageSize), total, page: currentPage,
+      pageSize: normalizedPageSize, totalPages, eventTypes };
+  }
+  const conditions = [];
+  const parameters = [];
+  if (normalizedSearch) {
+    conditions.push("(LOWER(username) LIKE ? OR LOWER(performed_by) LIKE ? OR LOWER(COALESCE(details, '')) LIKE ?)");
+    const pattern = `%${normalizedSearch}%`;
+    parameters.push(pattern, pattern, pattern);
+  }
+  if (normalizedEventType) { conditions.push("event_type = ?"); parameters.push(normalizedEventType); }
+  if (normalizedDateFrom) { conditions.push("created_at >= ?"); parameters.push(`${normalizedDateFrom} 00:00:00`); }
+  if (normalizedDateTo) { conditions.push("created_at < (?::date + INTERVAL '1 day')"); parameters.push(normalizedDateTo); }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const [countRows] = await db.execute(`SELECT COUNT(*) AS total FROM user_security_events ${whereClause}`, parameters);
+  const total = Number(countRows[0]?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize));
+  const currentPage = Math.min(normalizedPage, totalPages);
+  const offset = (currentPage - 1) * normalizedPageSize;
   const [rows] = await db.execute(
     `SELECT username, event_type AS eventType, performed_by AS performedBy,
             details, created_at AS createdAt
-     FROM user_security_events ORDER BY created_at DESC, id DESC LIMIT 50`
+     FROM user_security_events ${whereClause}
+     ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, [...parameters, normalizedPageSize, offset]
   );
-  return rows;
+  const [typeRows] = await db.execute("SELECT DISTINCT event_type AS eventType FROM user_security_events ORDER BY event_type");
+  return { events: rows, total, page: currentPage, pageSize: normalizedPageSize, totalPages,
+    eventTypes: typeRows.map((row) => row.eventType) };
 }
 
 async function findUser(username) {
@@ -13500,13 +13541,21 @@ app.get("/api/admin/users", async (request, response) => {
 
   response.json({
     users: await listSystemUsers(),
-    securityEvents: await listUserSecurityEvents(),
     roles: roles.map((role) => ({
       name: role,
       defaultViews: roleViews[role] || [],
       permissions: rolePermissions[role] || []
     }))
   });
+});
+
+app.get("/api/admin/security-events", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!isAdminUser(user) && !hasPermission(user, "users:view")) {
+    return response.status(403).json({ error: "Access denied" });
+  }
+  return response.json(await listUserSecurityEvents(request.query));
 });
 
 app.post("/api/admin/users", async (request, response) => {

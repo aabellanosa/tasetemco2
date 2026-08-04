@@ -94,7 +94,7 @@ npm run render:seed
 
 Do not use `pg:reset-demo` on the hosted demo unless you intentionally want to wipe tester input and restore the seed.
 
-The `admin` user also has a Demo Maintenance panel under Users. It can download a JSON backup of hosted demo data and reset the Postgres database to the seed rows. Reset requires typing `RESET TASETEMCO` and automatically downloads a pre-reset backup.
+The `admin` user also has a Demo Maintenance panel under System Setup. It can download a JSON backup of hosted demo data and reset the Postgres database to the seed rows. Reset requires typing `RESET TASETEMCO` and automatically downloads a pre-reset backup.
 
 ## Spike Checks
 

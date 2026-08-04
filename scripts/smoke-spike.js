@@ -288,7 +288,8 @@ async function run() {
     if (
       !auditorLogin.ok ||
       !auditorBody.user.permissions.includes("users:view") ||
-      !auditorBody.user.allowedViews.includes("users")
+      !auditorBody.user.allowedViews.includes("users") ||
+      !auditorBody.user.allowedViews.includes("setup")
     ) {
       throw new Error("Auditor should receive read-only User / Security access.");
     }
@@ -304,6 +305,21 @@ async function run() {
       auditorUsersBody.defaultPassword
     ) {
       throw new Error("Auditor should list users without receiving the shared prototype password.");
+    }
+
+    const auditorSecurityEvents = await fetch(
+      `${baseUrl}/api/admin/security-events?search=auditor&page=1&pageSize=25`,
+      { headers: { Cookie: auditorCookie } }
+    );
+    const auditorSecurityEventsBody = await auditorSecurityEvents.json();
+    if (
+      !auditorSecurityEvents.ok ||
+      !Array.isArray(auditorSecurityEventsBody.events) ||
+      auditorSecurityEventsBody.page !== 1 ||
+      auditorSecurityEventsBody.pageSize !== 25 ||
+      typeof auditorSecurityEventsBody.total !== "number"
+    ) {
+      throw new Error("Auditor should be able to search the paginated account security trail.");
     }
 
     const forbiddenAuditorCreate = await fetch(`${baseUrl}/api/admin/users`, {

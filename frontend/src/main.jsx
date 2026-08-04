@@ -118,7 +118,8 @@ const viewTitles = {
   loans: "Loans",
   ledger: "General Ledger",
   reports: "Reports",
-  users: "Users"
+  users: "Users",
+  setup: "System Setup"
 };
 
 function TableContainer(props) {
@@ -7171,6 +7172,21 @@ function AdminUserManagement({ user }) {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [securityEvents, setSecurityEvents] = useState([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("");
+  const [userStatusFilter, setUserStatusFilter] = useState("");
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(25);
+  const [eventSearch, setEventSearch] = useState("");
+  const [eventTypeFilter, setEventTypeFilter] = useState("");
+  const [eventDateFrom, setEventDateFrom] = useState("");
+  const [eventDateTo, setEventDateTo] = useState("");
+  const [eventPage, setEventPage] = useState(1);
+  const [eventPageSize, setEventPageSize] = useState(25);
+  const [eventTotal, setEventTotal] = useState(0);
+  const [eventTotalPages, setEventTotalPages] = useState(1);
+  const [eventTypes, setEventTypes] = useState([]);
+  const [eventsBusy, setEventsBusy] = useState(false);
   const [issuedCredential, setIssuedCredential] = useState(null);
   const [form, setForm] = useState({
     name: "",
@@ -7185,6 +7201,7 @@ function AdminUserManagement({ user }) {
   const [busy, setBusy] = useState(false);
   const canManageUsers = user.username === "admin" || user.role === "System Administrator";
   const canViewUsers = canManageUsers || user.permissions.includes("users:view");
+  const createUserDialog = useDisclosure();
 
   const roleOptions = useMemo(() => roles.map((role) => role.name), [roles]);
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.name, role])), [roles]);
@@ -7200,6 +7217,21 @@ function AdminUserManagement({ user }) {
     [form.additionalRoles, form.role, getCombinedViews]
   );
 
+  const filteredUsers = useMemo(() => {
+    const search = userSearch.trim().toLowerCase();
+    return users.filter((item) => {
+      const assignedRoles = [item.role, ...(item.additionalRoles || [])];
+      return (!search || `${item.name} ${item.username}`.toLowerCase().includes(search))
+        && (!userRoleFilter || assignedRoles.includes(userRoleFilter))
+        && (!userStatusFilter || item.status === userStatusFilter);
+    });
+  }, [userRoleFilter, userSearch, userStatusFilter, users]);
+  const userTotalPages = Math.max(1, Math.ceil(filteredUsers.length / userPageSize));
+  const currentUserPage = Math.min(userPage, userTotalPages);
+  const pagedUsers = filteredUsers.slice((currentUserPage - 1) * userPageSize, currentUserPage * userPageSize);
+  const userShowingStart = filteredUsers.length ? (currentUserPage - 1) * userPageSize + 1 : 0;
+  const userShowingEnd = Math.min(currentUserPage * userPageSize, filteredUsers.length);
+
   const loadUsers = useCallback(async () => {
     setError("");
 
@@ -7207,7 +7239,6 @@ function AdminUserManagement({ user }) {
       const data = await api("/api/admin/users");
       setUsers(data.users);
       setRoles(data.roles);
-      setSecurityEvents(data.securityEvents || []);
       setDrafts(
         Object.fromEntries(
           data.users.map((item) => [
@@ -7226,9 +7257,34 @@ function AdminUserManagement({ user }) {
     }
   }, []);
 
+  const loadSecurityEvents = useCallback(async () => {
+    setEventsBusy(true);
+    try {
+      const query = new URLSearchParams({
+        search: eventSearch.trim(), eventType: eventTypeFilter, dateFrom: eventDateFrom, dateTo: eventDateTo,
+        page: String(eventPage), pageSize: String(eventPageSize)
+      });
+      const data = await api(`/api/admin/security-events?${query.toString()}`);
+      setSecurityEvents(data.events || []);
+      setEventTotal(Number(data.total || 0));
+      setEventTotalPages(Number(data.totalPages || 1));
+      setEventTypes(data.eventTypes || []);
+      if (Number(data.page) !== eventPage) setEventPage(Number(data.page));
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setEventsBusy(false);
+    }
+  }, [eventDateFrom, eventDateTo, eventPage, eventPageSize, eventSearch, eventTypeFilter]);
+
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(loadSecurityEvents, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadSecurityEvents]);
 
   useEffect(() => {
     if (!defaultViews.includes(form.defaultView) && defaultViews[0]) {
@@ -7295,7 +7351,9 @@ function AdminUserManagement({ user }) {
       });
       setIssuedCredential({ username: form.username, password: data.temporaryPassword });
       setMessage(`Created ${form.username}. Copy the one-time temporary password shown below.`);
+      createUserDialog.onClose();
       await loadUsers();
+      await loadSecurityEvents();
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -7315,6 +7373,7 @@ function AdminUserManagement({ user }) {
       });
       setMessage(`Updated ${username}.`);
       await loadUsers();
+      await loadSecurityEvents();
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -7331,6 +7390,7 @@ function AdminUserManagement({ user }) {
       setIssuedCredential({ username, password: data.temporaryPassword });
       setMessage(`Password reset for ${username}. Copy the one-time temporary password shown below.`);
       await loadUsers();
+      await loadSecurityEvents();
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -7353,7 +7413,11 @@ function AdminUserManagement({ user }) {
               : "Read-only staff account directory for compliance and access review."}
           </Text>
         </Box>
-        <Badge colorScheme="purple">{users.length} users</Badge>
+        {canManageUsers ? (
+          <Button colorScheme="green" onClick={createUserDialog.onOpen}>Create User</Button>
+        ) : (
+          <Badge colorScheme="purple">{users.length} users</Badge>
+        )}
       </Flex>
 
       {message ? (
@@ -7375,9 +7439,19 @@ function AdminUserManagement({ user }) {
         </Box>
       ) : null}
 
-      {canManageUsers ? (
+      <Tabs colorScheme="green" isLazy>
+        <TabList>
+          <Tab>User Accounts</Tab>
+          <Tab>Account Security Events</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel px={0}>
+      {canManageUsers && createUserDialog.isOpen ? (
       <Box as="form" onSubmit={createUser} borderWidth="1px" borderRadius="md" p={4} mb={5}>
-        <Heading size="sm" mb={4}>Create Staff User</Heading>
+        <Flex justify="space-between" align="center" gap={4} mb={4}>
+          <Heading size="sm">Create Staff User</Heading>
+          <Button size="sm" variant="ghost" onClick={createUserDialog.onClose}>Close</Button>
+        </Flex>
         <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "2fr 1fr 1fr 1fr" }} gap={4}>
           <FormControl>
             <FormLabel>Full Name</FormLabel>
@@ -7462,6 +7536,31 @@ function AdminUserManagement({ user }) {
       </Box>
       ) : null}
 
+      <Flex justify="space-between" align={{ base: "stretch", lg: "center" }} gap={3} wrap="wrap" mb={4}>
+        <Text color="gray.600" fontSize="sm">
+          Showing {userShowingStart}-{userShowingEnd} of {filteredUsers.length}
+          {filteredUsers.length === users.length ? " users" : ` matches from ${users.length} users`}
+        </Text>
+        <Flex gap={2} wrap="wrap">
+          <Input size="sm" value={userSearch} placeholder="Search name or username" maxW="240px"
+            onChange={(event) => { setUserSearch(event.target.value); setUserPage(1); }} />
+          <Select size="sm" value={userRoleFilter} w="210px"
+            onChange={(event) => { setUserRoleFilter(event.target.value); setUserPage(1); }}>
+            <option value="">All roles</option>
+            {roleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+          </Select>
+          <Select size="sm" value={userStatusFilter} w="150px"
+            onChange={(event) => { setUserStatusFilter(event.target.value); setUserPage(1); }}>
+            <option value="">All statuses</option>
+            <option value="Pending Activation">Pending</option><option value="Active">Active</option>
+            <option value="Locked">Locked</option><option value="Disabled">Disabled</option>
+          </Select>
+          <Select size="sm" value={userPageSize} w="110px"
+            onChange={(event) => { setUserPageSize(Number(event.target.value)); setUserPage(1); }}>
+            {[25, 50, 100].map((size) => <option key={size} value={size}>{size} rows</option>)}
+          </Select>
+        </Flex>
+      </Flex>
       <TableContainer>
         <Table size="sm">
           <Thead>
@@ -7475,7 +7574,7 @@ function AdminUserManagement({ user }) {
             </Tr>
           </Thead>
           <Tbody>
-            {users.map((item) => {
+            {pagedUsers.map((item) => {
               const draft = drafts[item.username] || item;
               const draftAdditionalRoles = draft.additionalRoles || [];
               const draftViews = getCombinedViews(draft.role, draftAdditionalRoles);
@@ -7590,17 +7689,64 @@ function AdminUserManagement({ user }) {
                 </Tr>
               );
             })}
+            {pagedUsers.length === 0 ? <Tr><Td colSpan={6} color="gray.500">No users match the current filters.</Td></Tr> : null}
           </Tbody>
         </Table>
       </TableContainer>
-      <Box mt={6} borderTopWidth="1px" pt={5}>
-        <Heading size="sm" mb={3}>Recent Account Security Events</Heading>
+      <Flex justify="space-between" align="center" gap={4} wrap="wrap" mt={4}>
+        <Text color="gray.600" fontSize="sm">Page {currentUserPage} of {userTotalPages}</Text>
+        <HStack>
+          <Button size="sm" variant="outline" onClick={() => setUserPage((page) => Math.max(1, page - 1))}
+            isDisabled={currentUserPage === 1}>Previous</Button>
+          <Button size="sm" variant="outline" onClick={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
+            isDisabled={currentUserPage === userTotalPages}>Next</Button>
+        </HStack>
+      </Flex>
+          </TabPanel>
+          <TabPanel px={0}>
+      <Box>
+        <Flex justify="space-between" align={{ base: "stretch", lg: "center" }} gap={3} wrap="wrap" mb={4}>
+          <Text color="gray.600" fontSize="sm">
+            {eventTotal ? `Showing ${(eventPage - 1) * eventPageSize + 1}-${Math.min(eventPage * eventPageSize, eventTotal)} of ${eventTotal} events` : "No matching events"}
+          </Text>
+          <Flex gap={2} wrap="wrap">
+            <Input size="sm" value={eventSearch} placeholder="Search user, actor, or details" maxW="240px"
+              onChange={(event) => { setEventSearch(event.target.value); setEventPage(1); }} />
+            <Select size="sm" value={eventTypeFilter} w="190px"
+              onChange={(event) => { setEventTypeFilter(event.target.value); setEventPage(1); }}>
+              <option value="">All event types</option>
+              {eventTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+            </Select>
+            <Input size="sm" type="date" aria-label="Events from date" value={eventDateFrom} maxW="150px"
+              onChange={(event) => { setEventDateFrom(event.target.value); setEventPage(1); }} />
+            <Input size="sm" type="date" aria-label="Events through date" value={eventDateTo} maxW="150px"
+              onChange={(event) => { setEventDateTo(event.target.value); setEventPage(1); }} />
+            <Select size="sm" value={eventPageSize} w="110px"
+              onChange={(event) => { setEventPageSize(Number(event.target.value)); setEventPage(1); }}>
+              {[25, 50, 100].map((size) => <option key={size} value={size}>{size} rows</option>)}
+            </Select>
+          </Flex>
+        </Flex>
         <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>User</Th><Th>Event</Th><Th>Performed By</Th><Th>Details</Th></Tr></Thead>
           <Tbody>{securityEvents.map((event, index) => <Tr key={`${event.createdAt}-${index}`}>
             <Td whiteSpace="nowrap">{event.createdAt ? new Date(event.createdAt).toLocaleString("en-PH") : "—"}</Td>
             <Td>@{event.username}</Td><Td>{event.eventType}</Td><Td>@{event.performedBy}</Td><Td>{event.details || "—"}</Td>
-          </Tr>)}</Tbody></Table></TableContainer>
+          </Tr>)}
+          {!eventsBusy && securityEvents.length === 0 ? <Tr><Td colSpan={5} color="gray.500">No security events match the current filters.</Td></Tr> : null}
+          </Tbody></Table></TableContainer>
+        <Flex justify="space-between" align="center" gap={4} wrap="wrap" mt={4}>
+          <Text color="gray.600" fontSize="sm">{eventsBusy ? "Loading events…" : `Page ${eventPage} of ${eventTotalPages}`}</Text>
+          <HStack>
+            <Button size="sm" variant="outline" onClick={() => setEventPage((page) => Math.max(1, page - 1))}
+              isDisabled={eventsBusy || eventPage === 1}>Previous</Button>
+            <Button size="sm" variant="outline" onClick={() => setEventPage((page) => Math.min(eventTotalPages, page + 1))}
+              isDisabled={eventsBusy || eventPage === eventTotalPages}>Next</Button>
+          </HStack>
+        </Flex>
       </Box>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </Box>
   );
 }
@@ -11746,12 +11892,15 @@ function Shell({ user, onLogout }) {
     }
 
     if (view === "users") {
+      return <AdminUserManagement user={user} />;
+    }
+
+    if (view === "setup") {
       return (
         <VStack align="stretch" spacing={5}>
           <CostCenterAdministration user={user} />
           <RemittanceSourceAdministration user={user} />
           <DisbursementCategoryAdministration user={user} />
-          <AdminUserManagement user={user} />
           <AdminDemoMaintenance user={user} />
         </VStack>
       );
