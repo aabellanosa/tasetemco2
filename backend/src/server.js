@@ -12824,6 +12824,25 @@ function isAdminUser(user) {
   return user?.username === "admin" && user?.role === "System Administrator";
 }
 
+function canManageSystemUsers(user) {
+  return isAdminUser(user) || hasPermission(user, "users:manage");
+}
+
+async function delegatedManagerRestriction(actor, targetUsername = "", requestedRoles = []) {
+  if (isAdminUser(actor)) return "";
+  if (!hasPermission(actor, "users:manage")) return "User-management access required";
+  if (requestedRoles.includes("System Administrator")) {
+    return "Only the System Administrator can assign the System Administrator role.";
+  }
+  if (targetUsername) {
+    const target = (await listSystemUsers()).find((item) => item.username === targetUsername);
+    if (target?.role === "System Administrator" || target?.additionalRoles?.includes("System Administrator")) {
+      return "Only the System Administrator can manage System Administrator accounts.";
+    }
+  }
+  return "";
+}
+
 async function requireAdminDatabase(user) {
   if (!user) {
     return { error: "Login required", statusCode: 401 };
@@ -13566,8 +13585,8 @@ app.post("/api/admin/users", async (request, response) => {
     return;
   }
 
-  if (!isAdminUser(user)) {
-    response.status(403).json({ error: "Admin access required" });
+  if (!canManageSystemUsers(user)) {
+    response.status(403).json({ error: "User-management access required" });
     return;
   }
 
@@ -13577,6 +13596,8 @@ app.post("/api/admin/users", async (request, response) => {
     response.status(400).json({ error: validation.error });
     return;
   }
+  const restriction = await delegatedManagerRestriction(user, "", [validation.value.role, ...validation.value.additionalRoles]);
+  if (restriction) return response.status(403).json({ error: restriction });
 
   const result = await createSystemUser(validation.value, user.username);
 
@@ -13596,10 +13617,14 @@ app.patch("/api/admin/users/:username", async (request, response) => {
     return;
   }
 
-  if (!isAdminUser(user)) {
-    response.status(403).json({ error: "Admin access required" });
+  if (!canManageSystemUsers(user)) {
+    response.status(403).json({ error: "User-management access required" });
     return;
   }
+
+  const requestedRoles = [String(request.body.role || "").trim(), ...parseAdditionalRoles(request.body.additionalRoles)];
+  const restriction = await delegatedManagerRestriction(user, request.params.username, requestedRoles);
+  if (restriction) return response.status(403).json({ error: restriction });
 
   const result = await updateSystemUser(request.params.username, {
     role: String(request.body.role || "").trim(),
@@ -13621,7 +13646,9 @@ app.patch("/api/admin/users/:username", async (request, response) => {
 app.post("/api/admin/users/:username/reset-password", async (request, response) => {
   const user = parseSession(request);
   if (!user) return response.status(401).json({ error: "Login required" });
-  if (!isAdminUser(user)) return response.status(403).json({ error: "Admin access required" });
+  if (!canManageSystemUsers(user)) return response.status(403).json({ error: "User-management access required" });
+  const restriction = await delegatedManagerRestriction(user, request.params.username);
+  if (restriction) return response.status(403).json({ error: restriction });
   const result = await resetSystemUserPassword(request.params.username, user.username);
   if (result.error) return response.status(result.statusCode).json({ error: result.error });
   response.json(result);

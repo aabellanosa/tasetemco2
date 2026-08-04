@@ -7199,11 +7199,12 @@ function AdminUserManagement({ user }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const canManageUsers = user.username === "admin" || user.role === "System Administrator";
+  const canManageUsers = user.username === "admin" || user.permissions.includes("users:manage");
   const canViewUsers = canManageUsers || user.permissions.includes("users:view");
   const createUserDialog = useDisclosure();
 
-  const roleOptions = useMemo(() => roles.map((role) => role.name), [roles]);
+  const roleOptions = useMemo(() => roles.map((role) => role.name)
+    .filter((role) => user.username === "admin" || role !== "System Administrator"), [roles, user.username]);
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.name, role])), [roles]);
   const getCombinedViews = useCallback(
     (role, additionalRoles = []) =>
@@ -7578,6 +7579,9 @@ function AdminUserManagement({ user }) {
               const draft = drafts[item.username] || item;
               const draftAdditionalRoles = draft.additionalRoles || [];
               const draftViews = getCombinedViews(draft.role, draftAdditionalRoles);
+              const canManageAccount = canManageUsers &&
+                (user.username === "admin" || (item.role !== "System Administrator" &&
+                  !item.additionalRoles?.includes("System Administrator")));
 
               return (
                 <Tr key={item.username}>
@@ -7606,7 +7610,7 @@ function AdminUserManagement({ user }) {
                     </Box>
                   </Td>
                   <Td minW="220px">
-                    {canManageUsers ? (
+                    {canManageAccount ? (
                       <Select size="sm" value={draft.role} onChange={(event) => updateDraft(item.username, { role: event.target.value })}>
                         {roleOptions.map((role) => (
                           <option key={role} value={role}>{role}</option>
@@ -7617,7 +7621,7 @@ function AdminUserManagement({ user }) {
                     )}
                   </Td>
                   <Td minW="280px">
-                    {canManageUsers ? (
+                    {canManageAccount ? (
                       <VStack align="stretch" spacing={1}>
                         {roleOptions
                           .filter((role) => role !== draft.role)
@@ -7645,7 +7649,7 @@ function AdminUserManagement({ user }) {
                     )}
                   </Td>
                   <Td minW="150px">
-                    {canManageUsers ? (
+                    {canManageAccount ? (
                       <Select
                         size="sm"
                         value={draft.defaultView}
@@ -7660,7 +7664,7 @@ function AdminUserManagement({ user }) {
                     )}
                   </Td>
                   <Td minW="120px">
-                    {canManageUsers ? (
+                    {canManageAccount ? (
                       <Select
                         size="sm"
                         value={draft.status}
@@ -7677,7 +7681,7 @@ function AdminUserManagement({ user }) {
                     )}
                   </Td>
                   <Td textAlign="right">
-                    {canManageUsers ? (
+                    {canManageAccount ? (
                       <VStack align="stretch" spacing={2}>
                         <Button size="sm" onClick={() => saveUser(item.username)} isLoading={busy}>Save</Button>
                         <Button size="sm" variant="outline" onClick={() => resetPassword(item.username)} isLoading={busy}>Reset Password</Button>

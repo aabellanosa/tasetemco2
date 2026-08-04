@@ -81,7 +81,7 @@ export const users = [
 
 export const roleViews = {
   "System Administrator": ["dashboard", "members", "loans", "ledger", "reports", "users", "setup"],
-  "General Manager": ["dashboard", "members", "loans", "ledger", "reports"],
+  "General Manager": ["dashboard", "members", "loans", "ledger", "reports", "users"],
   "Accountant / Bookkeeper": ["dashboard", "ledger", "reports"],
   "Loan Officer": ["dashboard", "members", "loans"],
   "Teller / Cashier": ["dashboard", "members", "loans"],
@@ -144,6 +144,8 @@ export const rolePermissions = {
     "ledger:view",
     "reports:view",
     "reports:summo:lock",
+    "users:view",
+    "users:manage",
     "loans:products:view",
     "loans:applications:view",
     "loans:computations:view",

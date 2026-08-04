@@ -190,8 +190,10 @@ async function run() {
     const managerBody = await managerLogin.json();
     const managerCookie = managerLogin.headers.get("set-cookie")?.split(";")[0];
 
-    if (!managerBody.user.permissions.includes("members:applications:approve")) {
-      throw new Error("Manager should have member application approval permission.");
+    if (!managerBody.user.permissions.includes("members:applications:approve") ||
+        !managerBody.user.permissions.includes("users:manage") ||
+        !managerBody.user.allowedViews.includes("users")) {
+      throw new Error("Manager should have member approval and delegated user-management access.");
     }
 
     const forbiddenOpeningBalanceLookup = await fetch(`${baseUrl}/api/ledger/member-lookup`, {
@@ -269,12 +271,26 @@ async function run() {
       throw new Error("Teller dashboard should not expose portfolio-wide overdue loan details.");
     }
 
-    const forbiddenUsers = await fetch(`${baseUrl}/api/admin/users`, {
+    const managerUsers = await fetch(`${baseUrl}/api/admin/users`, {
       headers: { Cookie: managerCookie }
     });
 
-    if (forbiddenUsers.status !== 403) {
-      throw new Error("User management should be restricted to admin users.");
+    if (!managerUsers.ok) {
+      throw new Error("Manager should be able to open delegated user management.");
+    }
+
+    const forbiddenManagerAdminCreation = await fetch(`${baseUrl}/api/admin/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: managerCookie },
+      body: JSON.stringify({
+        name: "Blocked Manager Admin",
+        username: "managerblockedadmin",
+        role: "System Administrator",
+        defaultView: "users"
+      })
+    });
+    if (forbiddenManagerAdminCreation.status !== 403) {
+      throw new Error("Manager must not assign the System Administrator role.");
     }
 
     const auditorLogin = await fetch(`${baseUrl}/api/login`, {
@@ -354,7 +370,7 @@ async function run() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: adminCookie
+        Cookie: managerCookie
       },
       body: JSON.stringify({
         name: "Smoke Test Staff",
@@ -432,7 +448,7 @@ async function run() {
     const permanentCookie = permanentLogin.headers.get("set-cookie")?.split(";")[0];
     const resetPassword = await fetch(`${baseUrl}/api/admin/users/${smokeUsername}/reset-password`, {
       method: "POST",
-      headers: { Cookie: adminCookie }
+      headers: { Cookie: managerCookie }
     });
     const resetPasswordBody = await resetPassword.json();
     if (!resetPassword.ok || !resetPasswordBody.temporaryPassword) {
@@ -482,7 +498,7 @@ async function run() {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Cookie: adminCookie
+        Cookie: managerCookie
       },
       body: JSON.stringify({
         role: "Membership Officer",
