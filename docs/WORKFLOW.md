@@ -753,7 +753,7 @@ Production User Provisioning v1 behavior:
 - Sessions expire after a defined idle period.
 - Failed login attempts are logged and eventually locked out.
 - Role restrictions are enforced in both the user interface and backend API.
-- New accounts start as Pending Activation and receive a unique temporary password displayed to Admin only once.
+- New accounts start as Pending Activation and receive a unique temporary password displayed to the System Administrator or General Manager only once.
 - Only the password-change and logout endpoints are available while a password change is required.
 - Successful activation changes the account to Active.
 - Admin may lock, disable, or reset an account; these operations invalidate existing sessions.
@@ -839,7 +839,7 @@ The `admin` user has a Demo Maintenance panel under Users. This panel shows Post
 
 Maintenance controls are intentionally limited to the System Administrator. Other users should not be able to access these actions through the UI or direct API calls.
 
-The System Administrator manages staff users under Users. Admin can create an account, assign roles and default screen, copy its one-time temporary password, lock or disable access, and issue password resets. New and reset credentials require a password change before operational access. Passwords are salted hashes and are never returned after the one-time credential display. Security-sensitive account actions are listed in Recent Account Security Events.
+The System Administrator and General Manager manage ordinary staff users under Users. Both can create accounts, assign non-administrator roles and default screens, copy one-time temporary passwords, lock or disable access, and issue password resets. Only the System Administrator can assign the System Administrator role or manage accounts holding that role. Demo/database maintenance remains exclusive to the System Administrator. New and reset credentials require a password change before operational access. Passwords are salted hashes and are never returned after the one-time credential display. Security-sensitive account actions are listed in Recent Account Security Events.
 
 The Auditor / Compliance Officer has read-only User / Security access. Auditor can review usernames, roles, default screens, account status, and security events, but cannot create or modify users, issue temporary passwords, download backups, or reset demo data.
 
