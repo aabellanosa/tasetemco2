@@ -2013,6 +2013,9 @@ function mapLoan(row) {
           principalPaid: Number(item.principalPaid || 0),
           interestPaid: Number(item.interestPaid || 0),
           totalPaid: Number(item.totalPaid || 0),
+          postedTotalPaid: Number(item.postedTotalPaid || 0),
+          pendingPaymentAmount: Number(item.pendingPaymentAmount || 0),
+          postedTotalRemaining: Number(item.postedTotalRemaining ?? item.totalRemaining ?? item.totalDue ?? 0),
           principalRemaining: Number(item.principalRemaining ?? item.principalDue ?? 0),
           interestRemaining: Number(item.interestRemaining ?? item.interestDue ?? 0),
           totalRemaining: Number(item.totalRemaining ?? item.totalDue ?? 0),
@@ -2030,12 +2033,19 @@ function decorateLoanInstallments(installments, collections) {
     const current = collectionTotalsByInstallment.get(key) || {
       principalPaid: 0,
       interestPaid: 0,
-      totalPaid: 0
+      totalPaid: 0,
+      postedTotalPaid: 0,
+      pendingTotalPaid: 0
     };
 
     current.principalPaid = addMoney(current.principalPaid, collection.principalAmount);
     current.interestPaid = addMoney(current.interestPaid, collection.interestAmount);
     current.totalPaid = addMoney(current.totalPaid, collection.amountReceived);
+    if ((collection.collectionStatus || "Posted") === "Posted") {
+      current.postedTotalPaid = addMoney(current.postedTotalPaid, collection.amountReceived);
+    } else {
+      current.pendingTotalPaid = addMoney(current.pendingTotalPaid, collection.amountReceived);
+    }
     collectionTotalsByInstallment.set(key, current);
   }
 
@@ -2043,7 +2053,9 @@ function decorateLoanInstallments(installments, collections) {
     const totals = collectionTotalsByInstallment.get(`${installment.loanNo}:${installment.installmentNo}`) || {
       principalPaid: 0,
       interestPaid: 0,
-      totalPaid: 0
+      totalPaid: 0,
+      postedTotalPaid: 0,
+      pendingTotalPaid: 0
     };
     const totalDue = moneyValue(installment.totalDue);
     const principalDue = moneyValue(installment.principalDue);
@@ -2061,6 +2073,9 @@ function decorateLoanInstallments(installments, collections) {
       principalPaid: moneyValue(totals.principalPaid),
       interestPaid: moneyValue(totals.interestPaid),
       totalPaid,
+      postedTotalPaid: moneyValue(totals.postedTotalPaid),
+      pendingPaymentAmount: moneyValue(totals.pendingTotalPaid),
+      postedTotalRemaining: Math.max(0, moneyValue(totalDue - totals.postedTotalPaid)),
       principalRemaining: Math.max(0, moneyValue(principalDue - totals.principalPaid)),
       interestRemaining: Math.max(0, moneyValue(interestDue - totals.interestPaid)),
       totalRemaining: Math.max(0, moneyValue(totalDue - totalPaid)),
@@ -2139,9 +2154,10 @@ function loanCollectionAllocationRows(collections) {
       ? collection.allocations.map((allocation) => ({
           ...allocation,
           loanNo: collection.loanNo,
+          collectionStatus: collection.status,
           amountReceived: allocation.amountApplied
         }))
-      : [collection]
+      : [{ ...collection, collectionStatus: collection.status }]
   );
 
 }
@@ -2187,10 +2203,11 @@ async function listLoans() {
      ORDER BY loan_no, installment_no`
   );
   const [collectionRows] = await db.execute(
-    `SELECT loan_no AS loanNo, installment_no AS installmentNo,
-            principal_amount AS principalAmount, interest_amount AS interestAmount,
-            amount_applied AS amountReceived
-     FROM loan_collection_allocations`
+    `SELECT allocation.loan_no AS loanNo, allocation.installment_no AS installmentNo,
+            allocation.principal_amount AS principalAmount, allocation.interest_amount AS interestAmount,
+            allocation.amount_applied AS amountReceived, collection.status AS collectionStatus
+     FROM loan_collection_allocations allocation
+     JOIN loan_collections collection ON collection.collection_no = allocation.collection_no`
   );
 
   return loanRows.map((loan) => mapLoan({
@@ -2226,7 +2243,7 @@ async function buildLoanPortfolioAlerts() {
   const currentLoans = (await listLoans()).filter((loan) => loan.status === "Posted");
   const items = currentLoans.flatMap((loan) =>
     loan.installments
-      .filter((installment) => installment.status === "Scheduled")
+      .filter((installment) => installment.status !== "Paid" && installment.postedTotalRemaining > 0)
       .map((installment) => {
         const daysUntilDue = daysBetweenIsoDates(today, installment.dueDate);
         const severity = daysUntilDue < 0 ? "overdue" : daysUntilDue <= 7 ? "due-soon" : "";
@@ -2240,6 +2257,9 @@ async function buildLoanPortfolioAlerts() {
           principalDue: installment.principalDue,
           interestDue: installment.interestDue,
           totalDue: installment.totalDue,
+          amountDue: installment.totalRemaining,
+          pendingPaymentAmount: installment.pendingPaymentAmount,
+          paymentPending: installment.pendingPaymentAmount > 0,
           daysUntilDue,
           severity,
           statusLabel: daysUntilDue < 0 ? `${Math.abs(daysUntilDue)} days overdue` : `Due in ${daysUntilDue} days`

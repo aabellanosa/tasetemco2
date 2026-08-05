@@ -1780,11 +1780,17 @@ function Dashboard({ user }) {
                                 <Badge colorScheme={item.severity === "overdue" ? "red" : "orange"}>
                                   {item.statusLabel}
                                 </Badge>
+                                {item.paymentPending ? <Badge ml={2} colorScheme="blue">Payment pending</Badge> : null}
                               </Td>
                               <Td>{item.memberName}</Td>
                               <Td>{item.loanNo}</Td>
                               <Td>{formatDate(item.dueDate)}</Td>
-                              <Td isNumeric>{formatMoney(item.totalDue)}</Td>
+                              <Td isNumeric>
+                                {formatMoney(item.amountDue)}
+                                {item.paymentPending ? <Text fontSize="xs" color="blue.600">
+                                  {formatMoney(item.pendingPaymentAmount)} awaiting posting
+                                </Text> : null}
+                              </Td>
                             </Tr>
                           ))}
                         </Tbody>

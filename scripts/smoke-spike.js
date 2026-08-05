@@ -244,7 +244,10 @@ async function run() {
       !managerDashboardBody.loanAlerts?.canViewDetails ||
       managerDashboardBody.loanAlerts.overdueCount < 1 ||
       managerDashboardBody.loanAlerts.dueSoonCount < 1 ||
-      !managerDashboardBody.loanAlerts.items.some((item) => item.loanNo === "LN-DEMO-PASTDUE")
+      !managerDashboardBody.loanAlerts.items.some((item) =>
+        item.loanNo === "LN-DEMO-PASTDUE" && typeof item.amountDue === "number" &&
+        typeof item.pendingPaymentAmount === "number" && typeof item.paymentPending === "boolean"
+      )
     ) {
       throw new Error("Manager dashboard should include role-gated overdue loan alert details.");
     }
