@@ -24,7 +24,7 @@ If tester input becomes messy, reset the configured database back to the demo se
 npm run pg:reset-demo
 ```
 
-`pg:reset-demo` writes a JSON backup under `data/backups/` before clearing and reseeding the configured Postgres database. You can also run a backup manually:
+`pg:reset-demo` writes a JSON backup under `data/backups/` before clearing and reseeding the configured Postgres database. It refuses production mode and requires both a database ending in `_test`, `_smoke`, or `_demo` and an exact database-specific token such as `ALLOW_DEMO_DATABASE_RESET=RESET tasetemco_smoke`. You can also run a backup manually:
 
 ```powershell
 npm run pg:backup

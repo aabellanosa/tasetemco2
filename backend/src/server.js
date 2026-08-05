@@ -176,10 +176,15 @@ const clientSummoTemplateCandidates = [
 ];
 const clientSummoTemplatePath = clientSummoTemplateCandidates.find((candidate) => fs.existsSync(candidate)) || "";
 const sessions = new Map();
+const memberSessions = new Map();
 const memoryUserSecurityEvents = [];
+const memoryMemberPortalAccounts = [];
+const memoryMemberPortalAuditEvents = [];
 let pool = null;
 
 const persistedTables = [
+  "member_portal_audit_events",
+  "member_portal_accounts",
   "user_security_events",
   "member_application_beneficiaries",
   "member_beneficiaries",
@@ -234,6 +239,8 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  member_portal_accounts: ["member_no", "username", "password_hash", "must_change_password", "status", "created_by", "updated_by"],
+  member_portal_audit_events: ["member_no", "username", "event_type", "performed_by", "details", "created_at"],
   member_application_beneficiaries: ["application_no", "display_order", "beneficiary_name", "beneficiary_age", "beneficiary_relationship"],
   member_beneficiaries: ["member_no", "display_order", "beneficiary_name", "beneficiary_age", "beneficiary_relationship"],
   disbursement_categories: ["code", "name", "reporting_group", "expense_account_code", "status"],
@@ -553,6 +560,13 @@ app.use((request, response, next) => {
   const user = parseSession(request);
   const allowedWhileChanging = ["/api/me", "/api/logout", "/api/change-password"];
   if (user?.mustChangePassword && !allowedWhileChanging.includes(request.path)) {
+    response.status(403).json({ error: "Password change is required before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
+    return;
+  }
+  const memberSession = parseMemberSession(request);
+  const allowedMemberPaths = ["/api/member-portal/me", "/api/member-portal/logout", "/api/member-portal/change-password"];
+  if (memberSession?.mustChangePassword && request.path.startsWith("/api/member-portal/") &&
+      !allowedMemberPaths.includes(request.path)) {
     response.status(403).json({ error: "Password change is required before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
     return;
   }
@@ -12824,6 +12838,166 @@ function isAdminUser(user) {
   return user?.username === "admin" && user?.role === "System Administrator";
 }
 
+function canManageMemberPortalAccounts(user) {
+  return getAssignedRoles(user?.role, user?.additionalRoles).some((role) =>
+    ["System Administrator", "General Manager", "Membership Officer"].includes(role)
+  );
+}
+
+async function recordMemberPortalEvent(account, eventType, performedBy, details = "") {
+  const event = { memberNo: account.memberNo, username: account.username, eventType, performedBy, details,
+    createdAt: new Date().toISOString() };
+  const db = await getPool();
+  if (!db) memoryMemberPortalAuditEvents.unshift(event);
+  else await db.execute(
+    `INSERT INTO member_portal_audit_events (member_no, username, event_type, performed_by, details)
+     VALUES (?, ?, ?, ?, ?)`, [event.memberNo, event.username, eventType, performedBy, details]
+  );
+}
+
+async function findMemberPortalAccount(username) {
+  const db = await getPool();
+  if (!db) return memoryMemberPortalAccounts.find((account) => account.username === username) || null;
+  const [rows] = await db.execute(
+    `SELECT member_no AS memberNo, username, password_hash AS passwordHash,
+            must_change_password AS mustChangePassword, status, password_changed_at AS passwordChangedAt,
+            password_reset_at AS passwordResetAt, created_at AS createdAt
+     FROM member_portal_accounts WHERE username = ? LIMIT 1`, [username]
+  );
+  return rows[0] ? { ...rows[0], mustChangePassword: Boolean(rows[0].mustChangePassword) } : null;
+}
+
+async function listMemberPortalAccounts() {
+  const db = await getPool();
+  let accounts;
+  if (!db) accounts = memoryMemberPortalAccounts;
+  else {
+    const [rows] = await db.execute(
+      `SELECT account.member_no AS memberNo, member.full_name AS memberName, account.username,
+              account.must_change_password AS mustChangePassword, account.status,
+              account.password_changed_at AS passwordChangedAt, account.password_reset_at AS passwordResetAt,
+              account.created_at AS createdAt
+       FROM member_portal_accounts account JOIN members member ON member.member_no = account.member_no
+       ORDER BY account.username`
+    );
+    return rows.map((row) => ({ ...row, mustChangePassword: Boolean(row.mustChangePassword) }));
+  }
+  const memberRows = await listMembers();
+  return accounts.map(({ passwordHash, ...account }) => ({ ...account,
+    memberName: memberRows.find((member) => member.id === account.memberNo)?.name || "" }));
+}
+
+async function createMemberPortalAccount(body, actor) {
+  const memberNo = String(body.memberNo || "").trim();
+  const username = String(body.username || "").trim().toLowerCase();
+  if (!memberNo || !/^[a-z0-9._-]{4,80}$/.test(username))
+    return { error: "Member and a 4-80 character username are required.", statusCode: 400 };
+  const member = (await listMembers()).find((item) => item.id === memberNo);
+  if (!member) return { error: "Member was not found.", statusCode: 404 };
+  const db = await getPool();
+  if (await findMemberPortalAccount(username) || (await listMemberPortalAccounts()).some((item) => item.memberNo === memberNo))
+    return { error: "That username or member already has a portal account.", statusCode: 409 };
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+  const account = { memberNo, memberName: member.name, username, passwordHash, mustChangePassword: true,
+    status: "Active", passwordResetAt: new Date().toISOString(), createdAt: new Date().toISOString() };
+  if (!db) memoryMemberPortalAccounts.push(account);
+  else await db.execute(
+    `INSERT INTO member_portal_accounts
+       (member_no, username, password_hash, must_change_password, status, created_by, updated_by)
+     VALUES (?, ?, ?, TRUE, 'Active', ?, ?)`, [memberNo, username, passwordHash, actor.username, actor.username]
+  );
+  await recordMemberPortalEvent(account, "Account Provisioned", actor.username, "Temporary password issued");
+  return { account: { ...account, passwordHash: undefined }, temporaryPassword };
+}
+
+async function updateMemberPortalAccount(username, status, actor) {
+  if (!["Active", "Locked", "Disabled"].includes(status)) return { error: "Invalid account status.", statusCode: 400 };
+  const account = await findMemberPortalAccount(username);
+  if (!account) return { error: "Member portal account was not found.", statusCode: 404 };
+  const db = await getPool();
+  if (!db) account.status = status;
+  else await db.execute(`UPDATE member_portal_accounts SET status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?`,
+    [status, actor.username, username]);
+  invalidateMemberSessions(username);
+  await recordMemberPortalEvent(account, `Account ${status}`, actor.username);
+  return { account: { ...account, status, passwordHash: undefined } };
+}
+
+async function resetMemberPortalPassword(username, actor) {
+  const account = await findMemberPortalAccount(username);
+  if (!account) return { error: "Member portal account was not found.", statusCode: 404 };
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+  const db = await getPool();
+  if (!db) Object.assign(account, { passwordHash, mustChangePassword: true, status: "Active", passwordResetAt: new Date().toISOString() });
+  else await db.execute(
+    `UPDATE member_portal_accounts SET password_hash = ?, must_change_password = TRUE, status = 'Active',
+            password_reset_at = CURRENT_TIMESTAMP, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?`,
+    [passwordHash, actor.username, username]
+  );
+  invalidateMemberSessions(username);
+  await recordMemberPortalEvent(account, "Password Reset", actor.username, "Temporary password issued");
+  return { temporaryPassword };
+}
+
+async function buildMemberPortalOverview(memberNo) {
+  const statement = await getMemberStatement(memberNo);
+  if (statement.error) return statement;
+  const dues = await getMemberDuesPosition(memberNo);
+  const currentLoans = statement.currentLoans || [];
+  return {
+    asOf: new Date().toISOString(),
+    member: { memberNo: statement.member.id, name: statement.member.name,
+      classification: statement.member.group, status: statement.member.status,
+      membershipDate: statement.member.membershipDate || null },
+    balances: { cbu: Number(statement.member.share || 0), regularSavings: Number(statement.member.savings || 0),
+      securedSavings: Number(statement.member.securedSavings || 0),
+      outstandingSystemLoans: sumMoney(currentLoans.map((loan) => loan.outstandingBalance)) },
+    existingLoans: currentLoans,
+    previousLoans: (statement.previousLoans || []).map((loan) => ({
+      loanLabel: loan.loanLabel, originalAmount: Number(loan.originalAmount || 0),
+      outstandingBalance: Number(loan.outstandingBalance || 0), status: loan.status
+    })),
+    costCenterDues: dues?.centers || [],
+    totalCostCenterDues: Number(dues?.totalOutstanding || 0)
+  };
+}
+
+function parseMemberSession(request) {
+  const cookies = cookie.parse(request.headers.cookie || "");
+  return memberSessions.get(cookies.tasetemco_member_session) || null;
+}
+
+function setMemberSession(response, account) {
+  const sessionId = crypto.randomUUID();
+  const session = {
+    username: account.username,
+    memberNo: account.memberNo,
+    mustChangePassword: Boolean(account.mustChangePassword)
+  };
+  memberSessions.set(sessionId, session);
+  response.setHeader("Set-Cookie", cookie.serialize("tasetemco_member_session", sessionId, {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
+    path: "/", maxAge: 28800
+  }));
+  return session;
+}
+
+function clearMemberSession(request, response) {
+  const cookies = cookie.parse(request.headers.cookie || "");
+  memberSessions.delete(cookies.tasetemco_member_session);
+  response.setHeader("Set-Cookie", cookie.serialize("tasetemco_member_session", "", {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 0
+  }));
+}
+
+function invalidateMemberSessions(username, exceptSessionId = "") {
+  for (const [sessionId, session] of memberSessions.entries()) {
+    if (session.username === username && sessionId !== exceptSessionId) memberSessions.delete(sessionId);
+  }
+}
+
 function canManageSystemUsers(user) {
   return isAdminUser(user) || hasPermission(user, "users:manage");
 }
@@ -12879,11 +13053,30 @@ async function getDemoMaintenanceStatus() {
     tables.push({ name: table, count: rows[0]?.countValue || 0 });
   }
 
+  const resetGuard = demoResetGuard();
   return {
     database: "postgres",
-    resetAvailable: true,
+    resetAvailable: !resetGuard,
+    resetBlockedReason: resetGuard,
     tables
   };
+}
+
+function configuredDatabaseName() {
+  if (process.env.PGDATABASE) return process.env.PGDATABASE;
+  try { return new URL(process.env.DATABASE_URL || "").pathname.slice(1); } catch { return ""; }
+}
+
+function demoResetGuard() {
+  const databaseName = configuredDatabaseName();
+  if (process.env.NODE_ENV === "production") return "Database reset is disabled in production.";
+  if (!/(?:^|_)(?:test|smoke|demo)$/i.test(databaseName)) {
+    return `Database '${databaseName || "unknown"}' is not marked as disposable.`;
+  }
+  if (process.env.ALLOW_DEMO_DATABASE_RESET !== `RESET ${databaseName}`) {
+    return "The database-specific reset authorization is not configured.";
+  }
+  return "";
 }
 
 async function buildDemoBackup() {
@@ -12909,10 +13102,12 @@ async function buildDemoBackup() {
 
 async function resetDemoDatabase() {
   const db = await getPool();
+  const guardError = demoResetGuard();
 
   if (!db || !schemaSqlPath || !seedSqlPath) {
     return { error: "Demo reset is not available in this environment.", statusCode: 409 };
   }
+  if (guardError) return { error: guardError, statusCode: 403 };
 
   await db.query(fs.readFileSync(schemaSqlPath, "utf8"));
   await db.query(`TRUNCATE TABLE ${persistedTables.join(", ")} RESTART IDENTITY CASCADE`);
@@ -12970,6 +13165,73 @@ app.get("/api/health", async (request, response) => {
     schema: schema.status,
     missingSchema: schema.missing
   });
+});
+
+app.post("/api/member-portal/login", async (request, response) => {
+  const username = String(request.body.username || "").trim().toLowerCase();
+  const password = String(request.body.password || "");
+  const account = await findMemberPortalAccount(username);
+  if (!account || account.status !== "Active" || !(await verifyPassword(password, account.passwordHash))) {
+    if (account) await recordMemberPortalEvent(account, "Login Failed", username, "Invalid credentials or unavailable account");
+    return response.status(401).json({ error: "Invalid username or password" });
+  }
+  const member = (await listMembers()).find((item) => item.id === account.memberNo);
+  const session = setMemberSession(response, account);
+  await recordMemberPortalEvent(account, "Login Succeeded", username,
+    account.mustChangePassword ? "Password change required" : "");
+  response.json({ member: { ...session, name: member?.name || "" } });
+});
+
+app.get("/api/member-portal/me", async (request, response) => {
+  const session = parseMemberSession(request);
+  if (!session) return response.json({ member: null });
+  const account = await findMemberPortalAccount(session.username);
+  if (!account || account.status !== "Active") {
+    clearMemberSession(request, response);
+    return response.json({ member: null });
+  }
+  const member = (await listMembers()).find((item) => item.id === session.memberNo);
+  response.json({ member: { ...session, mustChangePassword: Boolean(account.mustChangePassword), name: member?.name || "" } });
+});
+
+app.post("/api/member-portal/logout", (request, response) => {
+  clearMemberSession(request, response);
+  response.json({ ok: true });
+});
+
+app.post("/api/member-portal/change-password", async (request, response) => {
+  const session = parseMemberSession(request);
+  if (!session) return response.status(401).json({ error: "Member login required" });
+  const account = await findMemberPortalAccount(session.username);
+  const currentPassword = String(request.body.currentPassword || "");
+  const newPassword = String(request.body.newPassword || "");
+  if (newPassword !== String(request.body.confirmPassword || ""))
+    return response.status(400).json({ error: "New password and confirmation do not match." });
+  const passwordError = validatePassword(newPassword);
+  if (passwordError) return response.status(400).json({ error: passwordError });
+  if (!account || !(await verifyPassword(currentPassword, account.passwordHash)))
+    return response.status(400).json({ error: "Current password is incorrect." });
+  if (currentPassword === newPassword) return response.status(400).json({ error: "New password must differ from the current password." });
+  const passwordHash = await hashPassword(newPassword);
+  const db = await getPool();
+  if (!db) Object.assign(account, { passwordHash, mustChangePassword: false, passwordChangedAt: new Date().toISOString() });
+  else await db.execute(
+    `UPDATE member_portal_accounts SET password_hash = ?, must_change_password = FALSE,
+            password_changed_at = CURRENT_TIMESTAMP, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?`,
+    [passwordHash, account.username, account.username]
+  );
+  invalidateMemberSessions(account.username);
+  const nextSession = setMemberSession(response, { ...account, mustChangePassword: false });
+  await recordMemberPortalEvent(account, "Password Changed", account.username, "Self-service password change");
+  response.json({ member: nextSession });
+});
+
+app.get("/api/member-portal/overview", async (request, response) => {
+  const session = parseMemberSession(request);
+  if (!session) return response.status(401).json({ error: "Member login required" });
+  const result = await buildMemberPortalOverview(session.memberNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.json(result);
 });
 
 app.post("/api/login", async (request, response) => {
@@ -13650,6 +13912,43 @@ app.post("/api/admin/users/:username/reset-password", async (request, response) 
   const restriction = await delegatedManagerRestriction(user, request.params.username);
   if (restriction) return response.status(403).json({ error: restriction });
   const result = await resetSystemUserPassword(request.params.username, user.username);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.json(result);
+});
+
+app.get("/api/admin/member-portal-accounts", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!canManageMemberPortalAccounts(user)) return response.status(403).json({ error: "Member portal management access required" });
+  const memberRows = await listMembers();
+  response.json({ accounts: await listMemberPortalAccounts(), members: memberRows.map((member) => ({
+    memberNo: member.id, name: member.name, status: member.status
+  })) });
+});
+
+app.post("/api/admin/member-portal-accounts", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!canManageMemberPortalAccounts(user)) return response.status(403).json({ error: "Member portal management access required" });
+  const result = await createMemberPortalAccount(request.body, user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.status(201).json(result);
+});
+
+app.patch("/api/admin/member-portal-accounts/:username", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!canManageMemberPortalAccounts(user)) return response.status(403).json({ error: "Member portal management access required" });
+  const result = await updateMemberPortalAccount(request.params.username, String(request.body.status || ""), user);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.json(result);
+});
+
+app.post("/api/admin/member-portal-accounts/:username/reset-password", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!canManageMemberPortalAccounts(user)) return response.status(403).json({ error: "Member portal management access required" });
+  const result = await resetMemberPortalPassword(request.params.username, user);
   if (result.error) return response.status(result.statusCode).json({ error: result.error });
   response.json(result);
 });

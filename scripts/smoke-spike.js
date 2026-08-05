@@ -49,6 +49,13 @@ async function run() {
       throw new Error("Postgres smoke test requires DATABASE_URL or PGHOST, PGUSER, and PGDATABASE.");
     }
 
+    const smokeDatabaseName = process.env.PGDATABASE || new URL(process.env.DATABASE_URL).pathname.slice(1);
+    if (!/(?:^|_)(?:test|smoke|demo)$/i.test(smokeDatabaseName)) {
+      throw new Error(
+        `Postgres smoke test refuses database '${smokeDatabaseName}'. Use a disposable database ending in _test, _smoke, or _demo.`
+      );
+    }
+
     const reset = spawnSync(process.execPath, ["scripts/pg-maintenance.js", "reset-demo"], {
       cwd: process.cwd(),
       env: process.env,

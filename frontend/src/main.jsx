@@ -20,6 +20,8 @@ import {
   Heading,
   Image,
   Input,
+  InputGroup,
+  InputRightElement,
   Modal,
   ModalBody,
   ModalContent,
@@ -135,6 +137,20 @@ function TableContainer(props) {
       {...props}
     />
   );
+}
+
+function PasswordInput(props) {
+  const [isVisible, setIsVisible] = useState(false);
+  return <InputGroup>
+    <Input {...props} type={isVisible ? "text" : "password"} pr="4.75rem" />
+    <InputRightElement width="4.5rem">
+      <Button type="button" size="sm" variant="ghost" height="1.75rem"
+        aria-label={isVisible ? "Hide password" : "Show password"}
+        aria-pressed={isVisible} onClick={() => setIsVisible((current) => !current)}>
+        {isVisible ? "Hide" : "Show"}
+      </Button>
+    </InputRightElement>
+  </InputGroup>;
 }
 
 async function api(path, options = {}) {
@@ -890,7 +906,7 @@ function buildTellerBatchSummary(rows) {
   );
 }
 
-function Login({ onLogin }) {
+function Login({ onLogin, onMemberPortal }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -1055,8 +1071,7 @@ function Login({ onLogin }) {
                   <FormLabel color="gray.700" fontWeight="700">
                     Password
                   </FormLabel>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     variant="flushed"
@@ -1086,6 +1101,9 @@ function Login({ onLogin }) {
               <Text mt={6} pt={5} borderTop="1px solid" borderColor="gray.200" fontSize="sm" color="gray.500">
                 Use the individual credentials issued by the System Administrator.
               </Text>
+              <Button mt={4} width="full" variant="outline" colorScheme="green" onClick={onMemberPortal}>
+                Member Portal Login
+              </Button>
             </Box>
           </GridItem>
 
@@ -7168,6 +7186,83 @@ function Reports({ user }) {
   );
 }
 
+function MemberPortalAccountManagement({ user }) {
+  const [accounts, setAccounts] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [form, setForm] = useState({ memberNo: "", username: "" });
+  const [credential, setCredential] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const canManage = [user.role, ...(user.additionalRoles || [])].some((role) =>
+    ["System Administrator", "General Manager", "Membership Officer"].includes(role));
+
+  const load = useCallback(async () => {
+    if (!canManage) return;
+    try {
+      const data = await api("/api/admin/member-portal-accounts");
+      setAccounts(data.accounts || []);
+      setMembers(data.members || []);
+    } catch (requestError) { setError(requestError.message); }
+  }, [canManage]);
+  useEffect(() => { load(); }, [load]);
+
+  async function provision(event) {
+    event.preventDefault(); setBusy(true); setError(""); setMessage("");
+    try {
+      const data = await api("/api/admin/member-portal-accounts", { method: "POST", body: JSON.stringify(form) });
+      setCredential({ username: form.username, password: data.temporaryPassword });
+      setMessage("Member portal account provisioned. Copy the temporary password now.");
+      setForm({ memberNo: "", username: "" }); await load();
+    } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
+  }
+  async function setStatus(username, status) {
+    setBusy(true); setError("");
+    try { await api(`/api/admin/member-portal-accounts/${username}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      setMessage(`${username} is now ${status.toLowerCase()}.`); await load();
+    } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
+  }
+  async function reset(username) {
+    setBusy(true); setError("");
+    try { const data = await api(`/api/admin/member-portal-accounts/${username}/reset-password`, { method: "POST" });
+      setCredential({ username, password: data.temporaryPassword }); setMessage("Password reset. Copy the temporary password now."); await load();
+    } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
+  }
+  if (!canManage) return null;
+  const availableMembers = members
+    .filter((member) => !accounts.some((account) => account.memberNo === member.memberNo))
+    .map((member) => ({ id: member.memberNo, name: member.name, group: member.status }));
+  return <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+    <Heading size="md">Member Portal Accounts</Heading>
+    <Text color="gray.600" mt={1}>Provision and control the separate self-service identities issued to members.</Text>
+    {message ? <Text mt={4} color="green.700">{message}</Text> : null}
+    {error ? <Text mt={4} color="red.600">{error}</Text> : null}
+    {credential ? <Box mt={4} p={4} bg="orange.50" borderWidth="2px" borderColor="orange.300" borderRadius="md">
+      <Text fontWeight="bold">One-time credential for @{credential.username}</Text>
+      <Text mt={2} fontFamily="mono" fontSize="lg">{credential.password}</Text>
+      <Text fontSize="sm" color="gray.600">This password will not be shown again and must be changed at first login.</Text>
+      <Button size="xs" mt={2} onClick={() => setCredential(null)}>Dismiss</Button>
+    </Box> : null}
+    <Grid as="form" onSubmit={provision} mt={5} templateColumns={{ base: "1fr", md: "2fr 1fr auto" }} gap={3} alignItems="end">
+      <FormControl isRequired><FormLabel>Member</FormLabel><MemberCombobox members={availableMembers}
+        value={form.memberNo} onChange={(memberNo) => setForm((v) => ({ ...v, memberNo }))}
+        placeholder="Search member name or number" maxResults={20} /></FormControl>
+      <FormControl isRequired><FormLabel>Username</FormLabel><Input value={form.username} onChange={(event) => setForm((v) => ({ ...v, username: event.target.value }))} /></FormControl>
+      <Button type="submit" colorScheme="green" isLoading={busy}>Provision</Button>
+    </Grid>
+    <TableContainer mt={5}><Table size="sm"><Thead><Tr><Th>Member</Th><Th>Username</Th><Th>Status</Th><Th>Activation</Th><Th>Actions</Th></Tr></Thead><Tbody>
+      {accounts.map((account) => <Tr key={account.username}><Td>{account.memberNo}<br />{account.memberName}</Td><Td>@{account.username}</Td>
+        <Td><Badge>{account.status}</Badge></Td><Td>{account.mustChangePassword ? "Password change required" : "Complete"}</Td><Td><HStack wrap="wrap">
+          <Button size="xs" onClick={() => reset(account.username)} isDisabled={busy}>Reset password</Button>
+          {account.status !== "Locked" ? <Button size="xs" onClick={() => setStatus(account.username, "Locked")}>Lock</Button> : null}
+          {account.status !== "Disabled" ? <Button size="xs" onClick={() => setStatus(account.username, "Disabled")}>Disable</Button> : null}
+          {account.status !== "Active" ? <Button size="xs" colorScheme="green" onClick={() => setStatus(account.username, "Active")}>Enable</Button> : null}
+        </HStack></Td></Tr>)}
+      {!accounts.length ? <Tr><Td colSpan={5} color="gray.500">No member portal accounts yet.</Td></Tr> : null}
+    </Tbody></Table></TableContainer>
+  </Box>;
+}
+
 function AdminUserManagement({ user }) {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -11896,7 +11991,7 @@ function Shell({ user, onLogout }) {
     }
 
     if (view === "users") {
-      return <AdminUserManagement user={user} />;
+      return <VStack align="stretch" spacing={5}><MemberPortalAccountManagement user={user} /><AdminUserManagement user={user} /></VStack>;
     }
 
     if (view === "setup") {
@@ -12016,11 +12111,11 @@ function RequiredPasswordChange({ user, onChanged, onLogout }) {
       <Heading size="lg" mt={3}>Create your password</Heading>
       <Text color="gray.600" mt={2} mb={6}>Welcome, {user.name}. Replace your temporary password before accessing TASETEMCO.</Text>
       <VStack spacing={4}>
-        <FormControl isRequired><FormLabel>Temporary password</FormLabel><Input type="password" autoComplete="current-password"
+        <FormControl isRequired><FormLabel>Temporary password</FormLabel><PasswordInput autoComplete="current-password"
           value={form.currentPassword} onChange={(event) => setForm((current) => ({ ...current, currentPassword: event.target.value }))} /></FormControl>
-        <FormControl isRequired><FormLabel>New password</FormLabel><Input type="password" autoComplete="new-password"
+        <FormControl isRequired><FormLabel>New password</FormLabel><PasswordInput autoComplete="new-password"
           value={form.newPassword} onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))} /></FormControl>
-        <FormControl isRequired><FormLabel>Confirm new password</FormLabel><Input type="password" autoComplete="new-password"
+        <FormControl isRequired><FormLabel>Confirm new password</FormLabel><PasswordInput autoComplete="new-password"
           value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} /></FormControl>
         <Text fontSize="sm" color="gray.600">Use at least 10 characters with uppercase, lowercase, a number, and a special character.</Text>
         {error ? <Text color="red.500" alignSelf="stretch">{error}</Text> : null}
@@ -12031,9 +12126,49 @@ function RequiredPasswordChange({ user, onChanged, onLogout }) {
   </Flex>;
 }
 
+function MemberPortal({ onStaffLogin }) {
+  const [member, setMember] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [credentials, setCredentials] = useState({ username: "", password: "" });
+  const [change, setChange] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [error, setError] = useState("");
+  useEffect(() => { api("/api/member-portal/me").then((data) => setMember(data.member)).finally(() => setReady(true)); }, []);
+  useEffect(() => { if (member && !member.mustChangePassword) api("/api/member-portal/overview").then(setOverview).catch((e) => setError(e.message)); }, [member]);
+  async function login(event) { event.preventDefault(); setError(""); try {
+    const data = await api("/api/member-portal/login", { method: "POST", body: JSON.stringify(credentials) }); setMember(data.member);
+  } catch (e) { setError(e.message); } }
+  async function changePassword(event) { event.preventDefault(); setError(""); try {
+    const data = await api("/api/member-portal/change-password", { method: "POST", body: JSON.stringify(change) }); setMember(data.member);
+  } catch (e) { setError(e.message); } }
+  async function logout() { await api("/api/member-portal/logout", { method: "POST" }); setMember(null); setOverview(null); }
+  if (!ready) return <Box p={8}>Loading...</Box>;
+  if (!member) return <Flex minH="100vh" bg="green.900" align="center" justify="center" p={6}><Box as="form" onSubmit={login} bg="white" p={8} borderRadius="lg" w="full" maxW="440px">
+    <Image src="/brand/tasetemco-seal.png" alt="TASETEMCO seal" boxSize="72px" mx="auto" /><Text color="green.700" fontWeight="bold" mt={4}>MEMBER PORTAL</Text><Heading size="lg" mt={1}>Member Login</Heading>
+    <VStack mt={6} spacing={4}><FormControl isRequired><FormLabel>Username</FormLabel><Input autoComplete="username" value={credentials.username} onChange={(e) => setCredentials((v) => ({ ...v, username: e.target.value }))} /></FormControl>
+      <FormControl isRequired><FormLabel>Password</FormLabel><PasswordInput autoComplete="current-password" value={credentials.password} onChange={(e) => setCredentials((v) => ({ ...v, password: e.target.value }))} /></FormControl>
+      {error ? <Text color="red.600" alignSelf="stretch">{error}</Text> : null}<Button type="submit" colorScheme="green" w="full">Login</Button><Button variant="ghost" w="full" onClick={onStaffLogin}>Staff Login</Button></VStack>
+  </Box></Flex>;
+  if (member.mustChangePassword) return <Flex minH="100vh" bg="gray.50" align="center" justify="center" p={6}><Box as="form" onSubmit={changePassword} bg="white" p={8} borderRadius="lg" borderWidth="1px" w="full" maxW="480px">
+    <Badge colorScheme="orange">Required</Badge><Heading size="lg" mt={3}>Create your portal password</Heading><Text mt={2} color="gray.600">Replace the temporary password before viewing your account.</Text>
+    <VStack mt={6} spacing={4}>{[["currentPassword","Temporary password","current-password"],["newPassword","New password","new-password"],["confirmPassword","Confirm new password","new-password"]].map(([key,label,autoComplete]) => <FormControl isRequired key={key}><FormLabel>{label}</FormLabel><PasswordInput autoComplete={autoComplete} value={change[key]} onChange={(e) => setChange((v) => ({ ...v, [key]: e.target.value }))} /></FormControl>)}
+      <Text fontSize="sm" color="gray.600">At least 10 characters with uppercase, lowercase, a number, and a special character.</Text>{error ? <Text color="red.600">{error}</Text> : null}<Button type="submit" colorScheme="green" w="full">Change Password</Button><Button variant="ghost" onClick={logout}>Logout</Button></VStack>
+  </Box></Flex>;
+  return <Box minH="100vh" bg="gray.50"><Flex bg="green.900" color="white" p={5} justify="space-between"><Box><Heading size="md">TASETEMCO Member Portal</Heading><Text fontSize="sm" color="green.100">Read-only account overview</Text></Box><Button onClick={logout}>Logout</Button></Flex>
+    <Container maxW="6xl" py={8}>{error ? <Text color="red.600">{error}</Text> : null}{overview ? <VStack align="stretch" spacing={5}>
+      <Box bg="white" p={6} borderRadius="lg" borderWidth="1px"><Flex justify="space-between" wrap="wrap" gap={3}><Box><Text color="gray.500">{overview.member.memberNo}</Text><Heading>{overview.member.name}</Heading><Text mt={2}>{overview.member.classification} · {overview.member.status}</Text><Text fontSize="sm">Member since {overview.member.membershipDate || "Not recorded"}</Text></Box><Text fontSize="sm" color="gray.500">As of {formatDateTime(overview.asOf)}</Text></Flex></Box>
+      <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>{[["CBU",overview.balances.cbu],["Regular savings",overview.balances.regularSavings],["Secured savings",overview.balances.securedSavings],["Outstanding system loans",overview.balances.outstandingSystemLoans]].map(([label,value]) => <Stat key={label} bg="white" borderWidth="1px" borderRadius="lg" p={4}><StatLabel>{label}</StatLabel><StatNumber fontSize="xl">{formatMoney(value)}</StatNumber></Stat>)}</Grid>
+      <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={5}><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md">Existing system loans</Heading>{overview.existingLoans.length ? overview.existingLoans.map((loan) => <Flex key={loan.loanNo} py={3} borderBottomWidth="1px" justify="space-between"><Box><Text fontWeight="bold">{loan.productName}</Text><Text fontSize="sm">{loan.status}</Text></Box><Text>{formatMoney(loan.outstandingBalance)}</Text></Flex>) : <Text mt={3} color="gray.500">No system loans.</Text>}</Box>
+      <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md">Previous loans</Heading>{overview.previousLoans.length ? overview.previousLoans.map((loan,index) => <Flex key={`${loan.loanLabel}-${index}`} py={3} borderBottomWidth="1px" justify="space-between"><Box><Text fontWeight="bold">{loan.loanLabel}</Text><Text fontSize="sm">{loan.status}</Text></Box><Text>{formatMoney(loan.outstandingBalance)}</Text></Flex>) : <Text mt={3} color="gray.500">No previous loans recorded.</Text>}</Box></Grid>
+      <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Flex justify="space-between"><Heading size="md">Cost-center dues</Heading><Text fontWeight="bold">{formatMoney(overview.totalCostCenterDues)}</Text></Flex>{overview.costCenterDues.map((due) => <Flex key={due.costCenterCode} py={3} borderBottomWidth="1px" justify="space-between"><Text>{due.costCenterName}</Text><Text>{formatMoney(due.outstandingAmount)}</Text></Flex>)}{!overview.costCenterDues.length ? <Text mt={3} color="gray.500">No outstanding cost-center dues.</Text> : null}</Box>
+      <Text fontSize="sm" color="gray.500">This portal is strictly read-only. ID numbers and beneficiary information are not displayed.</Text>
+    </VStack> : <Text>Loading account overview...</Text>}</Container></Box>;
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
+  const [memberPortal, setMemberPortal] = useState(window.location.pathname.startsWith("/member-portal"));
 
   useEffect(() => {
     api("/api/me")
@@ -12050,8 +12185,10 @@ function App() {
     return <Box p={8}>Loading...</Box>;
   }
 
+  if (memberPortal) return <MemberPortal onStaffLogin={() => setMemberPortal(false)} />;
+
   if (!user) {
-    return <Login onLogin={setUser} />;
+    return <Login onLogin={setUser} onMemberPortal={() => setMemberPortal(true)} />;
   }
 
   if (user.mustChangePassword) {

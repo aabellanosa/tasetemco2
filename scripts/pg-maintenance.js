@@ -15,6 +15,8 @@ const backupDir = path.join(process.cwd(), "data", "backups");
 const connectionTimeoutMillis = Number(process.env.PGCONNECT_TIMEOUT_MS || 8000);
 
 const tables = [
+  "member_portal_audit_events",
+  "member_portal_accounts",
   "user_security_events",
   "member_application_beneficiaries",
   "member_beneficiaries",
@@ -103,6 +105,28 @@ function getConnectionLabel() {
   return `${process.env.PGHOST}:${process.env.PGPORT || 5432}/${process.env.PGDATABASE}`;
 }
 
+function getDatabaseName() {
+  return process.env.PGDATABASE || new URL(process.env.DATABASE_URL).pathname.slice(1);
+}
+
+function requireDisposableResetTarget() {
+  const databaseName = getDatabaseName();
+  const expectedConfirmation = `RESET ${databaseName}`;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Database reset is disabled when NODE_ENV=production.");
+  }
+  if (!/(?:^|_)(?:test|smoke|demo)$/i.test(databaseName)) {
+    throw new Error(
+      `Refusing to reset '${databaseName}'. Reset targets must end in _test, _smoke, or _demo.`
+    );
+  }
+  if (process.env.ALLOW_DEMO_DATABASE_RESET !== expectedConfirmation) {
+    throw new Error(
+      `Reset confirmation missing. Set ALLOW_DEMO_DATABASE_RESET='${expectedConfirmation}' only for this disposable database.`
+    );
+  }
+}
+
 async function runSqlFile(filePath) {
   const sql = fs.readFileSync(filePath, "utf8");
   const pool = createPool();
@@ -179,6 +203,7 @@ async function main() {
     return;
   }
 
+  requireDisposableResetTarget();
   await runSqlFile(schemaPath);
   await backupDatabase();
   await clearDatabase();

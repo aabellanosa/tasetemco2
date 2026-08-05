@@ -85,7 +85,7 @@ export const roleViews = {
   "Accountant / Bookkeeper": ["dashboard", "ledger", "reports"],
   "Loan Officer": ["dashboard", "members", "loans"],
   "Teller / Cashier": ["dashboard", "members", "loans"],
-  "Membership Officer": ["dashboard", "members"],
+  "Membership Officer": ["dashboard", "members", "users"],
   "Auditor / Compliance Officer": ["dashboard", "members", "loans", "ledger", "reports", "users", "setup"],
   "Board / Read-Only Executive": ["dashboard", "reports"]
 };
@@ -111,6 +111,7 @@ export const rolePermissions = {
     "reports:summo:prepare",
     "reports:summo:lock",
     "users:view",
+    "member-portal-accounts:manage",
     "loans:products:view",
     "loans:products:manage",
     "loans:applications:view",
@@ -146,6 +147,7 @@ export const rolePermissions = {
     "reports:summo:lock",
     "users:view",
     "users:manage",
+    "member-portal-accounts:manage",
     "loans:products:view",
     "loans:applications:view",
     "loans:computations:view",
@@ -252,6 +254,7 @@ export const rolePermissions = {
   ],
   "Membership Officer": [
     "members:view",
+    "member-portal-accounts:manage",
     "members:profile:edit",
     "members:previous-loans:edit",
     "members:previous-loans:unlock-request",
