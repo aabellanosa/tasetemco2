@@ -573,6 +573,51 @@ async function run() {
     if (!provisionPortal.ok || !provisionPortalBody.temporaryPassword) {
       throw new Error("Admin should be able to provision a member portal account.");
     }
+    const portalLogin = await fetch(`${baseUrl}/api/member-portal/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: portalUsername, password: provisionPortalBody.temporaryPassword })
+    });
+    const portalLoginBody = await portalLogin.json();
+    const portalCookie = portalLogin.headers.get("set-cookie")?.split(";")[0];
+    if (!portalLogin.ok || !portalLoginBody.member.mustChangePassword || !portalCookie) {
+      throw new Error("Provisioned member should log in and require a password change.");
+    }
+    const memberPermanentPassword = "MemberSmoke9!Secure";
+    const memberPasswordChange = await fetch(`${baseUrl}/api/member-portal/change-password`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: portalCookie },
+      body: JSON.stringify({ currentPassword: provisionPortalBody.temporaryPassword,
+        newPassword: memberPermanentPassword, confirmPassword: memberPermanentPassword })
+    });
+    const memberPasswordChangeBody = await memberPasswordChange.json();
+    const activePortalCookie = memberPasswordChange.headers.get("set-cookie")?.split(";")[0];
+    if (!memberPasswordChange.ok || memberPasswordChangeBody.member.mustChangePassword || !activePortalCookie) {
+      throw new Error("Member should complete the required first-login password change.");
+    }
+    const [portalLoans, portalDues, portalProfile] = await Promise.all([
+      fetch(`${baseUrl}/api/member-portal/loans`, { headers: { Cookie: activePortalCookie } }),
+      fetch(`${baseUrl}/api/member-portal/dues`, { headers: { Cookie: activePortalCookie } }),
+      fetch(`${baseUrl}/api/member-portal/profile`, { headers: { Cookie: activePortalCookie } })
+    ]);
+    const [portalLoansBody, portalDuesBody, portalProfileBody] = await Promise.all([
+      portalLoans.json(), portalDues.json(), portalProfile.json()
+    ]);
+    if (!portalLoans.ok || !Array.isArray(portalLoansBody.currentLoans) ||
+        !portalDues.ok || !Array.isArray(portalDuesBody.charges) ||
+        !portalProfile.ok || portalProfileBody.profile.memberNo !== portalMember.memberNo ||
+        Object.hasOwn(portalProfileBody.profile, "idNumber") || Object.hasOwn(portalProfileBody.profile, "beneficiaries")) {
+      throw new Error("Member v1b APIs should return session-linked, allow-listed loans, dues, and profile details.");
+    }
+    const updatePortalProfile = await fetch(`${baseUrl}/api/member-portal/profile`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", Cookie: activePortalCookie },
+      body: JSON.stringify({ contactNumber: "0917-555-0101", address: "Updated member address",
+        emailAddress: "member@example.test", occupation: "Teacher", name: "Unauthorized Name Change" })
+    });
+    const updatePortalProfileBody = await updatePortalProfile.json();
+    if (!updatePortalProfile.ok || updatePortalProfileBody.profile.emailAddress !== "member@example.test" ||
+        updatePortalProfileBody.profile.name === "Unauthorized Name Change" ||
+        !updatePortalProfileBody.changedFields.includes("emailAddress")) {
+      throw new Error("Member profile self-service should update only its allow-listed fields.");
+    }
     const lockPortal = await fetch(`${baseUrl}/api/admin/member-portal-accounts/${portalUsername}`, {
       method: "PATCH", headers: { "Content-Type": "application/json", Cookie: adminCookie },
       body: JSON.stringify({ status: "Locked" })
@@ -580,7 +625,7 @@ async function run() {
     if (!lockPortal.ok) throw new Error("Admin should be able to lock a member portal account.");
     const lockedPortalLogin = await fetch(`${baseUrl}/api/member-portal/login`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: portalUsername, password: provisionPortalBody.temporaryPassword })
+      body: JSON.stringify({ username: portalUsername, password: memberPermanentPassword })
     });
     const lockedPortalLoginBody = await lockedPortalLogin.json();
     if (lockedPortalLogin.status !== 423 || !lockedPortalLoginBody.error?.includes("account is locked")) {
@@ -593,7 +638,7 @@ async function run() {
     if (!disablePortal.ok) throw new Error("Admin should be able to disable a member portal account.");
     const disabledPortalLogin = await fetch(`${baseUrl}/api/member-portal/login`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: portalUsername, password: provisionPortalBody.temporaryPassword })
+      body: JSON.stringify({ username: portalUsername, password: memberPermanentPassword })
     });
     const disabledPortalLoginBody = await disabledPortalLogin.json();
     if (disabledPortalLogin.status !== 403 || !disabledPortalLoginBody.error?.includes("account is disabled")) {

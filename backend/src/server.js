@@ -180,9 +180,11 @@ const memberSessions = new Map();
 const memoryUserSecurityEvents = [];
 const memoryMemberPortalAccounts = [];
 const memoryMemberPortalAuditEvents = [];
+const memoryMemberProfileAuditEvents = [];
 let pool = null;
 
 const persistedTables = [
+  "member_profile_audit_events",
   "member_portal_audit_events",
   "member_portal_accounts",
   "user_security_events",
@@ -239,6 +241,7 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  member_profile_audit_events: ["member_no", "portal_username", "previous_values", "new_values", "changed_fields", "created_at"],
   member_portal_accounts: ["member_no", "username", "password_hash", "must_change_password", "status", "created_by", "updated_by"],
   member_portal_audit_events: ["member_no", "username", "event_type", "performed_by", "details", "created_at"],
   member_application_beneficiaries: ["application_no", "display_order", "beneficiary_name", "beneficiary_age", "beneficiary_relationship"],
@@ -285,7 +288,8 @@ const requiredSchemaColumns = {
     "spouse_name",
     "beneficiary_name",
     "beneficiary_age",
-    "beneficiary_relationship"
+    "beneficiary_relationship",
+    "email_address"
   ],
   member_applications: ["spouse_name"],
   member_import_batches: [
@@ -3738,7 +3742,8 @@ async function listMembers() {
             gender, id_type AS idType, id_number AS idNumber, spouse_name AS spouseName,
             beneficiary_name AS beneficiaryName, beneficiary_age AS beneficiaryAge,
             beneficiary_relationship AS beneficiaryRelationship,
-            civil_status AS civilStatus, occupation, membership_date AS membershipDate,
+            civil_status AS civilStatus, occupation, email_address AS emailAddress,
+            membership_date AS membershipDate,
             previous_loan_balance AS previousLoanBalance
      FROM members
      ORDER BY member_no`
@@ -12984,6 +12989,137 @@ async function buildMemberPortalOverview(memberNo) {
   };
 }
 
+async function buildMemberPortalLoans(memberNo) {
+  const member = (await listMembers()).find((item) => item.id === memberNo);
+  if (!member) return { error: "Member was not found.", statusCode: 404 };
+  const currentLoans = (await listLoans()).filter((loan) => loan.memberNo === memberNo).map((loan) => ({
+    ...memberSystemLoanSummary(loan),
+    installments: loan.installments.map((installment) => ({
+      installmentNo: installment.installmentNo,
+      dueDate: installment.dueDate,
+      principalDue: installment.principalDue,
+      interestDue: installment.interestDue,
+      totalDue: installment.totalDue,
+      totalPaid: installment.totalPaid,
+      totalRemaining: installment.totalRemaining,
+      pendingPaymentAmount: installment.pendingPaymentAmount,
+      paymentPending: installment.pendingPaymentAmount > 0,
+      status: installment.totalRemaining <= 0 ? "Paid" :
+        daysBetweenIsoDates(formatDateOnly(new Date()), installment.dueDate) < 0 ? "Overdue" : installment.status
+    }))
+  }));
+  const previousLoans = (await listMemberPreviousLoans(memberNo)).map((loan) => ({
+    loanLabel: loan.loanLabel,
+    originalAmount: Number(loan.originalAmount || 0),
+    outstandingBalance: Number(loan.outstandingBalance || 0),
+    status: loan.status
+  }));
+  return { asOf: new Date().toISOString(), currentLoans, previousLoans };
+}
+
+async function buildMemberPortalDues(memberNo) {
+  const position = await getMemberDuesPosition(memberNo);
+  if (!position) return { error: "Active member was not found.", statusCode: 404 };
+  return {
+    asOf: new Date().toISOString(),
+    totalOutstanding: Number(position.totalOutstanding || 0),
+    centers: position.centers,
+    charges: position.chargeStatuses.map((charge) => ({
+      movementNo: charge.movementNo,
+      transactionDate: charge.transactionDate,
+      costCenterCode: charge.costCenterCode,
+      costCenterName: charge.costCenterName,
+      referenceNo: charge.referenceNo || "",
+      remarks: charge.remarks || "",
+      originalAmount: Number(charge.amount || 0),
+      paidAmount: Number(charge.paidAmount || 0),
+      outstandingAmount: Number(charge.outstandingAmount || 0),
+      paymentStatus: charge.paymentStatus
+    }))
+  };
+}
+
+function memberPortalProfile(member) {
+  return {
+    memberNo: member.id,
+    name: member.name,
+    classification: member.group,
+    status: member.status,
+    membershipDate: member.membershipDate || null,
+    birthdate: member.birthdate || null,
+    gender: member.gender || "",
+    civilStatus: member.civilStatus || "",
+    contactNumber: member.contactNumber || "",
+    address: member.address || "",
+    emailAddress: member.emailAddress || "",
+    occupation: member.occupation || ""
+  };
+}
+
+async function getMemberPortalProfile(memberNo) {
+  const member = (await listMembers()).find((item) => item.id === memberNo);
+  return member ? { profile: memberPortalProfile(member) } : { error: "Member was not found.", statusCode: 404 };
+}
+
+function validateMemberPortalProfile(body) {
+  const value = {
+    contactNumber: String(body.contactNumber || "").trim(),
+    address: String(body.address || "").trim(),
+    emailAddress: String(body.emailAddress || "").trim().toLowerCase(),
+    occupation: String(body.occupation || "").trim()
+  };
+  if (value.contactNumber.length > 60) return { error: "Contact number must be 60 characters or fewer." };
+  if (value.address.length > 500) return { error: "Address must be 500 characters or fewer." };
+  if (value.emailAddress.length > 254 || (value.emailAddress && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.emailAddress)))
+    return { error: "Enter a valid email address of 254 characters or fewer." };
+  if (value.occupation.length > 120) return { error: "Occupation must be 120 characters or fewer." };
+  return { value };
+}
+
+async function updateMemberPortalProfile(session, body) {
+  const validation = validateMemberPortalProfile(body);
+  if (validation.error) return { ...validation, statusCode: 400 };
+  const db = await getPool();
+  const member = db
+    ? (await listMembers()).find((item) => item.id === session.memberNo)
+    : members.find((item) => item.id === session.memberNo);
+  if (!member) return { error: "Member was not found.", statusCode: 404 };
+  const previousValues = {
+    contactNumber: member.contactNumber || "", address: member.address || "",
+    emailAddress: member.emailAddress || "", occupation: member.occupation || ""
+  };
+  const newValues = validation.value;
+  const changedFields = Object.keys(newValues).filter((field) => previousValues[field] !== newValues[field]);
+  if (!changedFields.length) return { profile: memberPortalProfile(member), changedFields: [] };
+  if (!db) {
+    Object.assign(member, newValues);
+    memoryMemberProfileAuditEvents.unshift({ memberNo: session.memberNo, portalUsername: session.username,
+      previousValues, newValues, changedFields, createdAt: new Date().toISOString() });
+  } else {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute(
+        `UPDATE members SET contact_number = ?, address = ?, email_address = ?, occupation = ? WHERE member_no = ?`,
+        [newValues.contactNumber, newValues.address, newValues.emailAddress, newValues.occupation, session.memberNo]
+      );
+      await connection.execute(
+        `INSERT INTO member_profile_audit_events
+           (member_no, portal_username, previous_values, new_values, changed_fields)
+         VALUES (?, ?, ?::jsonb, ?::jsonb, ?::jsonb)`,
+        [session.memberNo, session.username, JSON.stringify(previousValues), JSON.stringify(newValues), JSON.stringify(changedFields)]
+      );
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally { connection.release(); }
+  }
+  await recordMemberPortalEvent({ memberNo: session.memberNo, username: session.username },
+    "Profile Updated", session.username, `Changed: ${changedFields.join(", ")}`);
+  return { profile: { ...memberPortalProfile(member), ...newValues }, changedFields };
+}
+
 function parseMemberSession(request) {
   const cookies = cookie.parse(request.headers.cookie || "");
   return memberSessions.get(cookies.tasetemco_member_session) || null;
@@ -13262,6 +13398,38 @@ app.get("/api/member-portal/overview", async (request, response) => {
   const session = parseMemberSession(request);
   if (!session) return response.status(401).json({ error: "Member login required" });
   const result = await buildMemberPortalOverview(session.memberNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.json(result);
+});
+
+app.get("/api/member-portal/loans", async (request, response) => {
+  const session = parseMemberSession(request);
+  if (!session) return response.status(401).json({ error: "Member login required" });
+  const result = await buildMemberPortalLoans(session.memberNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.json(result);
+});
+
+app.get("/api/member-portal/dues", async (request, response) => {
+  const session = parseMemberSession(request);
+  if (!session) return response.status(401).json({ error: "Member login required" });
+  const result = await buildMemberPortalDues(session.memberNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.json(result);
+});
+
+app.get("/api/member-portal/profile", async (request, response) => {
+  const session = parseMemberSession(request);
+  if (!session) return response.status(401).json({ error: "Member login required" });
+  const result = await getMemberPortalProfile(session.memberNo);
+  if (result.error) return response.status(result.statusCode).json({ error: result.error });
+  response.json(result);
+});
+
+app.patch("/api/member-portal/profile", async (request, response) => {
+  const session = parseMemberSession(request);
+  if (!session) return response.status(401).json({ error: "Member login required" });
+  const result = await updateMemberPortalProfile(session, request.body);
   if (result.error) return response.status(result.statusCode).json({ error: result.error });
   response.json(result);
 });

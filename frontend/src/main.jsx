@@ -12178,19 +12178,39 @@ function RequiredPasswordChange({ user, onChanged, onLogout }) {
 function MemberPortal({ onStaffLogin }) {
   const [member, setMember] = useState(null);
   const [overview, setOverview] = useState(null);
+  const [loanDetails, setLoanDetails] = useState(null);
+  const [duesDetails, setDuesDetails] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [profileForm, setProfileForm] = useState({ contactNumber: "", address: "", emailAddress: "", occupation: "" });
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [credentials, setCredentials] = useState({ username: "", password: "" });
   const [change, setChange] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [error, setError] = useState("");
   useEffect(() => { api("/api/member-portal/me").then((data) => setMember(data.member)).finally(() => setReady(true)); }, []);
-  useEffect(() => { if (member && !member.mustChangePassword) api("/api/member-portal/overview").then(setOverview).catch((e) => setError(e.message)); }, [member]);
+  useEffect(() => {
+    if (!member || member.mustChangePassword) return;
+    Promise.all([
+      api("/api/member-portal/overview"), api("/api/member-portal/loans"),
+      api("/api/member-portal/dues"), api("/api/member-portal/profile")
+    ]).then(([overviewData, loansData, duesData, profileData]) => {
+      setOverview(overviewData); setLoanDetails(loansData); setDuesDetails(duesData); setProfile(profileData.profile);
+      setProfileForm({ contactNumber: profileData.profile.contactNumber, address: profileData.profile.address,
+        emailAddress: profileData.profile.emailAddress, occupation: profileData.profile.occupation });
+    }).catch((e) => setError(e.message));
+  }, [member]);
   async function login(event) { event.preventDefault(); setError(""); try {
     const data = await api("/api/member-portal/login", { method: "POST", body: JSON.stringify(credentials) }); setMember(data.member);
   } catch (e) { setError(e.message); } }
   async function changePassword(event) { event.preventDefault(); setError(""); try {
     const data = await api("/api/member-portal/change-password", { method: "POST", body: JSON.stringify(change) }); setMember(data.member);
   } catch (e) { setError(e.message); } }
-  async function logout() { await api("/api/member-portal/logout", { method: "POST" }); setMember(null); setOverview(null); }
+  async function saveProfile(event) { event.preventDefault(); setProfileBusy(true); setError(""); setProfileMessage(""); try {
+    const data = await api("/api/member-portal/profile", { method: "PATCH", body: JSON.stringify(profileForm) });
+    setProfile(data.profile); setProfileMessage(data.changedFields.length ? "Profile contact details updated." : "No profile changes to save.");
+  } catch (e) { setError(e.message); } finally { setProfileBusy(false); } }
+  async function logout() { await api("/api/member-portal/logout", { method: "POST" }); setMember(null); setOverview(null); setLoanDetails(null); setDuesDetails(null); setProfile(null); }
   if (!ready) return <Box p={8}>Loading...</Box>;
   if (!member) return <Flex minH="100vh" bg="green.900" align="center" justify="center" p={6}><Box as="form" onSubmit={login} bg="white" p={8} borderRadius="lg" w="full" maxW="440px">
     <Image src="/brand/tasetemco-seal.png" alt="TASETEMCO seal" boxSize="72px" mx="auto" /><Text color="green.700" fontWeight="bold" mt={4}>MEMBER PORTAL</Text><Heading size="lg" mt={1}>Member Login</Heading>
@@ -12204,16 +12224,35 @@ function MemberPortal({ onStaffLogin }) {
     <VStack mt={6} spacing={4}>{[["currentPassword","Temporary password","current-password"],["newPassword","New password","new-password"],["confirmPassword","Confirm new password","new-password"]].map(([key,label,autoComplete]) => <FormControl isRequired key={key}><FormLabel>{label}</FormLabel><PasswordInput autoComplete={autoComplete} value={change[key]} onChange={(e) => setChange((v) => ({ ...v, [key]: e.target.value }))} /></FormControl>)}
       <Text fontSize="sm" color="gray.600">At least 10 characters with uppercase, lowercase, a number, and a special character.</Text>{error ? <Text color="red.600">{error}</Text> : null}<Button type="submit" colorScheme="green" w="full">Change Password</Button><Button variant="ghost" onClick={logout}>Logout</Button></VStack>
   </Box></Flex>;
-  return <Box minH="100vh" bg="gray.50"><Flex bg="green.900" color="white" p={5} justify="space-between"><Box><Heading size="md">TASETEMCO Member Portal</Heading><Text fontSize="sm" color="green.100">Read-only account overview</Text></Box><Button onClick={logout}>Logout</Button></Flex>
-    <Container maxW="6xl" py={8}>{error ? <Text color="red.600">{error}</Text> : null}{overview ? <VStack align="stretch" spacing={5}>
+  const loaded = overview && loanDetails && duesDetails && profile;
+  const nextDue = loanDetails?.currentLoans.flatMap((loan) => loan.installments.map((installment) => ({ ...installment, loan })))
+    .filter((installment) => installment.totalRemaining > 0)
+    .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))[0];
+  return <Box minH="100vh" bg="gray.50"><Flex bg="green.900" color="white" p={5} justify="space-between"><Box><Heading size="md">TASETEMCO Member Portal</Heading><Text fontSize="sm" color="green.100">Account information and profile</Text></Box><Button onClick={logout}>Logout</Button></Flex>
+    <Container maxW="7xl" py={8}>{error ? <Text mb={4} color="red.600">{error}</Text> : null}{loaded ? <VStack align="stretch" spacing={5}>
       <Box bg="white" p={6} borderRadius="lg" borderWidth="1px"><Flex justify="space-between" wrap="wrap" gap={3}><Box><Text color="gray.500">{overview.member.memberNo}</Text><Heading>{overview.member.name}</Heading><Text mt={2}>{overview.member.classification} · {overview.member.status}</Text><Text fontSize="sm">Member since {overview.member.membershipDate || "Not recorded"}</Text></Box><Text fontSize="sm" color="gray.500">As of {formatDateTime(overview.asOf)}</Text></Flex></Box>
-      <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>{[["CBU",overview.balances.cbu],["Regular savings",overview.balances.regularSavings],["Secured savings",overview.balances.securedSavings],["Outstanding system loans",overview.balances.outstandingSystemLoans]].map(([label,value]) => <Stat key={label} bg="white" borderWidth="1px" borderRadius="lg" p={4}><StatLabel>{label}</StatLabel><StatNumber fontSize="xl">{formatMoney(value)}</StatNumber></Stat>)}</Grid>
-      <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={5}><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md">Existing system loans</Heading>{overview.existingLoans.length ? overview.existingLoans.map((loan) => <Flex key={loan.loanNo} py={3} borderBottomWidth="1px" justify="space-between"><Box><Text fontWeight="bold">{loan.productName}</Text><Text fontSize="sm">{loan.status}</Text></Box><Text>{formatMoney(loan.outstandingBalance)}</Text></Flex>) : <Text mt={3} color="gray.500">No system loans.</Text>}</Box>
-      <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md">Previous loans</Heading>{overview.previousLoans.length ? overview.previousLoans.map((loan,index) => <Flex key={`${loan.loanLabel}-${index}`} py={3} borderBottomWidth="1px" justify="space-between"><Box><Text fontWeight="bold">{loan.loanLabel}</Text><Text fontSize="sm">{loan.status}</Text></Box><Text>{formatMoney(loan.outstandingBalance)}</Text></Flex>) : <Text mt={3} color="gray.500">No previous loans recorded.</Text>}</Box></Grid>
-      <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Flex justify="space-between"><Heading size="md">Cost-center dues</Heading><Text fontWeight="bold">{formatMoney(overview.totalCostCenterDues)}</Text></Flex>{overview.costCenterDues.map((due) => <Flex key={due.costCenterCode} py={3} borderBottomWidth="1px" justify="space-between"><Text>{due.costCenterName}</Text><Text>{formatMoney(due.outstandingAmount)}</Text></Flex>)}{!overview.costCenterDues.length ? <Text mt={3} color="gray.500">No outstanding cost-center dues.</Text> : null}</Box>
+      <Tabs colorScheme="green" variant="enclosed" isLazy>
+        <TabList overflowX="auto"><Tab flexShrink={0}>Overview</Tab><Tab flexShrink={0}>Loans</Tab><Tab flexShrink={0}>Cost-Center Dues</Tab><Tab flexShrink={0}>My Profile</Tab></TabList>
+        <TabPanels>
+          <TabPanel px={0}><VStack align="stretch" spacing={5}>
+            <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>{[["CBU",overview.balances.cbu],["Regular savings",overview.balances.regularSavings],["Secured savings",overview.balances.securedSavings],["Outstanding system loans",overview.balances.outstandingSystemLoans]].map(([label,value]) => <Stat key={label} bg="white" borderWidth="1px" borderRadius="lg" p={4}><StatLabel>{label}</StatLabel><StatNumber fontSize="xl">{formatMoney(value)}</StatNumber></Stat>)}</Grid>
+            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={5}><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Stat><StatLabel>Next loan due</StatLabel><StatNumber fontSize="xl">{nextDue ? formatMoney(nextDue.totalRemaining) : "None"}</StatNumber><StatHelpText>{nextDue ? `${nextDue.loan.productName} · ${formatDate(nextDue.dueDate)}` : "No unpaid scheduled installment"}</StatHelpText></Stat></Box><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Stat><StatLabel>Cost-center dues</StatLabel><StatNumber fontSize="xl">{formatMoney(duesDetails.totalOutstanding)}</StatNumber><StatHelpText>{duesDetails.centers.length} cost center(s) with balances</StatHelpText></Stat></Box></Grid>
+          </VStack></TabPanel>
+          <TabPanel px={0}><VStack align="stretch" spacing={5}>
+            <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md" mb={4}>Existing system loans</Heading>{loanDetails.currentLoans.length ? <Accordion allowMultiple>{loanDetails.currentLoans.map((loan) => <AccordionItem key={loan.loanNo}><AccordionButton><Box flex="1" textAlign="left"><Text fontWeight="bold">{loan.productName} · {loan.loanNo}</Text><Text fontSize="sm">Outstanding {formatMoney(loan.outstandingBalance)} · Next due {loan.nextDueDate ? formatDate(loan.nextDueDate) : "None"}</Text></Box><AccordionIcon /></AccordionButton><AccordionPanel><TableContainer><Table size="sm"><Thead><Tr><Th>No.</Th><Th>Due Date</Th><Th>Status</Th><Th isNumeric>Principal</Th><Th isNumeric>Interest</Th><Th isNumeric>Paid</Th><Th isNumeric>Remaining</Th></Tr></Thead><Tbody>{loan.installments.map((item) => <Tr key={item.installmentNo}><Td>{item.installmentNo}</Td><Td>{formatDate(item.dueDate)}</Td><Td><Badge colorScheme={item.status === "Overdue" ? "red" : item.status === "Paid" ? "green" : "gray"}>{item.status}</Badge>{item.paymentPending ? <Badge ml={1} colorScheme="blue">Payment pending</Badge> : null}</Td><Td isNumeric>{formatMoney(item.principalDue)}</Td><Td isNumeric>{formatMoney(item.interestDue)}</Td><Td isNumeric>{formatMoney(item.totalPaid)}</Td><Td isNumeric>{formatMoney(item.totalRemaining)}</Td></Tr>)}</Tbody></Table></TableContainer></AccordionPanel></AccordionItem>)}</Accordion> : <Text color="gray.500">No system loans.</Text>}</Box>
+            <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md" mb={4}>Previous loans</Heading>{loanDetails.previousLoans.length ? <TableContainer><Table size="sm"><Thead><Tr><Th>Loan</Th><Th>Status</Th><Th isNumeric>Original</Th><Th isNumeric>Outstanding</Th></Tr></Thead><Tbody>{loanDetails.previousLoans.map((loan,index) => <Tr key={`${loan.loanLabel}-${index}`}><Td>{loan.loanLabel}</Td><Td>{loan.status}</Td><Td isNumeric>{formatMoney(loan.originalAmount)}</Td><Td isNumeric>{formatMoney(loan.outstandingBalance)}</Td></Tr>)}</Tbody></Table></TableContainer> : <Text color="gray.500">No previous loans recorded.</Text>}</Box>
+          </VStack></TabPanel>
+          <TabPanel px={0}><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Flex justify="space-between" mb={4}><Heading size="md">Cost-center dues</Heading><Text fontWeight="bold">{formatMoney(duesDetails.totalOutstanding)}</Text></Flex>{duesDetails.charges.length ? <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Cost Center</Th><Th>Details</Th><Th>Status</Th><Th isNumeric>Original</Th><Th isNumeric>Paid</Th><Th isNumeric>Balance</Th></Tr></Thead><Tbody>{duesDetails.charges.map((charge) => <Tr key={charge.movementNo}><Td>{formatDate(charge.transactionDate)}</Td><Td>{charge.costCenterName}</Td><Td>{charge.referenceNo || charge.remarks || "—"}</Td><Td><Badge>{charge.paymentStatus}</Badge></Td><Td isNumeric>{formatMoney(charge.originalAmount)}</Td><Td isNumeric>{formatMoney(charge.paidAmount)}</Td><Td isNumeric>{formatMoney(charge.outstandingAmount)}</Td></Tr>)}</Tbody></Table></TableContainer> : <Text color="gray.500">No cost-center charges recorded.</Text>}</Box></TabPanel>
+          <TabPanel px={0}><Box as="form" onSubmit={saveProfile} bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md">My Profile</Heading><Text color="gray.600" mt={1}>You may update only your contact information, address, email, and occupation.</Text>
+            <Grid mt={5} templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>{[["Member number",profile.memberNo],["Full name",profile.name],["Classification",profile.classification],["Membership status",profile.status],["Membership date",profile.membershipDate ? formatDate(profile.membershipDate) : "Not recorded"],["Birthdate",profile.birthdate ? formatDate(profile.birthdate) : "Not recorded"],["Gender",profile.gender || "Not recorded"],["Civil status",profile.civilStatus || "Not recorded"]].map(([label,value]) => <FormControl key={label}><FormLabel>{label}</FormLabel><Input value={value} isReadOnly bg="gray.50" /></FormControl>)}</Grid>
+            <Grid mt={5} templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}><FormControl><FormLabel>Contact number</FormLabel><Input value={profileForm.contactNumber} onChange={(e) => setProfileForm((v) => ({ ...v, contactNumber: e.target.value }))} maxLength={60} /></FormControl><FormControl><FormLabel>Email address</FormLabel><Input type="email" value={profileForm.emailAddress} onChange={(e) => setProfileForm((v) => ({ ...v, emailAddress: e.target.value }))} maxLength={254} /></FormControl><FormControl><FormLabel>Occupation</FormLabel><Input value={profileForm.occupation} onChange={(e) => setProfileForm((v) => ({ ...v, occupation: e.target.value }))} maxLength={120} /></FormControl><FormControl><FormLabel>Address</FormLabel><Textarea value={profileForm.address} onChange={(e) => setProfileForm((v) => ({ ...v, address: e.target.value }))} maxLength={500} /></FormControl></Grid>
+            {profileMessage ? <Text mt={4} color="green.700">{profileMessage}</Text> : null}<Button mt={5} type="submit" colorScheme="green" isLoading={profileBusy}>Save Profile Details</Button><Text mt={4} fontSize="sm" color="gray.500">Identity, membership, and financial fields cannot be changed here. ID numbers and beneficiaries remain excluded from the portal.</Text>
+          </Box></TabPanel>
+        </TabPanels>
+      </Tabs>
       <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><CooperativeContact /></Box>
-      <Text fontSize="sm" color="gray.500">This portal is strictly read-only. ID numbers and beneficiary information are not displayed.</Text>
-    </VStack> : <Text>Loading account overview...</Text>}</Container></Box>;
+      <Text fontSize="sm" color="gray.500">Financial information is read-only. Only the fields identified in My Profile can be updated.</Text>
+    </VStack> : <Text>Loading member portal...</Text>}</Container></Box>;
 }
 
 function App() {
