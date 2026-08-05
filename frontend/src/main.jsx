@@ -89,6 +89,12 @@ const memberApplicationIdTypes = [
   "Other"
 ];
 const memberApplicationGenders = ["Male", "Female", "Prefer not to say"];
+const cooperativeContact = {
+  phoneDisplay: "0917 000 0000",
+  phoneHref: "+639170000000",
+  email: "memberservices@tasetemco.example",
+  facebook: "https://www.facebook.com/tase.temco"
+};
 
 const theme = extendTheme({
   styles: {
@@ -151,6 +157,42 @@ function PasswordInput(props) {
       </Button>
     </InputRightElement>
   </InputGroup>;
+}
+
+function CooperativeContact({ compact = false }) {
+  return <Box mt={compact ? 4 : 0} pt={compact ? 4 : 0} borderTopWidth={compact ? "1px" : 0}
+    borderColor="gray.200">
+    <Text fontWeight="bold" color={compact ? "gray.700" : "green.800"}>
+      {compact ? "Need help signing in?" : "Contact TASETEMCO"}
+    </Text>
+    {!compact ? <Text mt={1} color="gray.600">Contact the cooperative office for account assistance.</Text> : null}
+    <Flex mt={2} gap={compact ? 2 : 4} wrap="wrap" fontSize="sm">
+      <Text as="a" href={`tel:${cooperativeContact.phoneHref}`} color="green.700" textDecoration="underline"
+        display="inline-flex" alignItems="center" gap={1.5}>
+        <Box as="span" aria-hidden="true" display="inline-flex" alignItems="center" justifyContent="center"
+          boxSize="20px" borderRadius="full" bg="green.100" color="green.800" fontSize="xs">☎</Box>
+        {cooperativeContact.phoneDisplay}
+      </Text>
+      <Text as="a" href={`mailto:${cooperativeContact.email}`} color="green.700" textDecoration="underline"
+        display="inline-flex" alignItems="center" gap={1.5}>
+        <Box as="span" aria-hidden="true" display="inline-flex" alignItems="center" justifyContent="center"
+          boxSize="20px" borderRadius="full" bg="green.100" color="green.800" fontSize="xs">✉</Box>
+        {cooperativeContact.email}
+      </Text>
+      <Text as="a" href={cooperativeContact.facebook} target="_blank" rel="noopener noreferrer"
+        color="blue.600" textDecoration="underline" display="inline-flex" alignItems="center" gap={1.5}>
+        <Box as="span" aria-hidden="true" display="inline-flex" alignItems="center" justifyContent="center"
+          boxSize="20px" borderRadius="full" bg="blue.600" color="white" fontSize="xs" fontWeight="bold">f</Box>
+        Official Facebook page
+      </Text>
+      <Text color="gray.700" display="inline-flex" alignItems="center" gap={1.5}>
+        <Box as="span" aria-hidden="true" display="inline-flex" alignItems="center" justifyContent="center"
+          boxSize="20px" borderRadius="full" bg="orange.100" color="orange.800" fontSize="xs">◷</Box>
+        Office hours: 8:00 AM–5:00 PM PST (Philippine Standard Time)
+      </Text>
+    </Flex>
+    <Text mt={2} fontSize="xs" color="orange.600">Phone and email are temporary placeholders pending office confirmation.</Text>
+  </Box>;
 }
 
 async function api(path, options = {}) {
@@ -1104,6 +1146,7 @@ function Login({ onLogin, onMemberPortal }) {
               <Button mt={4} width="full" variant="outline" colorScheme="green" onClick={onMemberPortal}>
                 Member Portal Login
               </Button>
+              <CooperativeContact compact />
             </Box>
           </GridItem>
 
@@ -12148,6 +12191,7 @@ function MemberPortal({ onStaffLogin }) {
     <VStack mt={6} spacing={4}><FormControl isRequired><FormLabel>Username</FormLabel><Input autoComplete="username" value={credentials.username} onChange={(e) => setCredentials((v) => ({ ...v, username: e.target.value }))} /></FormControl>
       <FormControl isRequired><FormLabel>Password</FormLabel><PasswordInput autoComplete="current-password" value={credentials.password} onChange={(e) => setCredentials((v) => ({ ...v, password: e.target.value }))} /></FormControl>
       {error ? <Text color="red.600" alignSelf="stretch">{error}</Text> : null}<Button type="submit" colorScheme="green" w="full">Login</Button><Button variant="ghost" w="full" onClick={onStaffLogin}>Staff Login</Button></VStack>
+    <CooperativeContact compact />
   </Box></Flex>;
   if (member.mustChangePassword) return <Flex minH="100vh" bg="gray.50" align="center" justify="center" p={6}><Box as="form" onSubmit={changePassword} bg="white" p={8} borderRadius="lg" borderWidth="1px" w="full" maxW="480px">
     <Badge colorScheme="orange">Required</Badge><Heading size="lg" mt={3}>Create your portal password</Heading><Text mt={2} color="gray.600">Replace the temporary password before viewing your account.</Text>
@@ -12161,6 +12205,7 @@ function MemberPortal({ onStaffLogin }) {
       <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={5}><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md">Existing system loans</Heading>{overview.existingLoans.length ? overview.existingLoans.map((loan) => <Flex key={loan.loanNo} py={3} borderBottomWidth="1px" justify="space-between"><Box><Text fontWeight="bold">{loan.productName}</Text><Text fontSize="sm">{loan.status}</Text></Box><Text>{formatMoney(loan.outstandingBalance)}</Text></Flex>) : <Text mt={3} color="gray.500">No system loans.</Text>}</Box>
       <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md">Previous loans</Heading>{overview.previousLoans.length ? overview.previousLoans.map((loan,index) => <Flex key={`${loan.loanLabel}-${index}`} py={3} borderBottomWidth="1px" justify="space-between"><Box><Text fontWeight="bold">{loan.loanLabel}</Text><Text fontSize="sm">{loan.status}</Text></Box><Text>{formatMoney(loan.outstandingBalance)}</Text></Flex>) : <Text mt={3} color="gray.500">No previous loans recorded.</Text>}</Box></Grid>
       <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Flex justify="space-between"><Heading size="md">Cost-center dues</Heading><Text fontWeight="bold">{formatMoney(overview.totalCostCenterDues)}</Text></Flex>{overview.costCenterDues.map((due) => <Flex key={due.costCenterCode} py={3} borderBottomWidth="1px" justify="space-between"><Text>{due.costCenterName}</Text><Text>{formatMoney(due.outstandingAmount)}</Text></Flex>)}{!overview.costCenterDues.length ? <Text mt={3} color="gray.500">No outstanding cost-center dues.</Text> : null}</Box>
+      <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><CooperativeContact /></Box>
       <Text fontSize="sm" color="gray.500">This portal is strictly read-only. ID numbers and beneficiary information are not displayed.</Text>
     </VStack> : <Text>Loading account overview...</Text>}</Container></Box>;
 }
