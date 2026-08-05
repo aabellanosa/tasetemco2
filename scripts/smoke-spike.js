@@ -527,7 +527,74 @@ async function run() {
     });
 
     if (inactiveLogin.status !== 401) {
-      throw new Error("Disabled users should not be able to log in.");
+      throw new Error("A wrong password must not reveal that a staff account is disabled.");
+    }
+
+    const disabledLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: smokeUsername, password: resetPasswordBody.temporaryPassword })
+    });
+    const disabledLoginBody = await disabledLogin.json();
+    if (disabledLogin.status !== 403 || !disabledLoginBody.error?.includes("account is disabled")) {
+      throw new Error(`Correct credentials for a disabled staff account should explain that it is disabled (${disabledLogin.status}: ${disabledLoginBody.error}).`);
+    }
+
+    const lockSystemUser = await fetch(`${baseUrl}/api/admin/users/${smokeUsername}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: managerCookie },
+      body: JSON.stringify({ role: "Membership Officer", additionalRoles: ["Teller / Cashier"],
+        status: "Locked", defaultView: "dashboard" })
+    });
+    if (!lockSystemUser.ok) throw new Error("Manager should be able to lock a non-admin staff account.");
+    const lockedLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: smokeUsername, password: resetPasswordBody.temporaryPassword })
+    });
+    const lockedLoginBody = await lockedLogin.json();
+    if (lockedLogin.status !== 423 || !lockedLoginBody.error?.includes("account is locked")) {
+      throw new Error("Correct credentials for a locked staff account should explain that it is locked.");
+    }
+
+    const portalDirectory = await fetch(`${baseUrl}/api/admin/member-portal-accounts`, {
+      headers: { Cookie: adminCookie }
+    });
+    const portalDirectoryBody = await portalDirectory.json();
+    const portalMember = portalDirectoryBody.members?.[0];
+    const portalUsername = `portal${Date.now().toString().slice(-7)}`;
+    const provisionPortal = await fetch(`${baseUrl}/api/admin/member-portal-accounts`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: JSON.stringify({ memberNo: portalMember?.memberNo, username: portalUsername })
+    });
+    const provisionPortalBody = await provisionPortal.json();
+    if (!provisionPortal.ok || !provisionPortalBody.temporaryPassword) {
+      throw new Error("Admin should be able to provision a member portal account.");
+    }
+    const lockPortal = await fetch(`${baseUrl}/api/admin/member-portal-accounts/${portalUsername}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: JSON.stringify({ status: "Locked" })
+    });
+    if (!lockPortal.ok) throw new Error("Admin should be able to lock a member portal account.");
+    const lockedPortalLogin = await fetch(`${baseUrl}/api/member-portal/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: portalUsername, password: provisionPortalBody.temporaryPassword })
+    });
+    const lockedPortalLoginBody = await lockedPortalLogin.json();
+    if (lockedPortalLogin.status !== 423 || !lockedPortalLoginBody.error?.includes("account is locked")) {
+      throw new Error("Correct credentials for a locked member account should explain that it is locked.");
+    }
+    const disablePortal = await fetch(`${baseUrl}/api/admin/member-portal-accounts/${portalUsername}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: JSON.stringify({ status: "Disabled" })
+    });
+    if (!disablePortal.ok) throw new Error("Admin should be able to disable a member portal account.");
+    const disabledPortalLogin = await fetch(`${baseUrl}/api/member-portal/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: portalUsername, password: provisionPortalBody.temporaryPassword })
+    });
+    const disabledPortalLoginBody = await disabledPortalLogin.json();
+    if (disabledPortalLogin.status !== 403 || !disabledPortalLoginBody.error?.includes("account is disabled")) {
+      throw new Error("Correct credentials for a disabled member account should explain that it is disabled.");
     }
 
     const forbiddenMaintenance = await fetch(`${baseUrl}/api/admin/demo-maintenance`, {

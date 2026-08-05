@@ -13171,9 +13171,21 @@ app.post("/api/member-portal/login", async (request, response) => {
   const username = String(request.body.username || "").trim().toLowerCase();
   const password = String(request.body.password || "");
   const account = await findMemberPortalAccount(username);
-  if (!account || account.status !== "Active" || !(await verifyPassword(password, account.passwordHash))) {
-    if (account) await recordMemberPortalEvent(account, "Login Failed", username, "Invalid credentials or unavailable account");
+  if (!account || !(await verifyPassword(password, account.passwordHash))) {
+    if (account) await recordMemberPortalEvent(account, "Login Failed", username, "Invalid credentials");
     return response.status(401).json({ error: "Invalid username or password" });
+  }
+  if (account.status === "Locked") {
+    await recordMemberPortalEvent(account, "Locked Account Login Attempt", username, "Correct password; login denied");
+    return response.status(423).json({
+      error: "Your account is locked. Please contact an authorized TASETEMCO officer for assistance."
+    });
+  }
+  if (["Disabled", "Inactive"].includes(account.status)) {
+    await recordMemberPortalEvent(account, "Disabled Account Login Attempt", username, "Correct password; login denied");
+    return response.status(403).json({
+      error: "Your account is disabled. Please contact an authorized TASETEMCO officer for assistance."
+    });
   }
   const member = (await listMembers()).find((item) => item.id === account.memberNo);
   const session = setMemberSession(response, account);
@@ -13239,7 +13251,7 @@ app.post("/api/login", async (request, response) => {
   const password = String(request.body.password || "");
   const user = await findUser(username);
 
-  if (!user || ["Locked", "Disabled", "Inactive"].includes(user.status || "Active")) {
+  if (!user) {
     response.status(401).json({ error: "Invalid username or password" });
     return;
   }
@@ -13251,6 +13263,19 @@ app.post("/api/login", async (request, response) => {
     await recordUserSecurityEvent(username, "Login Failed", username, "Invalid credentials");
     response.status(401).json({ error: "Invalid username or password" });
     return;
+  }
+
+  if (user.status === "Locked") {
+    await recordUserSecurityEvent(username, "Locked Account Login Attempt", username, "Correct password; login denied");
+    return response.status(423).json({
+      error: "Your account is locked. Please contact an authorized TASETEMCO officer for assistance."
+    });
+  }
+  if (["Disabled", "Inactive"].includes(user.status)) {
+    await recordUserSecurityEvent(username, "Disabled Account Login Attempt", username, "Correct password; login denied");
+    return response.status(403).json({
+      error: "Your account is disabled. Please contact an authorized TASETEMCO officer for assistance."
+    });
   }
 
   if (!user.passwordHash) {
