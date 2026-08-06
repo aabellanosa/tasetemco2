@@ -11504,14 +11504,14 @@ function LoanCollections({ user }) {
 
   function startCollection(loan) {
     const installment = nextInstallment(loan);
-    if (!installment) {
+    if (!installment && !loan.penaltyOutstanding) {
       return;
     }
     setSelectedLoan(loan);
     setForm({
       collectionDate: new Date().toISOString().slice(0, 10),
       referenceNo: "",
-      amountReceived: installment.totalRemaining
+      amountReceived: addMoney(installment?.totalRemaining || 0, loan.penaltyOutstanding || 0)
     });
     setMessage("");
     setError("");
@@ -11548,16 +11548,21 @@ function LoanCollections({ user }) {
   const collectibleLoans = loans
     .filter((loan) => loan.status === "Posted")
     .map((loan) => ({ ...loan, nextInstallment: nextInstallment(loan) }))
-    .filter((loan) => loan.nextInstallment && matchesLoanSearch(loan));
+    .filter((loan) => (loan.nextInstallment || loan.penaltyOutstanding > 0) && matchesLoanSearch(loan));
   const filteredCollections = collections.filter(matchesLoanSearch);
   const selectedInstallment = selectedLoan ? nextInstallment(selectedLoan) : null;
   const selectedOutstandingBalance = selectedLoan
-    ? selectedLoan.installments.reduce((total, installment) => addMoney(total, installment.totalRemaining), 0)
+    ? addMoney(selectedLoan.installments.reduce((total, installment) => addMoney(total, installment.totalRemaining), 0),
+      selectedLoan.penaltyOutstanding || 0)
     : 0;
-  const collectionPreview = previewLoanCollectionAllocation(
-    form.amountReceived,
+  const previewPenaltyApplied = Math.min(Number(form.amountReceived || 0), Number(selectedLoan?.penaltyOutstanding || 0));
+  const installmentPreview = previewLoanCollectionAllocation(
+    Math.max(0, Number(form.amountReceived || 0) - previewPenaltyApplied),
     selectedLoan?.installments || []
   );
+  const collectionPreview = { ...installmentPreview, amount: Number(form.amountReceived || 0),
+    penaltyApplied: previewPenaltyApplied,
+    remainingAfterReceipt: Math.max(0, selectedOutstandingBalance - Number(form.amountReceived || 0)) };
 
   return (
     <VStack align="stretch" spacing={5} minW={0} maxW="100%">
@@ -11593,6 +11598,7 @@ function LoanCollections({ user }) {
                 <Th isNumeric>Principal</Th>
                 <Th isNumeric>Interest</Th>
                 <Th isNumeric>Amount Due</Th>
+                <Th isNumeric>Penalty</Th>
                 <Th>Status</Th>
                 {canCreate ? <Th>Action</Th> : null}
               </Tr>
@@ -11602,14 +11608,15 @@ function LoanCollections({ user }) {
                 <Tr key={loan.loanNo}>
                   <Td>{loan.loanNo}</Td>
                   <Td>{loan.memberName}</Td>
-                  <Td>{loan.nextInstallment.installmentNo} of {loan.installmentCount}</Td>
-                  <Td>{loan.nextInstallment.dueDate}</Td>
-                  <Td isNumeric>{formatMoney(loan.nextInstallment.principalRemaining)}</Td>
-                  <Td isNumeric>{formatMoney(loan.nextInstallment.interestRemaining)}</Td>
-                  <Td isNumeric fontWeight="bold">{formatMoney(loan.nextInstallment.totalRemaining)}</Td>
+                  <Td>{loan.nextInstallment ? `${loan.nextInstallment.installmentNo} of ${loan.installmentCount}` : "Penalty only"}</Td>
+                  <Td>{loan.nextInstallment?.dueDate || "—"}</Td>
+                  <Td isNumeric>{formatMoney(loan.nextInstallment?.principalRemaining || 0)}</Td>
+                  <Td isNumeric>{formatMoney(loan.nextInstallment?.interestRemaining || 0)}</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(loan.nextInstallment?.totalRemaining || 0)}</Td>
+                  <Td isNumeric color={loan.penaltyOutstanding > 0 ? "red.600" : undefined}>{formatMoney(loan.penaltyOutstanding || 0)}</Td>
                   <Td>
-                    <Badge colorScheme={loan.nextInstallment.status === "Partial" ? "orange" : "blue"}>
-                      {loan.nextInstallment.status}
+                    <Badge colorScheme={loan.nextInstallment?.status === "Partial" ? "orange" : "blue"}>
+                      {loan.nextInstallment?.status || "Penalty Due"}
                     </Badge>
                   </Td>
                   {canCreate ? (
@@ -11623,7 +11630,7 @@ function LoanCollections({ user }) {
               ))}
               {!collectibleLoans.length ? (
                 <Tr>
-                  <Td colSpan={canCreate ? 9 : 8} color="gray.500">
+                  <Td colSpan={canCreate ? 10 : 9} color="gray.500">
                     {normalizedSearch ? "No collectible loans match the search." : "No posted loan currently has an unpaid scheduled installment."}
                   </Td>
                 </Tr>
@@ -11646,6 +11653,7 @@ function LoanCollections({ user }) {
                 <Th>Reference</Th>
                 <Th isNumeric>Principal Applied</Th>
                 <Th isNumeric>Interest Applied</Th>
+                <Th isNumeric>Penalty Applied</Th>
                 <Th isNumeric>Received</Th>
                 <Th>Batch</Th>
                 <Th>Status</Th>
@@ -11666,6 +11674,7 @@ function LoanCollections({ user }) {
                   <Td>{collection.referenceNo}</Td>
                   <Td isNumeric>{formatMoney(collection.principalAmount)}</Td>
                   <Td isNumeric>{formatMoney(collection.interestAmount)}</Td>
+                  <Td isNumeric>{formatMoney(collection.penaltyAmount || 0)}</Td>
                   <Td isNumeric fontWeight="bold">{formatMoney(collection.amountReceived)}</Td>
                   <Td>{collection.batchId}</Td>
                   <Td>
@@ -11687,16 +11696,17 @@ function LoanCollections({ user }) {
         <ModalContent>
           <ModalHeader>{selectedLoan ? `Collect ${selectedLoan.loanNo}` : "Collect Installment"}</ModalHeader>
           <ModalBody>
-            {selectedLoan && selectedInstallment ? (
+            {selectedLoan ? (
               <VStack align="stretch" spacing={4}>
                 <Box>
                   <Text fontWeight="bold">{selectedLoan.memberName}</Text>
                   <Text color="gray.600">
-                    Installment {selectedInstallment.installmentNo} due {selectedInstallment.dueDate}
+                    {selectedInstallment ? `Installment ${selectedInstallment.installmentNo} due ${selectedInstallment.dueDate}` : "Penalty balance only"}
                   </Text>
-                  <Text color="gray.600">Remaining principal: {formatMoney(selectedInstallment.principalRemaining)}</Text>
-                  <Text color="gray.600">Remaining interest: {formatMoney(selectedInstallment.interestRemaining)}</Text>
-                  <Text fontWeight="bold">Amount due now: {formatMoney(selectedInstallment.totalRemaining)}</Text>
+                  <Text color="gray.600">Remaining principal: {formatMoney(selectedInstallment?.principalRemaining || 0)}</Text>
+                  <Text color="gray.600">Remaining interest: {formatMoney(selectedInstallment?.interestRemaining || 0)}</Text>
+                  <Text color="red.600">Outstanding penalties: {formatMoney(selectedLoan.penaltyOutstanding || 0)}</Text>
+                  <Text fontWeight="bold">Amount due now: {formatMoney(addMoney(selectedInstallment?.totalRemaining || 0, selectedLoan.penaltyOutstanding || 0))}</Text>
                   <Text color="gray.600">Total loan balance remaining: {formatMoney(selectedOutstandingBalance)}</Text>
                 </Box>
                 <FormControl isRequired>
@@ -11748,7 +11758,11 @@ function LoanCollections({ user }) {
                       {collectionPreview.paymentType}
                     </Badge>
                   </Flex>
-                  <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3}>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(5, 1fr)" }} gap={3}>
+                    <Box>
+                      <Text color="gray.500" fontSize="sm">Penalty Applied</Text>
+                      <Text fontWeight="bold">{formatMoney(collectionPreview.penaltyApplied)}</Text>
+                    </Box>
                     <Box>
                       <Text color="gray.500" fontSize="sm">Interest Applied</Text>
                       <Text fontWeight="bold">{formatMoney(collectionPreview.interestApplied)}</Text>
@@ -12239,7 +12253,7 @@ function MemberPortal({ onStaffLogin }) {
             <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={5}><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Stat><StatLabel>Next loan due</StatLabel><StatNumber fontSize="xl">{nextDue ? formatMoney(nextDue.totalRemaining) : "None"}</StatNumber><StatHelpText>{nextDue ? `${nextDue.loan.productName} · ${formatDate(nextDue.dueDate)}` : "No unpaid scheduled installment"}</StatHelpText></Stat></Box><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Stat><StatLabel>Cost-center dues</StatLabel><StatNumber fontSize="xl">{formatMoney(duesDetails.totalOutstanding)}</StatNumber><StatHelpText>{duesDetails.centers.length} cost center(s) with balances</StatHelpText></Stat></Box></Grid>
           </VStack></TabPanel>
           <TabPanel px={0}><VStack align="stretch" spacing={5}>
-            <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md" mb={4}>Existing system loans</Heading>{loanDetails.currentLoans.length ? <Accordion allowMultiple>{loanDetails.currentLoans.map((loan) => <AccordionItem key={loan.loanNo}><AccordionButton><Box flex="1" textAlign="left"><Text fontWeight="bold">{loan.productName} · {loan.loanNo}</Text><Text fontSize="sm">Outstanding {formatMoney(loan.outstandingBalance)} · Next due {loan.nextDueDate ? formatDate(loan.nextDueDate) : "None"}</Text></Box><AccordionIcon /></AccordionButton><AccordionPanel><TableContainer><Table size="sm"><Thead><Tr><Th>No.</Th><Th>Due Date</Th><Th>Status</Th><Th isNumeric>Principal</Th><Th isNumeric>Interest</Th><Th isNumeric>Paid</Th><Th isNumeric>Remaining</Th></Tr></Thead><Tbody>{loan.installments.map((item) => <Tr key={item.installmentNo}><Td>{item.installmentNo}</Td><Td>{formatDate(item.dueDate)}</Td><Td><Badge colorScheme={item.status === "Overdue" ? "red" : item.status === "Paid" ? "green" : "gray"}>{item.status}</Badge>{item.paymentPending ? <Badge ml={1} colorScheme="blue">Payment pending</Badge> : null}</Td><Td isNumeric>{formatMoney(item.principalDue)}</Td><Td isNumeric>{formatMoney(item.interestDue)}</Td><Td isNumeric>{formatMoney(item.totalPaid)}</Td><Td isNumeric>{formatMoney(item.totalRemaining)}</Td></Tr>)}</Tbody></Table></TableContainer></AccordionPanel></AccordionItem>)}</Accordion> : <Text color="gray.500">No system loans.</Text>}</Box>
+            <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md" mb={4}>Existing system loans</Heading>{loanDetails.currentLoans.length ? <Accordion allowMultiple>{loanDetails.currentLoans.map((loan) => <AccordionItem key={loan.loanNo}><AccordionButton><Box flex="1" textAlign="left"><Text fontWeight="bold">{loan.productName} · {loan.loanNo}</Text><Text fontSize="sm">Loan balance {formatMoney(loan.outstandingBalance)} · Overdue {formatMoney(loan.overdueAmount)} · Penalties {formatMoney(loan.penaltyAmount)} · Next due {loan.nextDueDate ? formatDate(loan.nextDueDate) : "None"}</Text></Box><AccordionIcon /></AccordionButton><AccordionPanel>{loan.penalties.length ? <Box mb={4} p={3} bg="red.50" borderRadius="md"><Text fontWeight="bold" color="red.700">Penalty assessments</Text>{loan.penalties.map((penalty) => <Flex key={penalty.penaltyNo} mt={2} justify="space-between" gap={3} wrap="wrap"><Text>Installment {penalty.installmentNo} · {formatDate(penalty.assessmentDate)} · 2% of {formatMoney(penalty.overdueBase)}</Text><Text fontWeight="bold">{formatMoney(penalty.outstandingAmount)} outstanding</Text></Flex>)}</Box> : null}<TableContainer><Table size="sm"><Thead><Tr><Th>No.</Th><Th>Due Date</Th><Th>Status</Th><Th isNumeric>Principal</Th><Th isNumeric>Interest</Th><Th isNumeric>Paid</Th><Th isNumeric>Remaining</Th></Tr></Thead><Tbody>{loan.installments.map((item) => <Tr key={item.installmentNo}><Td>{item.installmentNo}</Td><Td>{formatDate(item.dueDate)}</Td><Td><Badge colorScheme={item.status === "Overdue" ? "red" : item.status === "Paid" ? "green" : "gray"}>{item.status}</Badge>{item.paymentPending ? <Badge ml={1} colorScheme="blue">Payment pending</Badge> : null}</Td><Td isNumeric>{formatMoney(item.principalDue)}</Td><Td isNumeric>{formatMoney(item.interestDue)}</Td><Td isNumeric>{formatMoney(item.totalPaid)}</Td><Td isNumeric>{formatMoney(item.totalRemaining)}</Td></Tr>)}</Tbody></Table></TableContainer></AccordionPanel></AccordionItem>)}</Accordion> : <Text color="gray.500">No system loans.</Text>}</Box>
             <Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Heading size="md" mb={4}>Previous loans</Heading>{loanDetails.previousLoans.length ? <TableContainer><Table size="sm"><Thead><Tr><Th>Loan</Th><Th>Status</Th><Th isNumeric>Original</Th><Th isNumeric>Outstanding</Th></Tr></Thead><Tbody>{loanDetails.previousLoans.map((loan,index) => <Tr key={`${loan.loanLabel}-${index}`}><Td>{loan.loanLabel}</Td><Td>{loan.status}</Td><Td isNumeric>{formatMoney(loan.originalAmount)}</Td><Td isNumeric>{formatMoney(loan.outstandingBalance)}</Td></Tr>)}</Tbody></Table></TableContainer> : <Text color="gray.500">No previous loans recorded.</Text>}</Box>
           </VStack></TabPanel>
           <TabPanel px={0}><Box bg="white" p={5} borderWidth="1px" borderRadius="lg"><Flex justify="space-between" mb={4}><Heading size="md">Cost-center dues</Heading><Text fontWeight="bold">{formatMoney(duesDetails.totalOutstanding)}</Text></Flex>{duesDetails.charges.length ? <TableContainer><Table size="sm"><Thead><Tr><Th>Date</Th><Th>Cost Center</Th><Th>Details</Th><Th>Status</Th><Th isNumeric>Original</Th><Th isNumeric>Paid</Th><Th isNumeric>Balance</Th></Tr></Thead><Tbody>{duesDetails.charges.map((charge) => <Tr key={charge.movementNo}><Td>{formatDate(charge.transactionDate)}</Td><Td>{charge.costCenterName}</Td><Td>{charge.referenceNo || charge.remarks || "—"}</Td><Td><Badge>{charge.paymentStatus}</Badge></Td><Td isNumeric>{formatMoney(charge.originalAmount)}</Td><Td isNumeric>{formatMoney(charge.paidAmount)}</Td><Td isNumeric>{formatMoney(charge.outstandingAmount)}</Td></Tr>)}</Tbody></Table></TableContainer> : <Text color="gray.500">No cost-center charges recorded.</Text>}</Box></TabPanel>

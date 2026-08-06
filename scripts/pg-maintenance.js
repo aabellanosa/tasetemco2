@@ -15,6 +15,9 @@ const backupDir = path.join(process.cwd(), "data", "backups");
 const connectionTimeoutMillis = Number(process.env.PGCONNECT_TIMEOUT_MS || 8000);
 
 const tables = [
+  "loan_penalty_payment_allocations",
+  "loan_penalty_assessments",
+  "member_profile_audit_events",
   "member_portal_audit_events",
   "member_portal_accounts",
   "user_security_events",

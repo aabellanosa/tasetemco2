@@ -181,9 +181,12 @@ const memoryUserSecurityEvents = [];
 const memoryMemberPortalAccounts = [];
 const memoryMemberPortalAuditEvents = [];
 const memoryMemberProfileAuditEvents = [];
+const memoryLoanPenaltyAssessments = [];
 let pool = null;
 
 const persistedTables = [
+  "loan_penalty_payment_allocations",
+  "loan_penalty_assessments",
   "member_profile_audit_events",
   "member_portal_audit_events",
   "member_portal_accounts",
@@ -241,6 +244,8 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  loan_penalty_assessments: ["penalty_no", "loan_no", "installment_no", "assessment_date", "overdue_base", "penalty_rate_bps", "penalty_amount", "paid_amount", "income_account_code", "status"],
+  loan_penalty_payment_allocations: ["collection_no", "penalty_no", "amount", "income_account_code", "income_account_name"],
   member_profile_audit_events: ["member_no", "portal_username", "previous_values", "new_values", "changed_fields", "created_at"],
   member_portal_accounts: ["member_no", "username", "password_hash", "must_change_password", "status", "created_by", "updated_by"],
   member_portal_audit_events: ["member_no", "username", "event_type", "performed_by", "details", "created_at"],
@@ -518,6 +523,7 @@ const requiredSchemaColumns = {
     "member_name",
     "principal_amount",
     "interest_amount",
+    "penalty_amount",
     "amount_received",
     "collection_date",
     "reference_no",
@@ -2170,13 +2176,14 @@ async function listLoans() {
   const db = await getPool();
 
   if (!db) {
-    return loans.map((loan) => mapLoan({
+    const mappedLoans = loans.map((loan) => mapLoan({
       ...loan,
       installments: decorateLoanInstallments(
         loanInstallments.filter((item) => item.loanNo === loan.loanNo),
         loanCollectionAllocationRows(loanCollections.filter((item) => item.loanNo === loan.loanNo))
       )
     }));
+    return Promise.all(mappedLoans.map(decorateLoanWithPenalties));
   }
 
   const [loanRows] = await db.execute(
@@ -2214,7 +2221,7 @@ async function listLoans() {
      JOIN loan_collections collection ON collection.collection_no = allocation.collection_no`
   );
 
-  return loanRows.map((loan) => mapLoan({
+  const mappedLoans = loanRows.map((loan) => mapLoan({
     ...loan,
     installments: decorateLoanInstallments(
       installmentRows.filter((item) => item.loanNo === loan.loanNo),
@@ -2812,6 +2819,7 @@ function mapLoanCollection(row) {
     memberName: row.memberName,
     principalAmount: Number(row.principalAmount || 0),
     interestAmount: Number(row.interestAmount || 0),
+    penaltyAmount: Number(row.penaltyAmount || 0),
     amountReceived: Number(row.amountReceived || 0),
     collectionDate: formatDateOnly(row.collectionDate),
     referenceNo: row.referenceNo,
@@ -2828,6 +2836,11 @@ function mapLoanCollection(row) {
           interestAmount: Number(item.interestAmount || 0),
           amountApplied: Number(item.amountApplied || 0)
         }))
+      : [],
+    penaltyAllocations: Array.isArray(row.penaltyAllocations)
+      ? row.penaltyAllocations.map((item) => ({ penaltyNo: item.penaltyNo, amount: Number(item.amount || 0),
+          incomeAccountCode: item.incomeAccountCode || "4040",
+          incomeAccountName: item.incomeAccountName || "Penalty Income" }))
       : []
   };
 }
@@ -2842,6 +2855,7 @@ async function listLoanCollections() {
             installment_no AS installmentNo, batch_no AS batchId,
             member_no AS memberNo, member_name AS memberName,
             principal_amount AS principalAmount, interest_amount AS interestAmount,
+            penalty_amount AS penaltyAmount,
             amount_received AS amountReceived, collection_date AS collectionDate,
             reference_no AS referenceNo, received_by AS receivedBy, status,
             posted_by AS postedBy, posted_entry_no AS postedEntryNo,
@@ -2856,10 +2870,40 @@ async function listLoanCollections() {
      FROM loan_collection_allocations
      ORDER BY collection_no, installment_no`
   );
+  const [penaltyAllocationRows] = await db.execute(
+    `SELECT collection_no AS collectionNo, penalty_no AS penaltyNo, amount,
+            income_account_code AS incomeAccountCode, income_account_name AS incomeAccountName
+     FROM loan_penalty_payment_allocations ORDER BY collection_no, id`
+  );
   return rows.map((row) => mapLoanCollection({
     ...row,
-    allocations: allocationRows.filter((item) => item.collectionNo === row.collectionNo)
+    allocations: allocationRows.filter((item) => item.collectionNo === row.collectionNo),
+    penaltyAllocations: penaltyAllocationRows.filter((item) => item.collectionNo === row.collectionNo)
   }));
+  return Promise.all(mappedLoans.map(decorateLoanWithPenalties));
+}
+
+async function decorateLoanWithPenalties(loan) {
+  const penalties = loan.status === "Posted" ? await ensureLoanPenaltyAssessments(loan.loanNo) : [];
+  return {
+    ...loan,
+    penalties,
+    penaltyOutstanding: sumMoney(penalties.map((penalty) => penalty.outstandingAmount))
+  };
+}
+
+function allocateLoanPenaltyPayment(amountReceived, penalties) {
+  let remainingPayment = moneyValue(amountReceived);
+  const allocations = [];
+  for (const penalty of penalties.filter((item) => item.outstandingAmount > 0)
+    .sort((a, b) => String(a.assessmentDate).localeCompare(String(b.assessmentDate)))) {
+    if (remainingPayment <= 0) break;
+    const amount = Math.min(remainingPayment, penalty.outstandingAmount);
+    allocations.push({ penaltyNo: penalty.penaltyNo, amount: moneyValue(amount),
+      incomeAccountCode: penalty.incomeAccountCode, incomeAccountName: penalty.incomeAccountName });
+    remainingPayment = subtractMoney(remainingPayment, amount);
+  }
+  return { allocations, penaltyAmount: sumMoney(allocations.map((item) => item.amount)), remainingPayment };
 }
 
 function validateLoanCollectionInput(body, installment, releaseDate = "", outstandingBalance = installment.totalRemaining) {
@@ -2911,16 +2955,20 @@ async function recordLoanCollection(loanNo, body, user) {
     return { error: "Posted loan release evidence was not found.", statusCode: 409 };
   }
   const installment = nextCollectibleInstallment(loan);
-  if (!installment) {
+  const penalties = await ensureLoanPenaltyAssessments(loanNo, formatDateOnly(body.collectionDate));
+  const outstandingPenaltyBalance = sumMoney(penalties.map((item) => item.outstandingAmount));
+  if (!installment && outstandingPenaltyBalance <= 0) {
     return { error: "This loan has no unpaid scheduled installment.", statusCode: 409 };
   }
-  const outstandingBalance = loanOutstandingBalance(loan);
-  const validation = validateLoanCollectionInput(body, installment, release.releaseDate, outstandingBalance);
+  const collectionAnchor = installment || loan.installments[loan.installments.length - 1];
+  const outstandingBalance = addMoney(loanOutstandingBalance(loan), outstandingPenaltyBalance);
+  const validation = validateLoanCollectionInput(body, collectionAnchor, release.releaseDate, outstandingBalance);
   if (validation.error) {
     return { error: validation.error, statusCode: 400 };
   }
+  const penaltyAllocation = allocateLoanPenaltyPayment(validation.value.amountReceived, penalties);
   const allocation = allocateLoanCollectionPayment(
-    validation.value.amountReceived,
+    penaltyAllocation.remainingPayment,
     loan.installments.filter((item) => item.status !== "Paid" && item.totalRemaining > 0)
   );
   const batchResult = await getOpenTellerBatch(user);
@@ -2937,19 +2985,26 @@ async function recordLoanCollection(loanNo, body, user) {
     const collection = {
       collectionNo,
       loanNo,
-      installmentNo: installment.installmentNo,
+      installmentNo: installment?.installmentNo || penalties[0]?.installmentNo || 0,
       batchId: batchResult.batch.id,
       memberNo: loan.memberNo,
       memberName: loan.memberName,
       principalAmount: allocation.principalAmount,
       interestAmount: allocation.interestAmount,
+      penaltyAmount: penaltyAllocation.penaltyAmount,
       allocations: allocation.allocations,
+      penaltyAllocations: penaltyAllocation.allocations,
       ...validation.value,
       receivedBy: user.username,
       status: "Teller Batch",
       createdAt: new Date().toISOString()
     };
     loanCollections.unshift(collection);
+    for (const item of penaltyAllocation.allocations) {
+      const assessment = memoryLoanPenaltyAssessments.find((row) => row.penaltyNo === item.penaltyNo);
+      assessment.paidAmount = addMoney(assessment.paidAmount, item.amount);
+      assessment.status = moneyCents(assessment.paidAmount) >= moneyCents(assessment.penaltyAmount) ? "Paid" : "Partial";
+    }
     for (const item of allocation.allocations) {
       const decoratedInstallment = loan.installments.find(
         (row) => row.installmentNo === item.installmentNo
@@ -3024,17 +3079,22 @@ async function recordLoanCollection(loanNo, body, user) {
       installmentRows.map((item) => ({ ...item, loanNo })),
       collectionRows
     );
+    const lockedPenalties = await ensureLoanPenaltyAssessments(
+      loanNo, formatDateOnly(body.collectionDate), connection
+    );
+    const lockedPenaltyBalance = sumMoney(lockedPenalties.map((item) => item.outstandingAmount));
     const lockedInstallment = decoratedInstallments.find(
       (item) => item.status !== "Paid" && item.totalRemaining > 0
     );
-    if (!lockedInstallment) {
+    if (!lockedInstallment && lockedPenaltyBalance <= 0) {
       await connection.rollback();
       return { error: "This loan has no unpaid scheduled installment.", statusCode: 409 };
     }
     const lockedOutstandingBalance = moneyValue(
-      decoratedInstallments.reduce((total, item) => addMoney(total, item.totalRemaining), 0)
+      addMoney(decoratedInstallments.reduce((total, item) => addMoney(total, item.totalRemaining), 0), lockedPenaltyBalance)
     );
-    const lockedValidation = validateLoanCollectionInput(body, lockedInstallment, lockedLoan.releaseDate, lockedOutstandingBalance);
+    const lockedAnchor = lockedInstallment || decoratedInstallments[decoratedInstallments.length - 1];
+    const lockedValidation = validateLoanCollectionInput(body, lockedAnchor, lockedLoan.releaseDate, lockedOutstandingBalance);
     if (lockedValidation.error) {
       await connection.rollback();
       return { error: lockedValidation.error, statusCode: 400 };
@@ -3043,25 +3103,40 @@ async function recordLoanCollection(loanNo, body, user) {
       await connection.rollback();
       return { error: "Official receipt or reference number already exists.", statusCode: 409 };
     }
+    const lockedPenaltyAllocation = allocateLoanPenaltyPayment(lockedValidation.value.amountReceived, lockedPenalties);
     const lockedAllocation = allocateLoanCollectionPayment(
-      lockedValidation.value.amountReceived,
+      lockedPenaltyAllocation.remainingPayment,
       decoratedInstallments.filter((item) => item.status !== "Paid" && item.totalRemaining > 0)
     );
     const collectionNo = await nextLoanCollectionNo(connection);
     await connection.execute(
       `INSERT INTO loan_collections (
          collection_no, loan_no, installment_no, batch_no,
-         member_no, member_name, principal_amount, interest_amount,
+         member_no, member_name, principal_amount, interest_amount, penalty_amount,
          amount_received, collection_date, reference_no, received_by, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Teller Batch')`,
       [
-        collectionNo, loanNo, lockedInstallment.installmentNo, batchResult.batch.id,
+        collectionNo, loanNo, lockedInstallment?.installmentNo || lockedPenalties[0]?.installmentNo || 0, batchResult.batch.id,
         lockedLoan.memberNo, lockedLoan.memberName, lockedAllocation.principalAmount,
-        lockedAllocation.interestAmount, lockedValidation.value.amountReceived,
+        lockedAllocation.interestAmount, lockedPenaltyAllocation.penaltyAmount, lockedValidation.value.amountReceived,
         lockedValidation.value.collectionDate, lockedValidation.value.referenceNo,
         user.username
       ]
     );
+    for (const item of lockedPenaltyAllocation.allocations) {
+      await connection.execute(
+        `INSERT INTO loan_penalty_payment_allocations
+           (collection_no, penalty_no, amount, income_account_code, income_account_name)
+         VALUES (?, ?, ?, ?, ?)`,
+        [collectionNo, item.penaltyNo, item.amount, item.incomeAccountCode, item.incomeAccountName]
+      );
+      await connection.execute(
+        `UPDATE loan_penalty_assessments
+         SET paid_amount = paid_amount + ?,
+             status = CASE WHEN paid_amount + ? >= penalty_amount THEN 'Paid' ELSE 'Partial' END
+         WHERE penalty_no = ?`, [item.amount, item.amount, item.penaltyNo]
+      );
+    }
     for (const item of lockedAllocation.allocations) {
       await connection.execute(
         `INSERT INTO loan_collection_allocations
@@ -7738,6 +7813,29 @@ function buildTellerFundingJournalLines(funding) {
 }
 
 function buildLoanCollectionJournalLines(collection) {
+  const penaltyLines = [];
+  const groupedPenalties = new Map();
+  for (const allocation of collection.penaltyAllocations || []) {
+    const accountCode = allocation.incomeAccountCode || "4040";
+    const accountName = allocation.incomeAccountName || "Penalty Income";
+    const key = `${accountCode}:${accountName}`;
+    groupedPenalties.set(key, {
+      accountCode,
+      accountName,
+      amount: moneyValue((groupedPenalties.get(key)?.amount || 0) + Number(allocation.amount || 0))
+    });
+  }
+  for (const item of groupedPenalties.values()) {
+    penaltyLines.push({ accountCode: item.accountCode, accountName: item.accountName, debit: 0, credit: item.amount });
+  }
+  if (penaltyLines.length === 0 && Number(collection.penaltyAmount || 0) > 0) {
+    penaltyLines.push({
+      accountCode: collection.penaltyIncomeAccount || "4040",
+      accountName: "Penalty Income",
+      debit: 0,
+      credit: collection.penaltyAmount
+    });
+  }
   return [
     {
       accountCode: collection.cashAccount,
@@ -7756,7 +7854,8 @@ function buildLoanCollectionJournalLines(collection) {
       accountName: "Interest Income",
       debit: 0,
       credit: collection.interestAmount
-    }
+    },
+    ...penaltyLines
   ].filter((line) => line.debit > 0 || line.credit > 0);
 }
 
@@ -11507,6 +11606,7 @@ async function postLoanCollection(collectionNo, user) {
       ...collection,
       loansReceivableAccount: application.loansReceivableAccount,
       interestIncomeAccount: application.interestIncomeAccount,
+      penaltyIncomeAccount: application.penaltyIncomeAccount || "4040",
       cashAccount: application.cashAccount
     };
     const entry = {
@@ -11538,10 +11638,12 @@ async function postLoanCollection(collectionNo, user) {
               collection.member_name AS memberName,
               collection.principal_amount AS principalAmount,
               collection.interest_amount AS interestAmount,
+              collection.penalty_amount AS penaltyAmount,
               collection.amount_received AS amountReceived,
               collection.status,
               application.loans_receivable_account AS loansReceivableAccount,
               application.interest_income_account AS interestIncomeAccount,
+              application.penalty_income_account AS penaltyIncomeAccount,
               application.cash_account AS cashAccount
        FROM loan_collections collection
        JOIN loans loan ON loan.loan_no = collection.loan_no
@@ -11565,6 +11667,15 @@ async function postLoanCollection(collectionNo, user) {
       await connection.rollback();
       return batchResult;
     }
+    const [penaltyAllocationRows] = await connection.execute(
+      `SELECT penalty_no AS penaltyNo, amount,
+              income_account_code AS incomeAccountCode, income_account_name AS incomeAccountName
+       FROM loan_penalty_payment_allocations
+       WHERE collection_no = ?
+       ORDER BY id`,
+      [collection.collectionNo]
+    );
+    collection.penaltyAllocations = penaltyAllocationRows;
     const entryNo = await nextJournalEntryNumberInDatabase(connection);
     await connection.execute(
       `INSERT INTO journal_entries (
@@ -12863,6 +12974,114 @@ function isAdminUser(user) {
   return user?.username === "admin" && user?.role === "System Administrator";
 }
 
+function mapLoanPenaltyAssessment(row) {
+  return {
+    penaltyNo: row.penaltyNo,
+    loanNo: row.loanNo,
+    installmentNo: Number(row.installmentNo || 0),
+    assessmentDate: formatDateOnly(row.assessmentDate),
+    overdueBase: Number(row.overdueBase || 0),
+    penaltyRateBps: Number(row.penaltyRateBps || 200),
+    penaltyAmount: Number(row.penaltyAmount || 0),
+    paidAmount: Number(row.paidAmount || 0),
+    outstandingAmount: Math.max(0, moneyValue(Number(row.penaltyAmount || 0) - Number(row.paidAmount || 0))),
+    incomeAccountCode: row.incomeAccountCode || "4040",
+    incomeAccountName: row.incomeAccountName || "Penalty Income",
+    status: row.status || "Outstanding"
+  };
+}
+
+async function listLoanPenaltyAssessments(loanNo = "", executor = null) {
+  const db = executor || (await getPool());
+  if (!db) return memoryLoanPenaltyAssessments.filter((item) => !loanNo || item.loanNo === loanNo).map(mapLoanPenaltyAssessment);
+  const where = loanNo ? "WHERE loan_no = ?" : "";
+  const [rows] = await db.execute(
+    `SELECT penalty_no AS penaltyNo, loan_no AS loanNo, installment_no AS installmentNo,
+            assessment_date AS assessmentDate, overdue_base AS overdueBase,
+            penalty_rate_bps AS penaltyRateBps, penalty_amount AS penaltyAmount,
+            paid_amount AS paidAmount, income_account_code AS incomeAccountCode,
+            income_account_name AS incomeAccountName, status
+     FROM loan_penalty_assessments ${where}
+     ORDER BY assessment_date, installment_no`, loanNo ? [loanNo] : []
+  );
+  return rows.map(mapLoanPenaltyAssessment);
+}
+
+async function ensureLoanPenaltyAssessments(loanNo, asOfDate = formatDateOnly(new Date()), executor = null) {
+  const db = executor || (await getPool());
+  let loan;
+  let installments;
+  let paymentRows;
+  let existing;
+  if (!db) {
+    loan = loans.find((item) => item.loanNo === loanNo && item.status === "Posted");
+    if (!loan) return [];
+    const application = loanApplications.find((item) => item.applicationNo === loan.applicationNo);
+    loan = { ...loan, penaltyIncomeAccount: application?.penaltyIncomeAccount || "4040" };
+    installments = loanInstallments.filter((item) => item.loanNo === loanNo);
+    paymentRows = loanCollections.flatMap((collection) => (collection.allocations || []).map((allocation) => ({
+      installmentNo: allocation.installmentNo, amountApplied: allocation.amountApplied,
+      collectionDate: collection.collectionDate
+    })));
+    existing = memoryLoanPenaltyAssessments.filter((item) => item.loanNo === loanNo);
+  } else {
+    const [loanRows] = await db.execute(
+      `SELECT loan.loan_no AS loanNo, application.penalty_income_account AS penaltyIncomeAccount
+       FROM loans loan JOIN loan_applications application ON application.application_no = loan.application_no
+       WHERE loan.loan_no = ? AND loan.status = 'Posted'`, [loanNo]
+    );
+    loan = loanRows[0];
+    if (!loan) return [];
+    [installments] = await db.execute(
+      `SELECT installment_no AS installmentNo, due_date AS dueDate, total_due AS totalDue
+       FROM loan_installments WHERE loan_no = ? ORDER BY installment_no`, [loanNo]
+    );
+    [paymentRows] = await db.execute(
+      `SELECT allocation.installment_no AS installmentNo, allocation.amount_applied AS amountApplied,
+              collection.collection_date AS collectionDate
+       FROM loan_collection_allocations allocation
+       JOIN loan_collections collection ON collection.collection_no = allocation.collection_no
+       WHERE allocation.loan_no = ? AND collection.status IN ('Teller Batch', 'Posted')`, [loanNo]
+    );
+    existing = await listLoanPenaltyAssessments(loanNo, db);
+  }
+  const existingKeys = new Set(existing.map((item) => `${item.installmentNo}:${item.assessmentDate}`));
+  for (const installment of installments) {
+    const firstAssessmentDate = addUtcDays(installment.dueDate, 7);
+    for (let cycle = 0; ; cycle += 1) {
+      const assessmentDate = addUtcMonths(firstAssessmentDate, cycle);
+      if (assessmentDate > asOfDate) break;
+      const paidByAssessment = sumMoney(paymentRows.filter((payment) =>
+        Number(payment.installmentNo) === Number(installment.installmentNo) &&
+        formatDateOnly(payment.collectionDate) <= assessmentDate
+      ).map((payment) => payment.amountApplied));
+      const overdueBase = Math.max(0, moneyValue(Number(installment.totalDue || 0) - paidByAssessment));
+      if (overdueBase <= 0) break;
+      const key = `${installment.installmentNo}:${assessmentDate}`;
+      if (existingKeys.has(key)) continue;
+      const assessment = {
+        penaltyNo: `LPA-${crypto.randomUUID().slice(0, 12).toUpperCase()}`,
+        loanNo, installmentNo: Number(installment.installmentNo), assessmentDate,
+        overdueBase, penaltyRateBps: 200, penaltyAmount: percentOfMoney(overdueBase, 200), paidAmount: 0,
+        incomeAccountCode: loan.penaltyIncomeAccount || "4040", incomeAccountName: "Penalty Income",
+        status: "Outstanding"
+      };
+      if (!db) memoryLoanPenaltyAssessments.push(assessment);
+      else await db.execute(
+        `INSERT INTO loan_penalty_assessments
+           (penalty_no, loan_no, installment_no, assessment_date, overdue_base, penalty_rate_bps,
+            penalty_amount, income_account_code, income_account_name)
+         VALUES (?, ?, ?, ?, ?, 200, ?, ?, 'Penalty Income')
+         ON CONFLICT (loan_no, installment_no, assessment_date) DO NOTHING`,
+        [assessment.penaltyNo, loanNo, assessment.installmentNo, assessmentDate, overdueBase,
+          assessment.penaltyAmount, assessment.incomeAccountCode]
+      );
+      existingKeys.add(key);
+    }
+  }
+  return listLoanPenaltyAssessments(loanNo, db);
+}
+
 function canManageMemberPortalAccounts(user) {
   return getAssignedRoles(user?.role, user?.additionalRoles).some((role) =>
     ["System Administrator", "General Manager", "Membership Officer"].includes(role)
@@ -12992,9 +13211,17 @@ async function buildMemberPortalOverview(memberNo) {
 async function buildMemberPortalLoans(memberNo) {
   const member = (await listMembers()).find((item) => item.id === memberNo);
   if (!member) return { error: "Member was not found.", statusCode: 404 };
-  const currentLoans = (await listLoans()).filter((loan) => loan.memberNo === memberNo).map((loan) => ({
-    ...memberSystemLoanSummary(loan),
-    installments: loan.installments.map((installment) => ({
+  const currentLoans = [];
+  for (const loan of (await listLoans()).filter((item) => item.memberNo === memberNo)) {
+    const penalties = await ensureLoanPenaltyAssessments(loan.loanNo);
+    currentLoans.push({
+      ...memberSystemLoanSummary(loan),
+      overdueAmount: sumMoney(loan.installments.filter((installment) =>
+        installment.totalRemaining > 0 && daysBetweenIsoDates(formatDateOnly(new Date()), installment.dueDate) < 0
+      ).map((installment) => installment.totalRemaining)),
+      penaltyAmount: sumMoney(penalties.map((penalty) => penalty.outstandingAmount)),
+      penalties,
+      installments: loan.installments.map((installment) => ({
       installmentNo: installment.installmentNo,
       dueDate: installment.dueDate,
       principalDue: installment.principalDue,
@@ -13006,8 +13233,9 @@ async function buildMemberPortalLoans(memberNo) {
       paymentPending: installment.pendingPaymentAmount > 0,
       status: installment.totalRemaining <= 0 ? "Paid" :
         daysBetweenIsoDates(formatDateOnly(new Date()), installment.dueDate) < 0 ? "Overdue" : installment.status
-    }))
-  }));
+      }))
+    });
+  }
   const previousLoans = (await listMemberPreviousLoans(memberNo)).map((loan) => ({
     loanLabel: loan.loanLabel,
     originalAmount: Number(loan.originalAmount || 0),

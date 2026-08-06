@@ -4179,16 +4179,18 @@ async function run() {
       !smokeCollectionNo ||
       recordLoanCollectionBody.collection.installmentNo !== 1 ||
       recordLoanCollectionBody.collection.principalAmount !== 3250 ||
-      recordLoanCollectionBody.collection.interestAmount !== 750 ||
+      recordLoanCollectionBody.collection.interestAmount !== 711 ||
+      recordLoanCollectionBody.collection.penaltyAmount !== 39 ||
+      recordLoanCollectionBody.collection.penaltyAllocations.length !== 1 ||
       recordLoanCollectionBody.collection.amountReceived !== 4000 ||
       recordLoanCollectionBody.collection.allocations.length !== 3 ||
       recordLoanCollectionBody.collection.allocations[0].installmentNo !== 1 ||
       recordLoanCollectionBody.collection.allocations[1].installmentNo !== 2 ||
       recordLoanCollectionBody.collection.allocations[2].installmentNo !== 3 ||
-      recordLoanCollectionBody.collection.allocations[2].amountApplied !== 140.62 ||
+      recordLoanCollectionBody.collection.allocations[2].amountApplied !== 101.62 ||
       recordLoanCollectionBody.collection.status !== "Teller Batch"
     ) {
-      throw new Error("Teller should allocate an advance receipt across consecutive installments.");
+      throw new Error(`Teller should allocate an advance receipt across consecutive installments. Got ${JSON.stringify(recordLoanCollectionBody.collection)}`);
     }
 
     const collectedLoan = recordLoanCollectionBody.loan;
@@ -4196,7 +4198,7 @@ async function run() {
       collectedLoan.installments.find((item) => item.installmentNo === 1)?.status !== "Paid" ||
       collectedLoan.installments.find((item) => item.installmentNo === 2)?.status !== "Paid" ||
       collectedLoan.installments.find((item) => item.installmentNo === 3)?.status !== "Partial" ||
-      collectedLoan.installments.find((item) => item.installmentNo === 3)?.totalRemaining !== 1728.13
+      collectedLoan.installments.find((item) => item.installmentNo === 3)?.totalRemaining !== 1767.13
     ) {
       throw new Error(
         `Advance collection should pay future installments in order and retain the partial remainder. Got ${JSON.stringify(collectedLoan.installments.slice(0, 3))}`
@@ -4276,7 +4278,10 @@ async function run() {
       (line) => line.accountCode === "1050" && line.credit === 3250
     );
     const collectionInterestLine = postedCollectionResult?.entry.lines.find(
-      (line) => line.accountCode === "4010" && line.credit === 750
+      (line) => line.accountCode === "4010" && line.credit === 711
+    );
+    const collectionPenaltyLine = postedCollectionResult?.entry.lines.find(
+      (line) => line.accountCode === "4040" && line.accountName === "Penalty Income" && line.credit === 39
     );
 
     if (
@@ -4285,7 +4290,8 @@ async function run() {
       !postedCollectionResult ||
       !collectionCashLine ||
       !collectionPrincipalLine ||
-      !collectionInterestLine
+      !collectionInterestLine ||
+      !collectionPenaltyLine
     ) {
       throw new Error("Bookkeeper should post the balanced advance-payment journal.");
     }
