@@ -124,6 +124,7 @@ const viewTitles = {
   dashboard: "Dashboard",
   members: "Members",
   loans: "Loans",
+  inventory: "Inventory",
   ledger: "General Ledger",
   reports: "Reports",
   users: "Users",
@@ -6723,12 +6724,213 @@ function SummoReport({ user }) {
   );
 }
 
+const inventoryLocations = ["Canteen A", "Canteen B", "Bodega"];
+const inventoryDummyItems = [
+  "Bottled Water", "Soft Drinks", "Instant Coffee", "Biscuits", "Crackers",
+  "Cup Noodles", "Canned Goods", "Rice", "Sugar", "Cooking Oil"
+];
+
+function createInventoryDraftRows(locationIndex) {
+  return inventoryDummyItems.map((item, index) => ({
+    id: `${locationIndex}-${index + 1}`,
+    item,
+    beginningInventory: Math.max(0, 24 + (index * 3) - (locationIndex * 2)),
+    purchases: index % 3 === 0 ? 12 : 0,
+    transferIn: 0,
+    transferOut: 0,
+    endingInventory: Math.max(0, 14 + (index * 2) - locationIndex),
+    unitPrice: 10 + (index * 5)
+  }));
+}
+
+function MonthlyInventoryDraft({ user }) {
+  const defaultPeriod = new Date().toISOString().slice(0, 7);
+  const [period, setPeriod] = useState(defaultPeriod);
+  const [locationIndex, setLocationIndex] = useState(0);
+  const [newItem, setNewItem] = useState("");
+  const [sheets, setSheets] = useState({});
+  const [sheetMeta, setSheetMeta] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [reopenReason, setReopenReason] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+  const activeLocation = inventoryLocations[locationIndex];
+  const rows = sheets[activeLocation] || [];
+  const canEncode = user.permissions.includes("inventory:encode") && sheetMeta?.status !== "Finalized";
+  const canConfigure = user.permissions.includes("inventory:configure");
+  const canFinalize = user.permissions.includes("inventory:finalize");
+  const canCorrect = user.permissions.includes("inventory:correct");
+
+  const loadSheet = useCallback(async () => {
+    setError("");
+    try {
+      const data = await api(`/api/inventory/sheets?period=${period}&location=${encodeURIComponent(activeLocation)}`);
+      setSheetMeta(data);
+      setSheets((current) => ({ ...current, [activeLocation]: (data.rows || []).map((row) => ({
+        id: row.itemCode, itemCode: row.itemCode, item: row.itemName, beginningInventory: row.beginningInventory,
+        purchases: row.purchases, transferIn: row.transferIn, transferOut: row.transferOut,
+        endingInventory: row.endingInventory, unitPrice: row.unitPrice
+      })) }));
+    } catch (loadError) { setError(loadError.message); }
+  }, [period, activeLocation]);
+
+  useEffect(() => { loadSheet(); }, [loadSheet]);
+
+  function updateRow(id, field, value) {
+    const numberValue = Math.max(0, Number(value) || 0);
+    setSheets((current) => ({
+      ...current,
+      [activeLocation]: current[activeLocation].map((row) => row.id === id ? { ...row, [field]: numberValue } : row)
+    }));
+  }
+
+  async function addItem() {
+    const item = newItem.trim();
+    if (!item) return;
+    setIsBusy(true); setError("");
+    try {
+      const created = await api("/api/inventory/items", { method: "POST", body: JSON.stringify({ itemName: item }) });
+      setSheets((current) => ({ ...current, [activeLocation]: [...(current[activeLocation] || []), {
+        id: created.itemCode, itemCode: created.itemCode, item: created.itemName, beginningInventory: 0, purchases: 0,
+        transferIn: 0, transferOut: 0, endingInventory: 0, unitPrice: 0
+      }] }));
+      setNewItem(""); setMessage(`${created.itemName} added to the inventory catalog.`);
+    } catch (actionError) { setError(actionError.message); } finally { setIsBusy(false); }
+  }
+
+  async function saveDraft() {
+    setIsBusy(true); setError(""); setMessage("");
+    try {
+      const data = await api("/api/inventory/sheets", { method: "PUT", body: JSON.stringify({ period, location: activeLocation,
+        rows: rows.map((row) => ({ ...row, itemName: row.item, itemCode: row.itemCode || row.id })) }) });
+      setSheetMeta(data); setMessage(`${data.sheetNo} saved as Draft.`);
+    } catch (actionError) { setError(actionError.message); } finally { setIsBusy(false); }
+  }
+
+  async function changeStatus(action) {
+    setIsBusy(true); setError(""); setMessage("");
+    try {
+      const data = await api("/api/inventory/sheets/status", { method: "POST",
+        body: JSON.stringify({ period, location: activeLocation, action, reason: reopenReason }) });
+      setSheetMeta(data); setReopenReason(""); setMessage(`${data.sheetNo} ${action === "finalize" ? "finalized" : "reopened for correction"}.`);
+    } catch (actionError) { setError(actionError.message); } finally { setIsBusy(false); }
+  }
+
+  const totals = rows.reduce((summary, row) => {
+    const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
+    const unitsSoldOrUsed = Math.max(0, tgas - row.endingInventory);
+    return {
+      tgas: summary.tgas + tgas,
+      endingInventory: summary.endingInventory + row.endingInventory,
+      unitsSoldOrUsed: summary.unitsSoldOrUsed + unitsSoldOrUsed,
+      endingValue: summary.endingValue + (row.endingInventory * row.unitPrice)
+    };
+  }, { tgas: 0, endingInventory: 0, unitsSoldOrUsed: 0, endingValue: 0 });
+
+  const quantityField = (row, field, label) => (
+    <NumberInput min={0} size="sm" value={row[field]} isDisabled={!canEncode} onChange={(textValue) => updateRow(row.id, field, textValue)}>
+      <NumberInputField aria-label={`${row.item} ${label}`} minW="82px" textAlign="right" />
+    </NumberInput>
+  );
+
+  return (
+    <VStack align="stretch" spacing={5}>
+      <Box bg="blue.50" borderWidth="1px" borderColor="blue.200" borderRadius="lg" p={4}>
+        <Badge colorScheme="blue">Persistent operational inventory</Badge>
+        <Text mt={2} color="blue.800">Sheets save to PostgreSQL with audit evidence. They do not post to the GL or affect financial statements.</Text>
+      </Box>
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" align="end" gap={4} wrap="wrap">
+          <Box>
+            <Heading size="md">Monthly Inventory Worksheet</Heading>
+            <Text color="gray.600" mt={1}>Physical inventory draft for Canteen A, Canteen B, and Bodega.</Text>
+          </Box>
+          <FormControl maxW="220px"><FormLabel>Inventory month</FormLabel>
+            <Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+          </FormControl>
+        </Flex>
+        <Tabs index={locationIndex} onChange={setLocationIndex} mt={5} colorScheme="green" variant="enclosed">
+          <TabList overflowX="auto">{inventoryLocations.map((location) => <Tab key={location}>{location}</Tab>)}</TabList>
+        </Tabs>
+      </Box>
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Flex justify="space-between" align="end" gap={3} wrap="wrap" mb={4}>
+          <Box><Heading size="sm">{activeLocation} · {period}</Heading>
+            <Text color="gray.500" fontSize="sm">TGAS = Beginning + Purchases + Transfer In − Transfer Out</Text>
+            <HStack mt={2}><Badge colorScheme={sheetMeta?.status === "Finalized" ? "green" : sheetMeta?.status === "Draft" ? "blue" : "gray"}>{sheetMeta?.status || "Loading"}</Badge>
+              {sheetMeta?.preparedBy ? <Text fontSize="xs">Saved by {sheetMeta.preparedBy}</Text> : null}</HStack></Box>
+          {canConfigure ? <Flex gap={2} align="end" wrap="wrap">
+            <FormControl><FormLabel fontSize="sm">New item</FormLabel>
+              <Input size="sm" value={newItem} onChange={(event) => setNewItem(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") addItem(); }} placeholder="Enter item name" />
+            </FormControl>
+            <Button size="sm" onClick={addItem} isLoading={isBusy} isDisabled={!newItem.trim()}>Add Item</Button>
+          </Flex> : null}
+        </Flex>
+        {error ? <Text color="red.600" mb={3}>{error}</Text> : null}
+        {message ? <Text color="green.600" mb={3}>{message}</Text> : null}
+        {user.role === "Board / Read-Only Executive" ? (
+          <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3}>
+            <Box borderWidth="1px" p={3}><Text fontSize="sm" color="gray.500">Items</Text><Text fontWeight="bold">{sheetMeta?.summary?.itemCount || 0}</Text></Box>
+            <Box borderWidth="1px" p={3}><Text fontSize="sm" color="gray.500">TGAS</Text><Text fontWeight="bold">{sheetMeta?.summary?.tgas || 0}</Text></Box>
+            <Box borderWidth="1px" p={3}><Text fontSize="sm" color="gray.500">Ending Units</Text><Text fontWeight="bold">{sheetMeta?.summary?.endingInventory || 0}</Text></Box>
+            <Box borderWidth="1px" p={3}><Text fontSize="sm" color="gray.500">Ending Value</Text><Text fontWeight="bold">{formatMoney(sheetMeta?.summary?.endingValue || 0)}</Text></Box>
+          </Grid>
+        ) : (
+        <TableContainer>
+          <Table size="sm">
+            <Thead><Tr><Th>Item</Th><Th isNumeric>Beg. Invty.</Th><Th isNumeric>Purchases</Th><Th isNumeric>Transfer In</Th>
+              <Th isNumeric>Transfer Out</Th><Th isNumeric>TGAS</Th><Th isNumeric>Invty End</Th><Th isNumeric>Sold / Used</Th>
+              <Th isNumeric>UP</Th><Th isNumeric>Ending Value</Th></Tr></Thead>
+            <Tbody>
+              {rows.map((row) => {
+                const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
+                const unitsSoldOrUsed = Math.max(0, tgas - row.endingInventory);
+                const hasQuantityIssue = row.transferOut > row.beginningInventory + row.purchases + row.transferIn || row.endingInventory > tgas;
+                return <Tr key={row.id} bg={hasQuantityIssue ? "red.50" : undefined}>
+                  <Td minW="180px" fontWeight="medium">{row.item}{hasQuantityIssue ? <Text color="red.600" fontSize="xs">Check quantities</Text> : null}</Td>
+                  <Td>{quantityField(row, "beginningInventory", "beginning inventory")}</Td>
+                  <Td>{quantityField(row, "purchases", "purchases")}</Td>
+                  <Td>{quantityField(row, "transferIn", "transfer in")}</Td>
+                  <Td>{quantityField(row, "transferOut", "transfer out")}</Td>
+                  <Td isNumeric fontWeight="bold">{tgas}</Td>
+                  <Td>{quantityField(row, "endingInventory", "ending inventory")}</Td>
+                  <Td isNumeric>{unitsSoldOrUsed}</Td>
+                  <Td>{quantityField(row, "unitPrice", "unit price")}</Td>
+                  <Td isNumeric fontWeight="bold">{formatMoney(row.endingInventory * row.unitPrice)}</Td>
+                </Tr>;
+              })}
+              <Tr bg="gray.50"><Td fontWeight="bold">Sheet Total</Td><Td colSpan={4} /><Td isNumeric fontWeight="bold">{totals.tgas}</Td>
+                <Td isNumeric fontWeight="bold">{totals.endingInventory}</Td><Td isNumeric fontWeight="bold">{totals.unitsSoldOrUsed}</Td><Td />
+                <Td isNumeric fontWeight="bold">{formatMoney(totals.endingValue)}</Td></Tr>
+            </Tbody>
+          </Table>
+        </TableContainer>
+        )}
+        <Flex mt={4} justify="flex-end" gap={3} wrap="wrap">
+          {canEncode ? <Button onClick={saveDraft} isLoading={isBusy}>Save Draft</Button> : null}
+          {canFinalize && sheetMeta?.status === "Draft" ? <Button colorScheme="green" onClick={() => changeStatus("finalize")} isLoading={isBusy}>Finalize Month</Button> : null}
+          {canCorrect && sheetMeta?.status === "Finalized" ? <>
+            <Input maxW="360px" value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} placeholder="Required correction reason" />
+            <Button colorScheme="orange" onClick={() => changeStatus("reopen")} isDisabled={!reopenReason.trim()} isLoading={isBusy}>Reopen for Correction</Button>
+          </> : null}
+        </Flex>
+      </Box>
+    </VStack>
+  );
+}
+
 function Reports({ user }) {
   const reportOptions = [
     {
       id: "summo-regular-capture",
       title: "SUMMO — Regular Members Capture",
       description: "Monthly member payables, settlements, carried balances, and Excel-supported movements."
+    },
+    {
+      id: "monthly-inventory-draft",
+      title: "Monthly Inventory",
+      description: "Persistent quantity and ending-value sheets for Canteen A, Canteen B, and Bodega."
     },
     {
       id: "daily-cash-position",
@@ -6860,6 +7062,7 @@ function Reports({ user }) {
       {error ? <Text color="red.500">{error}</Text> : null}
 
       {selectedReport === "summo-regular-capture" ? <SummoReport user={user} /> : null}
+      {selectedReport === "monthly-inventory-draft" ? <MonthlyInventoryDraft user={user} /> : null}
 
       {selectedReport === "daily-cash-position" && summary ? (
         <>
@@ -12047,6 +12250,10 @@ function Shell({ user, onLogout }) {
 
     if (view === "ledger") {
       return <Ledger user={user} />;
+    }
+
+    if (view === "inventory") {
+      return <MonthlyInventoryDraft user={user} />;
     }
 
     if (view === "reports") {

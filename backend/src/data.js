@@ -80,14 +80,14 @@ export const users = [
 ];
 
 export const roleViews = {
-  "System Administrator": ["dashboard", "members", "loans", "ledger", "reports", "users", "setup"],
-  "General Manager": ["dashboard", "members", "loans", "ledger", "reports", "users"],
-  "Accountant / Bookkeeper": ["dashboard", "ledger", "reports"],
+  "System Administrator": ["dashboard", "members", "loans", "inventory", "ledger", "reports", "users", "setup"],
+  "General Manager": ["dashboard", "members", "loans", "inventory", "ledger", "reports", "users"],
+  "Accountant / Bookkeeper": ["dashboard", "inventory", "ledger", "reports"],
   "Loan Officer": ["dashboard", "members", "loans"],
-  "Teller / Cashier": ["dashboard", "members", "loans"],
+  "Teller / Cashier": ["dashboard", "members", "loans", "inventory"],
   "Membership Officer": ["dashboard", "members", "users"],
-  "Auditor / Compliance Officer": ["dashboard", "members", "loans", "ledger", "reports", "users", "setup"],
-  "Board / Read-Only Executive": ["dashboard", "reports"]
+  "Auditor / Compliance Officer": ["dashboard", "members", "loans", "inventory", "ledger", "reports", "users", "setup"],
+  "Board / Read-Only Executive": ["dashboard", "inventory", "reports"]
 };
 
 export const rolePermissions = {
@@ -110,6 +110,7 @@ export const rolePermissions = {
     "reports:view",
     "reports:summo:prepare",
     "reports:summo:lock",
+    "inventory:view", "inventory:encode", "inventory:configure", "inventory:finalize", "inventory:correct",
     "users:view",
     "member-portal-accounts:manage",
     "loans:products:view",
@@ -145,6 +146,7 @@ export const rolePermissions = {
     "ledger:view",
     "reports:view",
     "reports:summo:lock",
+    "inventory:view", "inventory:encode", "inventory:configure", "inventory:finalize", "inventory:correct",
     "users:view",
     "users:manage",
     "member-portal-accounts:manage",
@@ -172,6 +174,7 @@ export const rolePermissions = {
     "teller-batches:view",
     "reports:view",
     "reports:summo:prepare",
+    "inventory:view", "inventory:encode", "inventory:finalize",
     "loans:collections:view",
     "teller-fundings:view",
     "teller-fundings:prepare",
@@ -211,6 +214,7 @@ export const rolePermissions = {
     "teller-turnovers:create"
   ],
   "Teller / Cashier": [
+    "inventory:view", "inventory:encode",
     "members:view",
     "members:initial-payments:view",
     "members:initial-payments:create",
@@ -263,6 +267,7 @@ export const rolePermissions = {
     "loans:products:view"
   ],
   "Auditor / Compliance Officer": [
+    "inventory:view",
     "members:view",
     "members:applications:view",
     "members:initial-payments:view",
@@ -289,7 +294,7 @@ export const rolePermissions = {
     "disbursement-categories:view",
     "daily-disbursements:view"
   ],
-  "Board / Read-Only Executive": ["reports:view"]
+  "Board / Read-Only Executive": ["reports:view", "inventory:view"]
 };
 
 export const members = [

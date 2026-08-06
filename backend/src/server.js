@@ -182,9 +182,17 @@ const memoryMemberPortalAccounts = [];
 const memoryMemberPortalAuditEvents = [];
 const memoryMemberProfileAuditEvents = [];
 const memoryLoanPenaltyAssessments = [];
+const memoryInventoryItems = ["Bottled Water", "Soft Drinks", "Instant Coffee", "Biscuits", "Crackers", "Cup Noodles", "Canned Goods", "Rice", "Sugar", "Cooking Oil"]
+  .map((itemName, index) => ({ itemCode: `INV-${String(index + 1).padStart(3, "0")}`, itemName, status: "Active" }));
+const memoryInventorySheets = [];
+const memoryInventoryAuditEvents = [];
 let pool = null;
 
 const persistedTables = [
+  "inventory_audit_events",
+  "inventory_sheet_rows",
+  "inventory_sheets",
+  "inventory_items",
   "loan_penalty_payment_allocations",
   "loan_penalty_assessments",
   "member_profile_audit_events",
@@ -244,6 +252,10 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  inventory_items: ["item_code", "item_name", "status", "created_by", "updated_by"],
+  inventory_sheets: ["sheet_no", "report_period", "location", "status", "prepared_by", "finalized_by", "reopened_by"],
+  inventory_sheet_rows: ["sheet_no", "item_code", "beginning_inventory", "purchases", "transfer_in", "transfer_out", "ending_inventory", "unit_price"],
+  inventory_audit_events: ["sheet_no", "event_type", "performed_by", "details", "created_at"],
   loan_penalty_assessments: ["penalty_no", "loan_no", "installment_no", "assessment_date", "overdue_base", "penalty_rate_bps", "penalty_amount", "paid_amount", "income_account_code", "status"],
   loan_penalty_payment_allocations: ["collection_no", "penalty_no", "amount", "income_account_code", "income_account_name"],
   member_profile_audit_events: ["member_no", "portal_username", "previous_values", "new_values", "changed_fields", "created_at"],
@@ -12978,6 +12990,160 @@ function isAdminUser(user) {
   return user?.username === "admin" && user?.role === "System Administrator";
 }
 
+const inventoryLocations = ["Canteen A", "Canteen B", "Bodega"];
+
+function inventorySheetNo(period, location) {
+  const locationCode = { "Canteen A": "CA", "Canteen B": "CB", Bodega: "BO" }[location];
+  return `INV-${period.replace("-", "")}-${locationCode}`;
+}
+
+function mapInventoryRow(row) {
+  const beginningInventory = Number(row.beginningInventory || 0);
+  const purchases = Number(row.purchases || 0);
+  const transferIn = Number(row.transferIn || 0);
+  const transferOut = Number(row.transferOut || 0);
+  const endingInventory = Number(row.endingInventory || 0);
+  const unitPrice = Number(row.unitPrice || 0);
+  const tgas = moneyValue(beginningInventory + purchases + transferIn - transferOut);
+  return { itemCode: row.itemCode, itemName: row.itemName, beginningInventory, purchases, transferIn,
+    transferOut, tgas, endingInventory, soldOrUsed: moneyValue(tgas - endingInventory), unitPrice,
+    endingValue: moneyValue(endingInventory * unitPrice) };
+}
+
+function inventorySummary(rows) {
+  return rows.reduce((total, row) => ({ itemCount: total.itemCount + 1, tgas: addMoney(total.tgas, row.tgas),
+    endingInventory: addMoney(total.endingInventory, row.endingInventory),
+    soldOrUsed: addMoney(total.soldOrUsed, row.soldOrUsed), endingValue: addMoney(total.endingValue, row.endingValue)
+  }), { itemCount: 0, tgas: 0, endingInventory: 0, soldOrUsed: 0, endingValue: 0 });
+}
+
+async function listInventoryItems() {
+  const db = await getPool();
+  if (!db) return memoryInventoryItems.map((item) => ({ ...item }));
+  const [rows] = await db.execute(`SELECT item_code AS itemCode, item_name AS itemName, status FROM inventory_items ORDER BY item_code`);
+  return rows;
+}
+
+async function getInventorySheet(period, location, summaryOnly = false) {
+  const sheetNo = inventorySheetNo(period, location);
+  const db = await getPool();
+  let sheet;
+  let rows;
+  if (!db) {
+    sheet = memoryInventorySheets.find((item) => item.sheetNo === sheetNo);
+    rows = sheet?.rows || memoryInventoryItems.filter((item) => item.status === "Active").map((item) => ({
+      itemCode: item.itemCode, itemName: item.itemName, beginningInventory: 0, purchases: 0, transferIn: 0,
+      transferOut: 0, endingInventory: 0, unitPrice: 0
+    }));
+  } else {
+    const [sheetRows] = await db.execute(`SELECT sheet_no AS sheetNo, report_period AS period, location, status,
+      prepared_by AS preparedBy, prepared_at AS preparedAt, finalized_by AS finalizedBy, finalized_at AS finalizedAt,
+      reopened_by AS reopenedBy, reopened_at AS reopenedAt, reopen_reason AS reopenReason
+      FROM inventory_sheets WHERE report_period = ? AND location = ?`, [period, location]);
+    sheet = sheetRows[0];
+    if (sheet) {
+      const [dataRows] = await db.execute(`SELECT item_code AS itemCode, item_name AS itemName,
+        beginning_inventory AS beginningInventory, purchases, transfer_in AS transferIn, transfer_out AS transferOut,
+        ending_inventory AS endingInventory, unit_price AS unitPrice FROM inventory_sheet_rows WHERE sheet_no = ? ORDER BY item_code`, [sheetNo]);
+      rows = dataRows;
+    } else {
+      rows = (await listInventoryItems()).filter((item) => item.status === "Active").map((item) => ({ ...item,
+        beginningInventory: 0, purchases: 0, transferIn: 0, transferOut: 0, endingInventory: 0, unitPrice: 0 }));
+    }
+  }
+  const mappedRows = rows.map(mapInventoryRow);
+  return { sheetNo, period, location, status: sheet?.status || "Not saved", preparedBy: sheet?.preparedBy || "",
+    finalizedBy: sheet?.finalizedBy || "", finalizedAt: sheet?.finalizedAt || "", summary: inventorySummary(mappedRows),
+    rows: summaryOnly ? [] : mappedRows };
+}
+
+function validateInventoryRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return { error: "At least one inventory item is required." };
+  const cleaned = rows.map((row) => ({ itemCode: String(row.itemCode || "").trim().slice(0, 40),
+    itemName: String(row.itemName || "").trim().slice(0, 160), beginningInventory: moneyValue(Math.max(0, Number(row.beginningInventory) || 0)),
+    purchases: moneyValue(Math.max(0, Number(row.purchases) || 0)), transferIn: moneyValue(Math.max(0, Number(row.transferIn) || 0)),
+    transferOut: moneyValue(Math.max(0, Number(row.transferOut) || 0)), endingInventory: moneyValue(Math.max(0, Number(row.endingInventory) || 0)),
+    unitPrice: moneyValue(Math.max(0, Number(row.unitPrice) || 0)) }));
+  if (cleaned.some((row) => !row.itemCode || !row.itemName)) return { error: "Every inventory row requires an item." };
+  if (cleaned.some((row) => row.transferOut > row.beginningInventory + row.purchases + row.transferIn ||
+    row.endingInventory > row.beginningInventory + row.purchases + row.transferIn - row.transferOut)) {
+    return { error: "Correct inventory rows where transfers or ending quantities exceed available stock." };
+  }
+  return { value: cleaned };
+}
+
+async function saveInventorySheet(period, location, rows, user) {
+  const validation = validateInventoryRows(rows);
+  if (validation.error) return validation;
+  const sheetNo = inventorySheetNo(period, location);
+  const db = await getPool();
+  if (!db) {
+    const existing = memoryInventorySheets.find((item) => item.sheetNo === sheetNo);
+    if (existing?.status === "Finalized") return { error: "Reopen the finalized sheet before correcting it.", statusCode: 409 };
+    if (existing) Object.assign(existing, { rows: validation.value, preparedBy: user.username, status: "Draft" });
+    else memoryInventorySheets.push({ sheetNo, period, location, status: "Draft", rows: validation.value, preparedBy: user.username });
+    memoryInventoryAuditEvents.push({ sheetNo, eventType: "SAVED", performedBy: user.username });
+    return getInventorySheet(period, location);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [existingRows] = await connection.execute(`SELECT status FROM inventory_sheets WHERE sheet_no = ? FOR UPDATE`, [sheetNo]);
+    if (existingRows[0]?.status === "Finalized") { await connection.rollback(); return { error: "Reopen the finalized sheet before correcting it.", statusCode: 409 }; }
+    await connection.execute(`INSERT INTO inventory_sheets (sheet_no, report_period, location, status, prepared_by)
+      VALUES (?, ?, ?, 'Draft', ?) ON CONFLICT (report_period, location) DO UPDATE SET prepared_by = EXCLUDED.prepared_by,
+      prepared_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [sheetNo, period, location, user.username]);
+    await connection.execute(`DELETE FROM inventory_sheet_rows WHERE sheet_no = ?`, [sheetNo]);
+    for (const row of validation.value) await connection.execute(`INSERT INTO inventory_sheet_rows
+      (sheet_no, item_code, item_name, beginning_inventory, purchases, transfer_in, transfer_out, ending_inventory, unit_price)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [sheetNo, row.itemCode, row.itemName, row.beginningInventory, row.purchases,
+      row.transferIn, row.transferOut, row.endingInventory, row.unitPrice]);
+    await connection.execute(`INSERT INTO inventory_audit_events (sheet_no, event_type, performed_by, details) VALUES (?, 'SAVED', ?, ?)`,
+      [sheetNo, user.username, `${validation.value.length} item rows`]);
+    await connection.commit();
+    return getInventorySheet(period, location);
+  } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
+}
+
+async function addInventoryItem(itemName, user) {
+  const cleanName = String(itemName || "").trim().slice(0, 160);
+  if (!cleanName) return { error: "Item name is required." };
+  const items = await listInventoryItems();
+  if (items.some((item) => item.itemName.toLowerCase() === cleanName.toLowerCase())) return { error: "That inventory item already exists.", statusCode: 409 };
+  const itemCode = `INV-${String(items.length + 1).padStart(3, "0")}`;
+  const db = await getPool();
+  if (!db) memoryInventoryItems.push({ itemCode, itemName: cleanName, status: "Active" });
+  else await db.execute(`INSERT INTO inventory_items (item_code, item_name, created_by, updated_by) VALUES (?, ?, ?, ?)`,
+    [itemCode, cleanName, user.username, user.username]);
+  return { itemCode, itemName: cleanName, status: "Active" };
+}
+
+async function changeInventorySheetStatus(period, location, action, reason, user) {
+  const sheetNo = inventorySheetNo(period, location);
+  const db = await getPool();
+  if (!db) {
+    const sheet = memoryInventorySheets.find((item) => item.sheetNo === sheetNo);
+    if (!sheet) return { error: "Save the inventory draft first.", statusCode: 409 };
+    if (action === "finalize") Object.assign(sheet, { status: "Finalized", finalizedBy: user.username, finalizedAt: new Date().toISOString() });
+    else Object.assign(sheet, { status: "Draft", reopenedBy: user.username, reopenReason: reason });
+    memoryInventoryAuditEvents.push({ sheetNo, eventType: action.toUpperCase(), performedBy: user.username, details: reason });
+    return getInventorySheet(period, location);
+  }
+  if (action === "finalize") {
+    const [result] = await db.execute(`UPDATE inventory_sheets SET status = 'Finalized', finalized_by = ?, finalized_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP WHERE sheet_no = ? AND status = 'Draft'`, [user.username, sheetNo]);
+    if (!result.affectedRows) return { error: "A saved Draft is required before finalization.", statusCode: 409 };
+  } else {
+    if (!String(reason || "").trim()) return { error: "A correction reason is required." };
+    const [result] = await db.execute(`UPDATE inventory_sheets SET status = 'Draft', reopened_by = ?, reopened_at = CURRENT_TIMESTAMP,
+      reopen_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE sheet_no = ? AND status = 'Finalized'`, [user.username, reason.trim(), sheetNo]);
+    if (!result.affectedRows) return { error: "Only a finalized sheet can be reopened.", statusCode: 409 };
+  }
+  await db.execute(`INSERT INTO inventory_audit_events (sheet_no, event_type, performed_by, details) VALUES (?, ?, ?, ?)`,
+    [sheetNo, action.toUpperCase(), user.username, String(reason || "")]);
+  return getInventorySheet(period, location);
+}
+
 function mapLoanPenaltyAssessment(row) {
   return {
     penaltyNo: row.penaltyNo,
@@ -15694,6 +15860,56 @@ app.get("/api/reports/daily-cash-position", async (request, response) => {
   }
 
   response.json(await getDailyCashPositionReport());
+});
+
+app.get("/api/inventory/items", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "inventory:view")) return response.status(403).json({ error: "Access denied" });
+  response.json(await listInventoryItems());
+});
+
+app.post("/api/inventory/items", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "inventory:configure")) return response.status(403).json({ error: "Access denied" });
+  const result = await addInventoryItem(request.body?.itemName, user);
+  if (result.error) return response.status(result.statusCode || 400).json({ error: result.error });
+  response.status(201).json(result);
+});
+
+app.get("/api/inventory/sheets", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "inventory:view")) return response.status(403).json({ error: "Access denied" });
+  const period = String(request.query.period || "");
+  const location = String(request.query.location || "");
+  if (!/^\d{4}-\d{2}$/.test(period) || !inventoryLocations.includes(location)) return response.status(400).json({ error: "Valid period and location are required." });
+  response.json(await getInventorySheet(period, location, user.role === "Board / Read-Only Executive"));
+});
+
+app.put("/api/inventory/sheets", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "inventory:encode")) return response.status(403).json({ error: "Access denied" });
+  const { period, location, rows } = request.body || {};
+  if (!/^\d{4}-\d{2}$/.test(String(period || "")) || !inventoryLocations.includes(location)) return response.status(400).json({ error: "Valid period and location are required." });
+  const result = await saveInventorySheet(period, location, rows, user);
+  if (result.error) return response.status(result.statusCode || 400).json({ error: result.error });
+  response.json(result);
+});
+
+app.post("/api/inventory/sheets/status", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  const { period, location, action, reason } = request.body || {};
+  const permission = action === "reopen" ? "inventory:correct" : "inventory:finalize";
+  if (!hasPermission(user, permission)) return response.status(403).json({ error: "Access denied" });
+  if (!/^\d{4}-\d{2}$/.test(String(period || "")) || !inventoryLocations.includes(location) || !["finalize", "reopen"].includes(action))
+    return response.status(400).json({ error: "Valid period, location, and action are required." });
+  const result = await changeInventorySheetStatus(period, location, action, reason, user);
+  if (result.error) return response.status(result.statusCode || 400).json({ error: result.error });
+  response.json(result);
 });
 
 app.get("/api/reports/summo/template", async (request, response) => {
