@@ -213,6 +213,7 @@
           <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
           <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
           <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, analytical XLSX export, and the exact client-format six-sheet workbook.</p></article>
+          <article><h3>Monthly Inventory</h3><p>Inventory -> separate persistent Canteen A, Canteen B, and Bodega monthly sheets with ten starter items, item catalog expansion, Draft/Finalized controls, and calculated TGAS, sold/used units, and ending value.</p></article>
           <article><h3>Keyboard Selection</h3><p>Type to filter, use Up/Down, press Enter to select or Tab to select and advance, and Escape to close.</p></article>
         </div>
       </section>
@@ -523,9 +524,23 @@
           <span>Statement of Changes in Equity</span>
           <span>Cash Flow Statement</span>
           <span>Loan Portfolio Aging</span>
+          <span>Monthly Inventory (Canteen A, Canteen B, and Bodega)</span>
           <span>Member Statement</span>
           <span>Member Share Capital Ledger</span>
           <span>Audit Trail</span>
+        </div>
+        <div class="section-heading">
+          <h3>Monthly Inventory access and accounting boundary</h3>
+          <p>
+            Each location sheet captures beginning inventory, purchases, transfers in and out,
+            ending inventory, and unit price. TGAS equals beginning inventory plus purchases plus
+            transfer in minus transfer out; the grid also calculates sold/used units and ending value.
+            Sheets are saved to PostgreSQL and move from Draft to Finalized; correction requires an
+            audited reopen reason. System Administrator and General Manager have full inventory authority,
+            Accountant/Bookkeeper can encode and finalize, Teller/Cashier can encode, Auditor can inspect
+            details, and Board receives summaries only. Inventory remains outside the general ledger and
+            financial statements while valuation and accounting rules await client confirmation.
+          </p>
         </div>
       </section>
     </main>

@@ -81,6 +81,10 @@ function validateSite(directory) {
     "Overdue-loan penalty guidance is missing.");
   assert(index.includes("overdue and penalty amounts separately"),
     "Separate overdue and penalty visibility guidance is missing.");
+  assert(index.includes("Monthly Inventory") && index.includes("Canteen A, Canteen B, and Bodega"),
+    "Monthly inventory workflow is missing.");
+  assert(index.includes("saved to PostgreSQL") && index.includes("Inventory remains outside") && index.includes("general ledger"),
+    "Monthly inventory persistence or accounting boundary is missing.");
   assert(index.includes("Loan Officer Cash Turnover"), "Loan Officer cash-turnover workflow is missing.");
   assert(index.includes("mismatch blocks acceptance"), "Cash-turnover count control is missing.");
   assert(index.includes("endorsement note for the Bookkeeper"),

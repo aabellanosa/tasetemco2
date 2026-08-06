@@ -361,6 +361,22 @@ The Reports screen includes a Trial Balance report that summarizes posted genera
 
 The Reports screen includes a Statement of Financial Condition report. It presents assets, liabilities, and equity from posted general ledger balances. Until formal closing entries are built, current-period income and expense balances are shown as Current Period Surplus or Deficit under equity.
 
+### Monthly Inventory
+
+The Inventory workspace provides persistent monthly sheets for Canteen A, Canteen B, and Bodega. PostgreSQL stores the item catalog, sheets, rows, statuses, actors, timestamps, correction reasons, and audit events. Ten starter items are seeded and authorized catalog managers can add items.
+
+The draft captures Beginning Inventory, Purchases, Transfer In, Transfer Out, Ending Inventory, and Unit Price. It calculates:
+
+- `TGAS = Beginning Inventory + Purchases + Transfer In - Transfer Out`
+- `Sold / Used = TGAS - Ending Inventory`
+- `Ending Value = Ending Inventory x Unit Price`
+
+The screen shows location totals and highlights a row when transfers exceed available units or ending inventory exceeds TGAS. Separate Transfer In and Transfer Out fields replace a direction-specific “Withdrawal from B to A” column so the same grid can eventually support movements among all three locations.
+
+Authorized encoders save a Draft. Finalizers freeze it as Finalized; it cannot be edited until a System Administrator or General Manager reopens it with a required correction reason. System Administrator and General Manager can configure, encode, correct, review, and finalize. Accountant/Bookkeeper can encode, review, and finalize. Teller/Cashier can encode physical inventory and transfers. Auditor has detailed read-only access, while Board sees monthly summary totals only. Loan Officer and Membership Officer have no access. General Manager receives these complete capabilities only for Inventory—not general System Administrator or Teller authority elsewhere.
+
+The persistent module still has no GL or financial-statement effect. Automatic carry-forward, valuation method, transfer matching/approval, and accounting entries remain pending client confirmation. Deployments require `npm run pg:migrate`.
+
 SUMMO Report v1 adds a monthly `REGULAR MEMBERS CAPTURE` operational receivables report. Finalized C1 and C2 cost-center payables supply Canteen, finalized WRS payables supply WRS, finalized GMAR / G-mar Commercial payables supply G-mar Capital, and posted Monthly Contributions supply TFEA, CBU, and Secured Savings directly from system transactions. The existing SUMMO calculation applies the configured 200-basis-point G-mar interest rate. Bookkeeper uses the XLSX import only for categories not yet captured in-system, reviews validation, finalizes the import, and refreshes a draft. The system combines both source types with active member data, scheduled system loan installments, posted cash collections, and an opening or prior locked SUMMO balance. General Manager locks or reopens periods; Auditor and Board have read-only access. The system-generated analytical export contains Regular Capture, Loan Details, and Audit sheets. SUMMO imports and cost-center payables do not create accounting journals; cash-paid Monthly Contributions post through the reviewed teller batch.
 
 Client-format SUMMO Workbook v1 preserves the cooperative's exact six-sheet workbook as a controlled output template. `Generate Preview` reads current system movements, while `Download Locked Version` requires an already locked SUMMO month. The first-sheet pilot fills only `REG_MEM_CAP`: Active Regular Capture member names; the earliest posted LBP due date and monthly installment in columns F and G; G-mar Capital in column P; Canteen in column S; WRS in column T; and posted TFEA, CBU, and Secured Savings in columns U, V, and AE. Native LBP schedules replace new external LBP imports. An overlap with a legacy finalized LBP import blocks locking to prevent double counting. Protected column Q remains untouched and retains the workbook's shared `=P[row]*0.02` interest formula. The other five cluster sheets, formulas, headers, merged cells, and formatting remain unchanged. Generation stops if the expected sheet/header/color safeguards fail or if the Active Regular Capture roster exceeds the current 67 member rows.

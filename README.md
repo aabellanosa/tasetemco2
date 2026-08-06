@@ -312,6 +312,8 @@ The Reports screen includes a Control Account Reconciliation report that compare
 
 The Reports screen includes Trial Balance and Statement of Financial Condition reports generated from posted general ledger balances.
 
+Monthly Inventory provides persistent PostgreSQL-backed sheets for Canteen A, Canteen B, and Bodega. Ten starter items are seeded and authorized users can add catalog items. Each monthly sheet captures beginning inventory, purchases, transfers in/out, ending inventory, and unit price; it calculates TGAS, units sold/used, ending value, and totals. Drafts may be saved and finalized, while authorized corrections require reopening with a reason and retain audit events. System Administrator and General Manager have full inventory authority; Accountant/Bookkeeper can encode and finalize; Teller/Cashier can encode; Auditor has detailed read-only access; Board receives summary-only access. General Manager's expanded authority applies only inside Inventory. The module does not post to the GL or change financial statements pending confirmed valuation and accounting rules. Run `npm run pg:migrate` before deployment.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
