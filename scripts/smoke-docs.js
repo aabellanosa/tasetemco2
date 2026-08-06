@@ -77,6 +77,10 @@ function validateSite(directory) {
   assert(index.includes("partial, full, or advance receipts"), "Flexible loan collection workflow is missing.");
   assert(index.includes("oldest unpaid installment through future installments"),
     "Sequential advance-payment allocation guidance is missing.");
+  assert(index.includes("2% penalty") && index.includes("seven-calendar-day grace period"),
+    "Overdue-loan penalty guidance is missing.");
+  assert(index.includes("overdue and penalty amounts separately"),
+    "Separate overdue and penalty visibility guidance is missing.");
   assert(index.includes("Loan Officer Cash Turnover"), "Loan Officer cash-turnover workflow is missing.");
   assert(index.includes("mismatch blocks acceptance"), "Cash-turnover count control is missing.");
   assert(index.includes("endorsement note for the Bookkeeper"),

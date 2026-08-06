@@ -265,7 +265,7 @@ Teller Cash Funding v1c adds accounting completion to the reviewed-batch posting
 
 CBU Withdrawal v1 treats withdrawable Capital Build-Up as a normal Teller cash-out while protecting cooperative exposure. Available CBU equals posted share capital less the `PHP 5,000` membership minimum, positive manually captured previous-loan balances, remaining balances of Posted system loans, and any pending CBU withdrawals. Teller receives a blocking modal and server rejection when the requested amount exceeds that result, with instructions to refer the case to the System Administrator. A cash-covered request enters the Open Teller batch; an uncovered request remains `For Funding` and is included in Bookkeeper's funding shortage. After acknowledged funding, Teller releases the queued request. Bookkeeper's reviewed-batch post then decreases member CBU and posts debit `3010 - Share Capital`, credit `1010 - Cash on Hand`. The request, release, and posting audit fields are retained.
 
-Loan Collection v1-v3 introduces flexible receipt collection against the earliest unpaid installment. Teller/Cashier selects a posted loan and the system presents the next collectible installment, the amount due now, and the total remaining loan balance. Teller may enter the actual amount received as a partial, full, or advance payment, but cannot exceed the remaining loan balance. The system previews each affected installment before confirmation. It applies payment sequentially from the oldest unpaid installment through future installments, applying each row's remaining interest before principal. Fully covered installments become `Paid`; the last partly covered installment becomes `Partial`. The original amortization schedule and interest are not recomputed. A unique official receipt/reference is required. Recording creates one immutable cash-in row in the Open teller batch plus detailed installment allocations. After Teller cash count and Bookkeeper review, `Post reviewed batch` debits Cash on Hand for the total received, credits Loans Receivable for aggregate principal applied, and credits Interest Income for aggregate interest applied. Loan Officer, Admin, Manager, and Auditor have read-only collection visibility.
+Loan Collection v1-v3 introduces flexible receipt collection against the earliest unpaid installment. Teller/Cashier selects a posted loan and the system presents the next collectible installment, amount due, assessed penalty, and total collectible balance. Seven calendar days after an unpaid installment's due date, the system assesses 2% of the scheduled amount still unpaid on that date. Payments made before assessment reduce the base; penalties remain separate from principal and interest and do not compound. A receipt allocates assessed penalties separately before applying the remainder sequentially to installment interest and principal. A unique official receipt/reference is required, and the Open teller batch retains both penalty and installment allocation evidence. After Teller cash count and Bookkeeper review, posting debits Cash on Hand and separately credits Loans Receivable, Interest Income, and the assessment's snapshotted `4040 - Penalty Income` account. The portal presents overdue and penalty amounts separately.
 
 Loan Officer Collection and Cash Turnover v1 gives Loan Officers cash-in encoding authority for member initial payments, share-capital contributions, savings deposits, monthly member contributions, and loan collections. Each transaction enters the originating Loan Officer's separate collection batch. Submitting turnover freezes its transaction count and cash total. Cashier physically counts the money and can accept only an exact match; acceptance transfers the cash-in rows to the Cashier's Open batch. Cashier then performs the final consolidated cash count, and Bookkeeper retains review and posting authority. Collector, submitter, Cashier acceptor, timestamps, source batch, and target batch remain auditable. Loan Officers cannot encode withdrawals, releases, or disbursements and cannot perform final cash count, review, or posting.
 
@@ -576,20 +576,21 @@ Sample accounting effect:
 ### 4.8 Loan Collection
 
 1. Teller selects loan account.
-2. System shows amount due now and remaining loan balance.
+2. System shows amount due now, assessed penalty, and remaining collectible balance.
 3. Teller receives the actual amount paid.
 4. System previews whether the receipt is partial, full, or advance and lists every affected installment.
-5. System applies payment to the oldest unpaid installment first, interest then principal, and continues through future installments until the receipt is exhausted.
-6. Fully covered installments become Paid; the last partly covered installment becomes Partial without recomputing the schedule.
-7. Bookkeeper reviews the aggregate principal/interest allocation in the teller batch.
-7. Accounting entry is generated and posted with teller batch.
+5. After a seven-calendar-day grace period, system assesses 2% only on the scheduled amount that remains unpaid. A pre-assessment partial payment reduces that base; penalties do not compound.
+6. System allocates assessed penalties separately, then applies the remaining payment to the oldest unpaid installment's interest and principal and continues through future installments.
+7. Fully covered installments become Paid; the last partly covered installment becomes Partial without recomputing the schedule.
+8. Bookkeeper reviews the penalty, principal, and interest allocation in the teller batch.
+9. Accounting entry is generated and posted with teller batch.
 
 Sample accounting effect:
 
 - Debit: Cash on Hand or Cash in Bank
 - Credit: Loans Receivable
 - Credit: Interest Income from Loans
-- Credit: Penalties or Service Fees, if applicable
+- Credit: `4040 - Penalty Income` for assessed penalties collected
 
 ### 4.9 Journal Voucher
 

@@ -19,6 +19,14 @@ Member endpoints are namespaced under `/api/member-portal`. Administrative endpo
 
 The v1a response is an explicit allow-list containing identity summary, CBU and savings balances, loan summaries, cost-center dues, and an `asOf` timestamp. It does not serialize the general member statement and therefore excludes ID, contact/address, beneficiary, and other private profile fields.
 
+## Overdue-loan penalty visibility
+
+The portal Loans response and screen expose overdue principal/interest dues and outstanding penalties as separate amounts. The server derives the member number from the authenticated member session; the member cannot request another member's penalties by supplying a member number.
+
+For each unpaid scheduled installment, the system assesses 2% of the amount still unpaid after the seven-calendar-day grace period. A payment recorded before assessment reduces the base, so a partial payment is not penalized again. Penalties are not added to principal and do not compound.
+
+Collections allocate outstanding penalty separately from installment interest and principal. The teller batch retains the split, and posting credits the account snapshotted on the assessment, currently `4040 - Penalty Income`. The saved account code and description preserve historical GL treatment if the product mapping is renamed later.
+
 ## PostgreSQL rollout
 
 Run `npm run pg:migrate` using the target database configuration. The schema operation creates both member portal tables and the audit lookup index idempotently. Verify `/api/health` reports no missing schema columns before provisioning production accounts.
@@ -31,3 +39,6 @@ Run `npm run pg:migrate` using the target database configuration. The schema ope
 4. Compare displayed balances and loans with the staff member statement.
 5. Reset, lock, disable, and enable the test account; verify session invalidation and audit events.
 6. Inspect the browser/API response to ensure ID numbers and beneficiaries are absent.
+7. Check an installment before and after its grace deadline; confirm the portal separates overdue and penalty amounts.
+8. Record a partial payment before assessment and confirm the later penalty is 2% of only the remaining unpaid scheduled amount.
+9. Post a penalty-bearing collection and confirm the journal credits `4040 - Penalty Income` separately from Loans Receivable and Interest Income.
