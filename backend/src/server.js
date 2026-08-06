@@ -2228,6 +2228,7 @@ async function listLoans() {
       collectionRows.filter((item) => item.loanNo === loan.loanNo)
     )
   }));
+  return Promise.all(mappedLoans.map(decorateLoanWithPenalties));
 }
 
 function daysBetweenIsoDates(startDate, endDate) {
@@ -2290,13 +2291,17 @@ async function buildLoanPortfolioAlerts() {
 }
 
 function addUtcDays(dateString, days) {
-  const date = new Date(`${dateString}T00:00:00.000Z`);
+  const normalizedDate = formatDateOnly(dateString);
+  const date = new Date(`${normalizedDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid date value: ${normalizedDate || "empty"}`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
 function addUtcMonths(dateString, months) {
-  const source = new Date(`${dateString}T00:00:00.000Z`);
+  const normalizedDate = formatDateOnly(dateString);
+  const source = new Date(`${normalizedDate}T00:00:00.000Z`);
+  if (Number.isNaN(source.getTime())) throw new Error(`Invalid date value: ${normalizedDate || "empty"}`);
   const day = source.getUTCDate();
   const target = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() + months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
@@ -2880,7 +2885,6 @@ async function listLoanCollections() {
     allocations: allocationRows.filter((item) => item.collectionNo === row.collectionNo),
     penaltyAllocations: penaltyAllocationRows.filter((item) => item.collectionNo === row.collectionNo)
   }));
-  return Promise.all(mappedLoans.map(decorateLoanWithPenalties));
 }
 
 async function decorateLoanWithPenalties(loan) {
