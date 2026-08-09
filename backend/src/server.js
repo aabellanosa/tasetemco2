@@ -13080,6 +13080,10 @@ async function getInventorySheet(period, location, summaryOnly = false) {
         ORDER BY category_display_order, item_display_order, item_code`, [sheetNo]);
       rows = dataRows;
       if (sheet.status === "Draft") {
+        if (location === "Bodega") {
+          const retiredStarterCodes = new Set(Array.from({ length: 10 }, (_, index) => `INV-${String(index + 1).padStart(3, "0")}`));
+          rows = rows.filter((item) => !retiredStarterCodes.has(item.itemCode));
+        }
         const existingCodes = new Set(rows.map((item) => item.itemCode));
         const newCatalogRows = (await listInventoryItems(location)).filter((item) => !existingCodes.has(item.itemCode))
           .map((item) => ({ ...item, beginningInventory: 0, purchases: 0, transferIn: 0, transferOut: 0,
