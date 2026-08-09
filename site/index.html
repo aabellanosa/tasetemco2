@@ -213,7 +213,7 @@
           <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
           <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
           <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, analytical XLSX export, and the exact client-format six-sheet workbook.</p></article>
-          <article><h3>Monthly Inventory</h3><p>Inventory -> separate persistent Canteen A, Canteen B, and Bodega monthly sheets with ten starter items, item catalog expansion, Draft/Finalized controls, and calculated TGAS, sold/used units, and ending value.</p></article>
+          <article><h3>Monthly Inventory</h3><p>Inventory -> separate persistent Canteen A, Canteen B, and Bodega monthly sheets. Canteen A and B share the supplied 426-item catalog grouped into seven classifications, while Bodega keeps its draft starter list pending confirmation. Includes item catalog expansion, printable grouped tables, Draft/Finalized controls, and calculated TGAS, sold/used units, and ending value.</p></article>
           <article><h3>Keyboard Selection</h3><p>Type to filter, use Up/Down, press Enter to select or Tab to select and advance, and Escape to close.</p></article>
         </div>
       </section>
@@ -532,9 +532,14 @@
         <div class="section-heading">
           <h3>Monthly Inventory access and accounting boundary</h3>
           <p>
-            Each location sheet captures beginning inventory, purchases, transfers in and out,
+            Canteen A and Canteen B each start with the same 426 supplied item rows grouped into seven
+            classifications. Duplicate source rows remain separately coded; quantities and prices are not
+            prefilled. Bodega's ten draft starter items remain pending its confirmed catalog. Each location
+            sheet captures beginning inventory, purchases, transfers in and out,
             ending inventory, and unit price. TGAS equals beginning inventory plus purchases plus
             transfer in minus transfer out; the grid also calculates sold/used units and ending value.
+            Items appear under classification headings with subtotals and a grand total, and the selected
+            location and month can be printed as a landscape table.
             Sheets are saved to PostgreSQL and move from Draft to Finalized; correction requires an
             audited reopen reason. System Administrator and General Manager have full inventory authority,
             Accountant/Bookkeeper can encode and finalize, Teller/Cashier can encode, Auditor can inspect

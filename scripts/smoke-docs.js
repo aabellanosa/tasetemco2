@@ -85,6 +85,10 @@ function validateSite(directory) {
     "Monthly inventory workflow is missing.");
   assert(index.includes("saved to PostgreSQL") && index.includes("Inventory remains outside") && index.includes("general ledger"),
     "Monthly inventory persistence or accounting boundary is missing.");
+  assert(index.includes("426 supplied item rows") && index.includes("seven") && index.includes("classifications"),
+    "Confirmed Canteen A/B catalog scope is missing.");
+  assert(index.includes("quantities and prices are not") && index.includes("printed as a landscape table"),
+    "Inventory seed boundary or printable report guidance is missing.");
   assert(index.includes("Loan Officer Cash Turnover"), "Loan Officer cash-turnover workflow is missing.");
   assert(index.includes("mismatch blocks acceptance"), "Cash-turnover count control is missing.");
   assert(index.includes("endorsement note for the Bookkeeper"),

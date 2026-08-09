@@ -363,7 +363,7 @@ The Reports screen includes a Statement of Financial Condition report. It presen
 
 ### Monthly Inventory
 
-The Inventory workspace provides persistent monthly sheets for Canteen A, Canteen B, and Bodega. PostgreSQL stores the item catalog, sheets, rows, statuses, actors, timestamps, correction reasons, and audit events. Ten starter items are seeded and authorized catalog managers can add items.
+The Inventory workspace provides persistent monthly sheets for Canteen A, Canteen B, and Bodega. PostgreSQL stores the item catalog, classifications, location assignments, sheets, rows, statuses, actors, timestamps, correction reasons, and audit events. Canteen A and Canteen B each start with the same 426-item catalog supplied in the client's June 2026 Canteen A workbook. The catalog retains the source item wording and separately coded duplicate rows, organized into seven classifications. Quantities and prices are deliberately not seeded. Bodega retains its existing ten draft starter items until its confirmed catalog is supplied. Authorized catalog managers can add an item for a selected location and classification.
 
 The draft captures Beginning Inventory, Purchases, Transfer In, Transfer Out, Ending Inventory, and Unit Price. It calculates:
 
@@ -371,7 +371,7 @@ The draft captures Beginning Inventory, Purchases, Transfer In, Transfer Out, En
 - `Sold / Used = TGAS - Ending Inventory`
 - `Ending Value = Ending Inventory x Unit Price`
 
-The screen shows location totals and highlights a row when transfers exceed available units or ending inventory exceeds TGAS. Separate Transfer In and Transfer Out fields replace a direction-specific “Withdrawal from B to A” column so the same grid can eventually support movements among all three locations.
+The screen groups items by classification, shows classification subtotals and a grand total, and highlights a row when transfers exceed available units or ending inventory exceeds TGAS. Separate Transfer In and Transfer Out fields replace a direction-specific “Withdrawal from B to A” column so the same grid can eventually support movements among all three locations. Print Inventory produces a landscape table for the selected location and month with the cooperative heading, status, preparer, grouped items, subtotals, and grand total.
 
 Authorized encoders save a Draft. Finalizers freeze it as Finalized; it cannot be edited until a System Administrator or General Manager reopens it with a required correction reason. System Administrator and General Manager can configure, encode, correct, review, and finalize. Accountant/Bookkeeper can encode, review, and finalize. Teller/Cashier can encode physical inventory and transfers. Auditor has detailed read-only access, while Board sees monthly summary totals only. Loan Officer and Membership Officer have no access. General Manager receives these complete capabilities only for Inventory—not general System Administrator or Teller authority elsewhere.
 
