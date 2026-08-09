@@ -89,6 +89,8 @@ function validateSite(directory) {
     "Confirmed Canteen A/B catalog scope is missing.");
   assert(index.includes("quantities and prices are not") && index.includes("printed as a landscape table"),
     "Inventory seed boundary or printable report guidance is missing.");
+  assert(index.includes("confirmed 50-item") && index.includes("replacing the ten prototype"),
+    "Confirmed Bodega catalog or prototype-retirement guidance is missing.");
   assert(index.includes("Loan Officer Cash Turnover"), "Loan Officer cash-turnover workflow is missing.");
   assert(index.includes("mismatch blocks acceptance"), "Cash-turnover count control is missing.");
   assert(index.includes("endorsement note for the Bookkeeper"),
