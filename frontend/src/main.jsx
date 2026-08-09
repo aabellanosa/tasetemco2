@@ -6748,6 +6748,8 @@ function MonthlyInventoryDraft({ user }) {
   const [period, setPeriod] = useState(defaultPeriod);
   const [locationIndex, setLocationIndex] = useState(0);
   const [newItem, setNewItem] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [newItemCategory, setNewItemCategory] = useState("");
   const [sheets, setSheets] = useState({});
   const [sheetMeta, setSheetMeta] = useState(null);
   const [message, setMessage] = useState("");
@@ -6764,10 +6766,17 @@ function MonthlyInventoryDraft({ user }) {
   const loadSheet = useCallback(async () => {
     setError("");
     try {
-      const data = await api(`/api/inventory/sheets?period=${period}&location=${encodeURIComponent(activeLocation)}`);
+      const [data, categoryRows] = await Promise.all([
+        api(`/api/inventory/sheets?period=${period}&location=${encodeURIComponent(activeLocation)}`),
+        api("/api/inventory/categories")
+      ]);
+      setCategories(categoryRows);
+      setNewItemCategory((current) => current || categoryRows[0]?.categoryCode || "");
       setSheetMeta(data);
       setSheets((current) => ({ ...current, [activeLocation]: (data.rows || []).map((row) => ({
-        id: row.itemCode, itemCode: row.itemCode, item: row.itemName, beginningInventory: row.beginningInventory,
+        id: row.itemCode, itemCode: row.itemCode, item: row.itemName, categoryCode: row.categoryCode,
+        categoryName: row.categoryName, categoryDisplayOrder: row.categoryDisplayOrder,
+        itemDisplayOrder: row.itemDisplayOrder, beginningInventory: row.beginningInventory,
         purchases: row.purchases, transferIn: row.transferIn, transferOut: row.transferOut,
         endingInventory: row.endingInventory, unitPrice: row.unitPrice
       })) }));
@@ -6789,9 +6798,12 @@ function MonthlyInventoryDraft({ user }) {
     if (!item) return;
     setIsBusy(true); setError("");
     try {
-      const created = await api("/api/inventory/items", { method: "POST", body: JSON.stringify({ itemName: item }) });
+      const created = await api("/api/inventory/items", { method: "POST",
+        body: JSON.stringify({ itemName: item, location: activeLocation, categoryCode: newItemCategory }) });
       setSheets((current) => ({ ...current, [activeLocation]: [...(current[activeLocation] || []), {
-        id: created.itemCode, itemCode: created.itemCode, item: created.itemName, beginningInventory: 0, purchases: 0,
+        id: created.itemCode, itemCode: created.itemCode, item: created.itemName, categoryCode: created.categoryCode,
+        categoryName: created.categoryName, categoryDisplayOrder: created.categoryDisplayOrder,
+        itemDisplayOrder: created.itemDisplayOrder, beginningInventory: 0, purchases: 0,
         transferIn: 0, transferOut: 0, endingInventory: 0, unitPrice: 0
       }] }));
       setNewItem(""); setMessage(`${created.itemName} added to the inventory catalog.`);
@@ -6826,6 +6838,16 @@ function MonthlyInventoryDraft({ user }) {
       endingValue: summary.endingValue + (row.endingInventory * row.unitPrice)
     };
   }, { tgas: 0, endingInventory: 0, unitsSoldOrUsed: 0, endingValue: 0 });
+  const categoryGroups = rows.reduce((groups, row) => {
+    const key = row.categoryCode || "GENERAL";
+    let group = groups.find((item) => item.categoryCode === key);
+    if (!group) {
+      group = { categoryCode: key, categoryName: row.categoryName || "General", rows: [] };
+      groups.push(group);
+    }
+    group.rows.push(row);
+    return groups;
+  }, []);
 
   const quantityField = (row, field, label) => (
     <NumberInput min={0} size="sm" value={row[field]} isDisabled={!canEncode} onChange={(textValue) => updateRow(row.id, field, textValue)}>
@@ -6834,12 +6856,23 @@ function MonthlyInventoryDraft({ user }) {
   );
 
   return (
-    <VStack align="stretch" spacing={5}>
-      <Box bg="blue.50" borderWidth="1px" borderColor="blue.200" borderRadius="lg" p={4}>
+    <VStack className="inventory-print-area" align="stretch" spacing={5}>
+      <style>{`@media print {
+        body * { visibility: hidden !important; }
+        .inventory-print-area, .inventory-print-area * { visibility: visible !important; }
+        .inventory-print-area { position: absolute !important; left: 0; top: 0; width: 100%; border: 0 !important; padding: 0 !important; }
+        .inventory-no-print { display: none !important; }
+        .inventory-print-only { display: block !important; }
+        .inventory-category-panel { display: block !important; padding: 0 !important; }
+        .inventory-category { break-inside: avoid; }
+        .inventory-print-area table { font-size: 8pt; }
+        @page { size: landscape; margin: 8mm; }
+      }`}</style>
+      <Box className="inventory-no-print" bg="blue.50" borderWidth="1px" borderColor="blue.200" borderRadius="lg" p={4}>
         <Badge colorScheme="blue">Persistent operational inventory</Badge>
         <Text mt={2} color="blue.800">Sheets save to PostgreSQL with audit evidence. They do not post to the GL or affect financial statements.</Text>
       </Box>
-      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Box className="inventory-no-print" bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" align="end" gap={4} wrap="wrap">
           <Box>
             <Heading size="md">Monthly Inventory Worksheet</Heading>
@@ -6854,17 +6887,29 @@ function MonthlyInventoryDraft({ user }) {
         </Tabs>
       </Box>
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+        <Box className="inventory-print-only" display="none" textAlign="center" mb={4}>
+          <Heading size="md">TABON SECONDARY TEACHER&apos;S MULTI-PURPOSE COOPERATIVE (TASETEMCO)</Heading>
+          <Text>Tabon, Bislig City</Text>
+          <Heading size="sm" mt={2}>{activeLocation.toUpperCase()} — Monthly Inventory Report</Heading>
+          <Text>As of {period} · Status: {sheetMeta?.status || "Not saved"}</Text>
+          {sheetMeta?.preparedBy ? <Text fontSize="sm">Prepared by {sheetMeta.preparedBy}</Text> : null}
+        </Box>
         <Flex justify="space-between" align="end" gap={3} wrap="wrap" mb={4}>
           <Box><Heading size="sm">{activeLocation} · {period}</Heading>
             <Text color="gray.500" fontSize="sm">TGAS = Beginning + Purchases + Transfer In − Transfer Out</Text>
             <HStack mt={2}><Badge colorScheme={sheetMeta?.status === "Finalized" ? "green" : sheetMeta?.status === "Draft" ? "blue" : "gray"}>{sheetMeta?.status || "Loading"}</Badge>
               {sheetMeta?.preparedBy ? <Text fontSize="xs">Saved by {sheetMeta.preparedBy}</Text> : null}</HStack></Box>
-          {canConfigure ? <Flex gap={2} align="end" wrap="wrap">
+          {canConfigure ? <Flex className="inventory-no-print" gap={2} align="end" wrap="wrap">
             <FormControl><FormLabel fontSize="sm">New item</FormLabel>
               <Input size="sm" value={newItem} onChange={(event) => setNewItem(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter") addItem(); }} placeholder="Enter item name" />
             </FormControl>
-            <Button size="sm" onClick={addItem} isLoading={isBusy} isDisabled={!newItem.trim()}>Add Item</Button>
+            <FormControl minW="240px"><FormLabel fontSize="sm">Classification</FormLabel>
+              <Select size="sm" value={newItemCategory} onChange={(event) => setNewItemCategory(event.target.value)}>
+                {categories.map((category) => <option key={category.categoryCode} value={category.categoryCode}>{category.categoryName}</option>)}
+              </Select>
+            </FormControl>
+            <Button size="sm" onClick={addItem} isLoading={isBusy} isDisabled={!newItem.trim() || !newItemCategory}>Add Item</Button>
           </Flex> : null}
         </Flex>
         {error ? <Text color="red.600" mb={3}>{error}</Text> : null}
@@ -6877,37 +6922,61 @@ function MonthlyInventoryDraft({ user }) {
             <Box borderWidth="1px" p={3}><Text fontSize="sm" color="gray.500">Ending Value</Text><Text fontWeight="bold">{formatMoney(sheetMeta?.summary?.endingValue || 0)}</Text></Box>
           </Grid>
         ) : (
-        <TableContainer>
-          <Table size="sm">
-            <Thead><Tr><Th>Item</Th><Th isNumeric>Beg. Invty.</Th><Th isNumeric>Purchases</Th><Th isNumeric>Transfer In</Th>
-              <Th isNumeric>Transfer Out</Th><Th isNumeric>TGAS</Th><Th isNumeric>Invty End</Th><Th isNumeric>Sold / Used</Th>
-              <Th isNumeric>UP</Th><Th isNumeric>Ending Value</Th></Tr></Thead>
-            <Tbody>
-              {rows.map((row) => {
-                const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
-                const unitsSoldOrUsed = Math.max(0, tgas - row.endingInventory);
-                const hasQuantityIssue = row.transferOut > row.beginningInventory + row.purchases + row.transferIn || row.endingInventory > tgas;
-                return <Tr key={row.id} bg={hasQuantityIssue ? "red.50" : undefined}>
-                  <Td minW="180px" fontWeight="medium">{row.item}{hasQuantityIssue ? <Text color="red.600" fontSize="xs">Check quantities</Text> : null}</Td>
-                  <Td>{quantityField(row, "beginningInventory", "beginning inventory")}</Td>
-                  <Td>{quantityField(row, "purchases", "purchases")}</Td>
-                  <Td>{quantityField(row, "transferIn", "transfer in")}</Td>
-                  <Td>{quantityField(row, "transferOut", "transfer out")}</Td>
-                  <Td isNumeric fontWeight="bold">{tgas}</Td>
-                  <Td>{quantityField(row, "endingInventory", "ending inventory")}</Td>
-                  <Td isNumeric>{unitsSoldOrUsed}</Td>
-                  <Td>{quantityField(row, "unitPrice", "unit price")}</Td>
-                  <Td isNumeric fontWeight="bold">{formatMoney(row.endingInventory * row.unitPrice)}</Td>
-                </Tr>;
+        <>
+          <Accordion defaultIndex={0} allowToggle>
+            {categoryGroups.map((group) => {
+                const groupTotals = group.rows.reduce((summary, row) => {
+                  const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
+                  return { tgas: summary.tgas + tgas, ending: summary.ending + row.endingInventory,
+                    sold: summary.sold + Math.max(0, tgas - row.endingInventory), value: summary.value + row.endingInventory * row.unitPrice };
+                }, { tgas: 0, ending: 0, sold: 0, value: 0 });
+                return <AccordionItem className="inventory-category" key={group.categoryCode} borderWidth="1px" borderRadius="md" mb={2}>
+                  <AccordionButton className="inventory-no-print" bg="green.50" _expanded={{ bg: "green.100" }}>
+                    <Box flex="1" textAlign="left"><Text fontWeight="bold">{group.categoryName}</Text>
+                      <Text fontSize="xs" color="gray.600">{group.rows.length} items · Ending value {formatMoney(groupTotals.value)}</Text></Box>
+                    <AccordionIcon />
+                  </AccordionButton>
+                  <AccordionPanel className="inventory-category-panel" px={0} pb={0}>
+                    <TableContainer><Table size="sm">
+                      <Thead><Tr className="inventory-print-only" display="none"><Th colSpan={10}>{group.categoryName}</Th></Tr>
+                        <Tr><Th>Item</Th><Th isNumeric>Beg. Invty.</Th><Th isNumeric>Purchases</Th><Th isNumeric>Transfer In</Th>
+                          <Th isNumeric>Transfer Out</Th><Th isNumeric>TGAS</Th><Th isNumeric>Invty End</Th><Th isNumeric>Sold / Used</Th>
+                          <Th isNumeric>UP</Th><Th isNumeric>Ending Value</Th></Tr></Thead>
+                      <Tbody>{group.rows.map((row) => {
+                        const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
+                        const unitsSoldOrUsed = Math.max(0, tgas - row.endingInventory);
+                        const hasQuantityIssue = row.transferOut > row.beginningInventory + row.purchases + row.transferIn || row.endingInventory > tgas;
+                        return <Tr key={row.id} bg={hasQuantityIssue ? "red.50" : undefined}>
+                          <Td minW="180px" fontWeight="medium">{row.item}{hasQuantityIssue ? <Text color="red.600" fontSize="xs">Check quantities</Text> : null}</Td>
+                          <Td>{quantityField(row, "beginningInventory", "beginning inventory")}</Td>
+                          <Td>{quantityField(row, "purchases", "purchases")}</Td>
+                          <Td>{quantityField(row, "transferIn", "transfer in")}</Td>
+                          <Td>{quantityField(row, "transferOut", "transfer out")}</Td>
+                          <Td isNumeric fontWeight="bold">{tgas}</Td>
+                          <Td>{quantityField(row, "endingInventory", "ending inventory")}</Td>
+                          <Td isNumeric>{unitsSoldOrUsed}</Td>
+                          <Td>{quantityField(row, "unitPrice", "unit price")}</Td>
+                          <Td isNumeric fontWeight="bold">{formatMoney(row.endingInventory * row.unitPrice)}</Td>
+                        </Tr>;
+                      })}
+                        <Tr bg="gray.50"><Td fontWeight="bold">{group.categoryName} Subtotal</Td><Td colSpan={4} />
+                          <Td isNumeric fontWeight="bold">{groupTotals.tgas}</Td><Td isNumeric fontWeight="bold">{groupTotals.ending}</Td>
+                          <Td isNumeric fontWeight="bold">{groupTotals.sold}</Td><Td /><Td isNumeric fontWeight="bold">{formatMoney(groupTotals.value)}</Td></Tr>
+                      </Tbody>
+                    </Table></TableContainer>
+                  </AccordionPanel>
+                </AccordionItem>;
               })}
+          </Accordion>
+          <TableContainer><Table size="sm"><Tbody>
               <Tr bg="gray.50"><Td fontWeight="bold">Sheet Total</Td><Td colSpan={4} /><Td isNumeric fontWeight="bold">{totals.tgas}</Td>
                 <Td isNumeric fontWeight="bold">{totals.endingInventory}</Td><Td isNumeric fontWeight="bold">{totals.unitsSoldOrUsed}</Td><Td />
                 <Td isNumeric fontWeight="bold">{formatMoney(totals.endingValue)}</Td></Tr>
-            </Tbody>
-          </Table>
-        </TableContainer>
+          </Tbody></Table></TableContainer>
+        </>
         )}
-        <Flex mt={4} justify="flex-end" gap={3} wrap="wrap">
+        <Flex className="inventory-no-print" mt={4} justify="flex-end" gap={3} wrap="wrap">
+          <Button variant="outline" onClick={() => window.print()} isDisabled={!rows.length}>Print Inventory</Button>
           {canEncode ? <Button onClick={saveDraft} isLoading={isBusy}>Save Draft</Button> : null}
           {canFinalize && sheetMeta?.status === "Draft" ? <Button colorScheme="green" onClick={() => changeStatus("finalize")} isLoading={isBusy}>Finalize Month</Button> : null}
           {canCorrect && sheetMeta?.status === "Finalized" ? <>

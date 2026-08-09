@@ -170,6 +170,7 @@ const databaseDirPath = databaseDirCandidates.find((candidate) =>
 );
 const schemaSqlPath = databaseDirPath ? path.join(databaseDirPath, "schema.postgres.sql") : "";
 const seedSqlPath = databaseDirPath ? path.join(databaseDirPath, "seed.postgres.sql") : "";
+const inventoryCanteenSeedSqlPath = databaseDirPath ? path.join(databaseDirPath, "seed.inventory-canteens.postgres.sql") : "";
 const clientSummoTemplateCandidates = [
   path.resolve(process.cwd(), "backend", "templates", "summo", "TASETEMCO-SUMMO-6-CLUSTER-TEMPLATE.xlsx"),
   path.resolve(process.cwd(), "templates", "summo", "TASETEMCO-SUMMO-6-CLUSTER-TEMPLATE.xlsx")
@@ -192,7 +193,9 @@ const persistedTables = [
   "inventory_audit_events",
   "inventory_sheet_rows",
   "inventory_sheets",
+  "inventory_item_locations",
   "inventory_items",
+  "inventory_categories",
   "loan_penalty_payment_allocations",
   "loan_penalty_assessments",
   "member_profile_audit_events",
@@ -252,9 +255,11 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  inventory_categories: ["category_code", "category_name", "display_order", "status"],
+  inventory_item_locations: ["item_code", "location", "category_code", "display_order", "status"],
   inventory_items: ["item_code", "item_name", "status", "created_by", "updated_by"],
   inventory_sheets: ["sheet_no", "report_period", "location", "status", "prepared_by", "finalized_by", "reopened_by"],
-  inventory_sheet_rows: ["sheet_no", "item_code", "beginning_inventory", "purchases", "transfer_in", "transfer_out", "ending_inventory", "unit_price"],
+  inventory_sheet_rows: ["sheet_no", "item_code", "category_code", "category_name", "category_display_order", "item_display_order", "beginning_inventory", "purchases", "transfer_in", "transfer_out", "ending_inventory", "unit_price"],
   inventory_audit_events: ["sheet_no", "event_type", "performed_by", "details", "created_at"],
   loan_penalty_assessments: ["penalty_no", "loan_no", "installment_no", "assessment_date", "overdue_base", "penalty_rate_bps", "penalty_amount", "paid_amount", "income_account_code", "status"],
   loan_penalty_payment_allocations: ["collection_no", "penalty_no", "amount", "income_account_code", "income_account_name"],
@@ -13005,7 +13010,9 @@ function mapInventoryRow(row) {
   const endingInventory = Number(row.endingInventory || 0);
   const unitPrice = Number(row.unitPrice || 0);
   const tgas = moneyValue(beginningInventory + purchases + transferIn - transferOut);
-  return { itemCode: row.itemCode, itemName: row.itemName, beginningInventory, purchases, transferIn,
+  return { itemCode: row.itemCode, itemName: row.itemName, categoryCode: row.categoryCode || "GENERAL",
+    categoryName: row.categoryName || "General", categoryDisplayOrder: Number(row.categoryDisplayOrder || 0),
+    itemDisplayOrder: Number(row.itemDisplayOrder || 0), beginningInventory, purchases, transferIn,
     transferOut, tgas, endingInventory, soldOrUsed: moneyValue(tgas - endingInventory), unitPrice,
     endingValue: moneyValue(endingInventory * unitPrice) };
 }
@@ -13017,10 +13024,32 @@ function inventorySummary(rows) {
   }), { itemCount: 0, tgas: 0, endingInventory: 0, soldOrUsed: 0, endingValue: 0 });
 }
 
-async function listInventoryItems() {
+async function listInventoryCategories() {
+  const db = await getPool();
+  if (!db) return [{ categoryCode: "GENERAL", categoryName: "General", displayOrder: 0, status: "Active" }];
+  const [rows] = await db.execute(`SELECT category_code AS categoryCode, category_name AS categoryName,
+    display_order AS displayOrder, status FROM inventory_categories WHERE status = 'Active' ORDER BY display_order, category_name`);
+  return rows;
+}
+
+async function listInventoryItems(location = "") {
   const db = await getPool();
   if (!db) return memoryInventoryItems.map((item) => ({ ...item }));
-  const [rows] = await db.execute(`SELECT item_code AS itemCode, item_name AS itemName, status FROM inventory_items ORDER BY item_code`);
+  if (!location) {
+    const [rows] = await db.execute(`SELECT item_code AS itemCode, item_name AS itemName, status FROM inventory_items ORDER BY item_code`);
+    return rows;
+  }
+  const [mappedRows] = await db.execute(`SELECT item.item_code AS itemCode, item.item_name AS itemName,
+      mapping.category_code AS categoryCode, category.category_name AS categoryName,
+      category.display_order AS categoryDisplayOrder, mapping.display_order AS itemDisplayOrder, item.status
+    FROM inventory_item_locations mapping JOIN inventory_items item ON item.item_code = mapping.item_code
+    JOIN inventory_categories category ON category.category_code = mapping.category_code
+    WHERE mapping.location = ? AND mapping.status = 'Active' AND item.status = 'Active' AND category.status = 'Active'
+    ORDER BY category.display_order, mapping.display_order, item.item_code`, [location]);
+  if (mappedRows.length || location !== "Bodega") return mappedRows;
+  const [rows] = await db.execute(`SELECT item_code AS itemCode, item_name AS itemName, 'GENERAL' AS categoryCode,
+    'General' AS categoryName, 0 AS categoryDisplayOrder, id AS itemDisplayOrder, status
+    FROM inventory_items WHERE item_code LIKE 'INV-%' AND status = 'Active' ORDER BY id`);
   return rows;
 }
 
@@ -13032,7 +13061,8 @@ async function getInventorySheet(period, location, summaryOnly = false) {
   if (!db) {
     sheet = memoryInventorySheets.find((item) => item.sheetNo === sheetNo);
     rows = sheet?.rows || memoryInventoryItems.filter((item) => item.status === "Active").map((item) => ({
-      itemCode: item.itemCode, itemName: item.itemName, beginningInventory: 0, purchases: 0, transferIn: 0,
+      itemCode: item.itemCode, itemName: item.itemName, categoryCode: "GENERAL", categoryName: "General",
+      categoryDisplayOrder: 0, itemDisplayOrder: 0, beginningInventory: 0, purchases: 0, transferIn: 0,
       transferOut: 0, endingInventory: 0, unitPrice: 0
     }));
   } else {
@@ -13043,11 +13073,24 @@ async function getInventorySheet(period, location, summaryOnly = false) {
     sheet = sheetRows[0];
     if (sheet) {
       const [dataRows] = await db.execute(`SELECT item_code AS itemCode, item_name AS itemName,
+        category_code AS categoryCode, category_name AS categoryName, category_display_order AS categoryDisplayOrder,
+        item_display_order AS itemDisplayOrder,
         beginning_inventory AS beginningInventory, purchases, transfer_in AS transferIn, transfer_out AS transferOut,
-        ending_inventory AS endingInventory, unit_price AS unitPrice FROM inventory_sheet_rows WHERE sheet_no = ? ORDER BY item_code`, [sheetNo]);
+        ending_inventory AS endingInventory, unit_price AS unitPrice FROM inventory_sheet_rows WHERE sheet_no = ?
+        ORDER BY category_display_order, item_display_order, item_code`, [sheetNo]);
       rows = dataRows;
+      if (sheet.status === "Draft") {
+        const existingCodes = new Set(rows.map((item) => item.itemCode));
+        const newCatalogRows = (await listInventoryItems(location)).filter((item) => !existingCodes.has(item.itemCode))
+          .map((item) => ({ ...item, beginningInventory: 0, purchases: 0, transferIn: 0, transferOut: 0,
+            endingInventory: 0, unitPrice: 0 }));
+        rows = [...rows, ...newCatalogRows].sort((a, b) =>
+          Number(a.categoryDisplayOrder || 0) - Number(b.categoryDisplayOrder || 0) ||
+          Number(a.itemDisplayOrder || 0) - Number(b.itemDisplayOrder || 0) || String(a.itemCode).localeCompare(String(b.itemCode))
+        );
+      }
     } else {
-      rows = (await listInventoryItems()).filter((item) => item.status === "Active").map((item) => ({ ...item,
+      rows = (await listInventoryItems(location)).filter((item) => item.status === "Active").map((item) => ({ ...item,
         beginningInventory: 0, purchases: 0, transferIn: 0, transferOut: 0, endingInventory: 0, unitPrice: 0 }));
     }
   }
@@ -13060,7 +13103,9 @@ async function getInventorySheet(period, location, summaryOnly = false) {
 function validateInventoryRows(rows) {
   if (!Array.isArray(rows) || !rows.length) return { error: "At least one inventory item is required." };
   const cleaned = rows.map((row) => ({ itemCode: String(row.itemCode || "").trim().slice(0, 40),
-    itemName: String(row.itemName || "").trim().slice(0, 160), beginningInventory: moneyValue(Math.max(0, Number(row.beginningInventory) || 0)),
+    itemName: String(row.itemName || "").trim().slice(0, 160), categoryCode: String(row.categoryCode || "GENERAL").slice(0, 60),
+    categoryName: String(row.categoryName || "General").slice(0, 160), categoryDisplayOrder: Number(row.categoryDisplayOrder || 0),
+    itemDisplayOrder: Number(row.itemDisplayOrder || 0), beginningInventory: moneyValue(Math.max(0, Number(row.beginningInventory) || 0)),
     purchases: moneyValue(Math.max(0, Number(row.purchases) || 0)), transferIn: moneyValue(Math.max(0, Number(row.transferIn) || 0)),
     transferOut: moneyValue(Math.max(0, Number(row.transferOut) || 0)), endingInventory: moneyValue(Math.max(0, Number(row.endingInventory) || 0)),
     unitPrice: moneyValue(Math.max(0, Number(row.unitPrice) || 0)) }));
@@ -13095,8 +13140,10 @@ async function saveInventorySheet(period, location, rows, user) {
       prepared_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [sheetNo, period, location, user.username]);
     await connection.execute(`DELETE FROM inventory_sheet_rows WHERE sheet_no = ?`, [sheetNo]);
     for (const row of validation.value) await connection.execute(`INSERT INTO inventory_sheet_rows
-      (sheet_no, item_code, item_name, beginning_inventory, purchases, transfer_in, transfer_out, ending_inventory, unit_price)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [sheetNo, row.itemCode, row.itemName, row.beginningInventory, row.purchases,
+      (sheet_no, item_code, item_name, category_code, category_name, category_display_order, item_display_order,
+       beginning_inventory, purchases, transfer_in, transfer_out, ending_inventory, unit_price)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [sheetNo, row.itemCode, row.itemName, row.categoryCode,
+      row.categoryName, row.categoryDisplayOrder, row.itemDisplayOrder, row.beginningInventory, row.purchases,
       row.transferIn, row.transferOut, row.endingInventory, row.unitPrice]);
     await connection.execute(`INSERT INTO inventory_audit_events (sheet_no, event_type, performed_by, details) VALUES (?, 'SAVED', ?, ?)`,
       [sheetNo, user.username, `${validation.value.length} item rows`]);
@@ -13105,17 +13152,26 @@ async function saveInventorySheet(period, location, rows, user) {
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
 }
 
-async function addInventoryItem(itemName, user) {
+async function addInventoryItem(itemName, location, categoryCode, user) {
   const cleanName = String(itemName || "").trim().slice(0, 160);
   if (!cleanName) return { error: "Item name is required." };
-  const items = await listInventoryItems();
-  if (items.some((item) => item.itemName.toLowerCase() === cleanName.toLowerCase())) return { error: "That inventory item already exists.", statusCode: 409 };
-  const itemCode = `INV-${String(items.length + 1).padStart(3, "0")}`;
+  if (!inventoryLocations.includes(location)) return { error: "A valid inventory location is required." };
+  const categories = await listInventoryCategories();
+  const category = categories.find((item) => item.categoryCode === categoryCode);
+  if (!category) return { error: "Select a valid classification." };
+  const itemCode = `INV-${crypto.randomUUID().slice(0, 12).toUpperCase()}`;
   const db = await getPool();
-  if (!db) memoryInventoryItems.push({ itemCode, itemName: cleanName, status: "Active" });
-  else await db.execute(`INSERT INTO inventory_items (item_code, item_name, created_by, updated_by) VALUES (?, ?, ?, ?)`,
-    [itemCode, cleanName, user.username, user.username]);
-  return { itemCode, itemName: cleanName, status: "Active" };
+  if (!db) memoryInventoryItems.push({ itemCode, itemName: cleanName, categoryCode, categoryName: category.categoryName, status: "Active" });
+  else {
+    const [orderRows] = await db.execute(`SELECT COALESCE(MAX(display_order), 0) + 1 AS nextOrder
+      FROM inventory_item_locations WHERE location = ? AND category_code = ?`, [location, categoryCode]);
+    await db.execute(`INSERT INTO inventory_items (item_code, item_name, created_by, updated_by) VALUES (?, ?, ?, ?)`,
+      [itemCode, cleanName, user.username, user.username]);
+    await db.execute(`INSERT INTO inventory_item_locations (item_code, location, category_code, display_order)
+      VALUES (?, ?, ?, ?)`, [itemCode, location, categoryCode, Number(orderRows[0]?.nextOrder || 1)]);
+  }
+  return { itemCode, itemName: cleanName, categoryCode, categoryName: category.categoryName,
+    categoryDisplayOrder: category.displayOrder, itemDisplayOrder: 99999, status: "Active" };
 }
 
 async function changeInventorySheetStatus(period, location, action, reason, user) {
@@ -13666,6 +13722,7 @@ async function resetDemoDatabase() {
   await db.query(fs.readFileSync(schemaSqlPath, "utf8"));
   await db.query(`TRUNCATE TABLE ${persistedTables.join(", ")} RESTART IDENTITY CASCADE`);
   await db.query(fs.readFileSync(seedSqlPath, "utf8"));
+  if (inventoryCanteenSeedSqlPath) await db.query(fs.readFileSync(inventoryCanteenSeedSqlPath, "utf8"));
 
   return { ok: true, resetAt: new Date().toISOString() };
 }
@@ -15866,14 +15923,21 @@ app.get("/api/inventory/items", async (request, response) => {
   const user = parseSession(request);
   if (!user) return response.status(401).json({ error: "Login required" });
   if (!hasPermission(user, "inventory:view")) return response.status(403).json({ error: "Access denied" });
-  response.json(await listInventoryItems());
+  response.json(await listInventoryItems(String(request.query.location || "")));
+});
+
+app.get("/api/inventory/categories", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "inventory:view")) return response.status(403).json({ error: "Access denied" });
+  response.json(await listInventoryCategories());
 });
 
 app.post("/api/inventory/items", async (request, response) => {
   const user = parseSession(request);
   if (!user) return response.status(401).json({ error: "Login required" });
   if (!hasPermission(user, "inventory:configure")) return response.status(403).json({ error: "Access denied" });
-  const result = await addInventoryItem(request.body?.itemName, user);
+  const result = await addInventoryItem(request.body?.itemName, request.body?.location, request.body?.categoryCode, user);
   if (result.error) return response.status(result.statusCode || 400).json({ error: result.error });
   response.status(201).json(result);
 });

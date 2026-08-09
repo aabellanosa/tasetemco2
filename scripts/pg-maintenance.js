@@ -11,6 +11,7 @@ const command = process.argv[2];
 const schemaPath = path.join(process.cwd(), "backend", "database", "schema.postgres.sql");
 const seedPath = path.join(process.cwd(), "backend", "database", "seed.postgres.sql");
 const loanProductSeedPath = path.join(process.cwd(), "backend", "database", "seed.loan-products.postgres.sql");
+const inventoryCanteenSeedPath = path.join(process.cwd(), "backend", "database", "seed.inventory-canteens.postgres.sql");
 const backupDir = path.join(process.cwd(), "data", "backups");
 const connectionTimeoutMillis = Number(process.env.PGCONNECT_TIMEOUT_MS || 8000);
 
@@ -18,7 +19,9 @@ const tables = [
   "inventory_audit_events",
   "inventory_sheet_rows",
   "inventory_sheets",
+  "inventory_item_locations",
   "inventory_items",
+  "inventory_categories",
   "loan_penalty_payment_allocations",
   "loan_penalty_assessments",
   "member_profile_audit_events",
@@ -189,6 +192,7 @@ async function main() {
 
   if (command === "schema") {
     await runSqlFile(schemaPath);
+    await runSqlFile(inventoryCanteenSeedPath);
     console.log("Postgres schema applied.");
     return;
   }
@@ -215,6 +219,7 @@ async function main() {
   await backupDatabase();
   await clearDatabase();
   await runSqlFile(seedPath);
+  await runSqlFile(inventoryCanteenSeedPath);
   console.log("Postgres database reset to demo seed.");
 }
 
