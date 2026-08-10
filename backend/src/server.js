@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import cookie from "cookie";
 import dotenv from "dotenv";
+import ExcelJS from "exceljs";
 import express from "express";
 import multer from "multer";
 import pg from "pg";
@@ -13039,6 +13040,71 @@ async function listInventoryCategories() {
   return rows;
 }
 
+async function buildInventoryWorkbook({ period, location, status, preparedBy, rows }) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "TASETEMCO Cooperative Management System";
+  workbook.created = new Date();
+  const worksheet = workbook.addWorksheet("Monthly Inventory", {
+    views: [{ state: "frozen", ySplit: 6, xSplit: 1 }],
+    pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 } }
+  });
+  worksheet.pageSetup.printTitlesRow = "1:6";
+  worksheet.columns = [
+    { key: "item", width: 42 }, { key: "beginning", width: 10 }, { key: "purchases", width: 11 },
+    { key: "transferIn", width: 10 }, { key: "transferOut", width: 10 }, { key: "tgas", width: 9 },
+    { key: "ending", width: 10 }, { key: "sold", width: 10 }, { key: "unitPrice", width: 11 }, { key: "endingValue", width: 14 }
+  ];
+  worksheet.mergeCells("A1:J1"); worksheet.getCell("A1").value = "TABON SECONDARY TEACHER'S MULTI-PURPOSE COOPERATIVE (TASETEMCO)";
+  worksheet.mergeCells("A2:J2"); worksheet.getCell("A2").value = "Tabon, Bislig City";
+  worksheet.mergeCells("A3:J3"); worksheet.getCell("A3").value = `${location.toUpperCase()} — Monthly Inventory Report`;
+  worksheet.mergeCells("A4:J4"); worksheet.getCell("A4").value = `As of ${period} · Status: ${status || "Not saved"}${preparedBy ? ` · Prepared by ${preparedBy}` : ""}`;
+  const summary = inventorySummary(rows);
+  worksheet.mergeCells("A5:J5"); worksheet.getCell("A5").value = `Sheet totals — TGAS ${summary.tgas} · Ending units ${summary.endingInventory} · Sold / Used ${summary.soldOrUsed} · Ending value ${summary.endingValue.toFixed(2)}`;
+  [1, 3].forEach((rowNo) => { worksheet.getRow(rowNo).font = { bold: true, size: rowNo === 1 ? 14 : 11 }; });
+  [1, 2, 3, 4, 5].forEach((rowNo) => { worksheet.getRow(rowNo).alignment = { horizontal: "center", vertical: "middle" }; });
+  const header = worksheet.getRow(6);
+  header.values = ["Item", "Beg.\nInvty.", "Purch.", "Trans.\nIn", "Trans.\nOut", "TGAS", "Invty\nEnd", "Sold /\nUsed", "UP", "Ending\nValue"];
+  header.height = 28; header.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF276749" } };
+  header.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  const groups = [];
+  for (const row of rows) {
+    let group = groups.find((item) => item.categoryCode === row.categoryCode);
+    if (!group) { group = { categoryCode: row.categoryCode, categoryName: row.categoryName, rows: [] }; groups.push(group); }
+    group.rows.push(row);
+  }
+  for (const group of groups) {
+    const groupSummary = inventorySummary(group.rows);
+    const categoryRow = worksheet.addRow([`${group.categoryName} — Subtotal: TGAS ${groupSummary.tgas} · Ending units ${groupSummary.endingInventory} · Sold / Used ${groupSummary.soldOrUsed} · Ending value ${groupSummary.endingValue.toFixed(2)}`]);
+    worksheet.mergeCells(categoryRow.number, 1, categoryRow.number, 10);
+    categoryRow.font = { bold: true }; categoryRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6F6D5" } };
+    for (const row of group.rows) {
+      const calculated = mapInventoryRow(row);
+      worksheet.addRow([calculated.itemName, calculated.beginningInventory, calculated.purchases, calculated.transferIn,
+        calculated.transferOut, calculated.tgas, calculated.endingInventory, calculated.soldOrUsed,
+        calculated.unitPrice, calculated.endingValue]);
+    }
+    const subtotal = worksheet.addRow([`${group.categoryName} Subtotal`, "", "", "", "", groupSummary.tgas,
+      groupSummary.endingInventory, groupSummary.soldOrUsed, "", groupSummary.endingValue]);
+    subtotal.font = { bold: true }; subtotal.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDF2F7" } };
+  }
+  const total = worksheet.addRow(["Sheet Total", "", "", "", "", summary.tgas, summary.endingInventory,
+    summary.soldOrUsed, "", summary.endingValue]);
+  total.font = { bold: true }; total.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9EAD3" } };
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNo) => {
+    if (rowNo >= 6) row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = { top: { style: "thin", color: { argb: "FFB7B7B7" } }, left: { style: "thin", color: { argb: "FFB7B7B7" } },
+        bottom: { style: "thin", color: { argb: "FFB7B7B7" } }, right: { style: "thin", color: { argb: "FFB7B7B7" } } };
+      cell.alignment = { ...cell.alignment, vertical: "middle", wrapText: true, horizontal: cell.col === 1 ? "left" : "right" };
+    });
+  });
+  for (let rowNo = 7; rowNo <= worksheet.rowCount; rowNo += 1) {
+    worksheet.getCell(rowNo, 9).numFmt = "₱#,##0.00"; worksheet.getCell(rowNo, 10).numFmt = "₱#,##0.00";
+  }
+  return workbook.xlsx.writeBuffer();
+}
+
 async function listInventoryItems(location = "") {
   const db = await getPool();
   if (!db) return memoryInventoryItems.map((item) => ({ ...item }));
@@ -15972,6 +16038,27 @@ app.put("/api/inventory/sheets", async (request, response) => {
   const result = await saveInventorySheet(period, location, rows, user);
   if (result.error) return response.status(result.statusCode || 400).json({ error: result.error });
   response.json(result);
+});
+
+app.post("/api/inventory/export.xlsx", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "inventory:view") || user.role === "Board / Read-Only Executive") {
+    return response.status(403).json({ error: "Detailed inventory access is required." });
+  }
+  const { period, location, rows } = request.body || {};
+  if (!/^\d{4}-\d{2}$/.test(String(period || "")) || !inventoryLocations.includes(location)) {
+    return response.status(400).json({ error: "Valid period and location are required." });
+  }
+  const validation = validateInventoryRows(rows);
+  if (validation.error) return response.status(400).json({ error: validation.error });
+  const currentSheet = await getInventorySheet(period, location);
+  const buffer = await buildInventoryWorkbook({ period, location, status: currentSheet.status,
+    preparedBy: currentSheet.preparedBy, rows: validation.value });
+  const filenameLocation = location.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+  response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  response.setHeader("Content-Disposition", `attachment; filename="TASETEMCO-INVENTORY-${filenameLocation}-${period}.xlsx"`);
+  return response.send(Buffer.from(buffer));
 });
 
 app.post("/api/inventory/sheets/status", async (request, response) => {

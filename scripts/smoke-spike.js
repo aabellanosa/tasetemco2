@@ -4626,6 +4626,23 @@ async function run() {
     if (!largeInventorySave.ok || largeInventorySaveBody.rows?.length !== 426) {
       throw new Error(`A complete 426-row inventory worksheet must save successfully: ${JSON.stringify(largeInventorySaveBody)}`);
     }
+    const inventoryExport = await fetch(`${baseUrl}/api/inventory/export.xlsx`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: largeInventoryBody
+    });
+    if (!inventoryExport.ok || !inventoryExport.headers.get("content-type")?.includes("spreadsheetml")) {
+      throw new Error("A complete inventory worksheet must download as an XLSX workbook.");
+    }
+    const inventoryWorkbook = new ExcelJS.Workbook();
+    await inventoryWorkbook.xlsx.load(Buffer.from(await inventoryExport.arrayBuffer()));
+    const inventoryWorksheet = inventoryWorkbook.getWorksheet("Monthly Inventory");
+    if (!inventoryWorksheet || inventoryWorksheet.pageSetup.orientation !== "landscape" ||
+      inventoryWorksheet.pageSetup.fitToWidth !== 1 || inventoryWorksheet.rowCount !== 435 ||
+      inventoryWorksheet.getCell("A8").value !== largeInventoryRows[0].itemName ||
+      inventoryWorksheet.getCell("A433").value !== largeInventoryRows[425].itemName) {
+      throw new Error("Inventory XLSX must contain every row, grouped totals, and landscape fit-to-width printing.");
+    }
 
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
   } catch (error) {

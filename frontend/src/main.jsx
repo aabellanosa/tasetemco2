@@ -6849,37 +6849,39 @@ function MonthlyInventoryDraft({ user }) {
     return groups;
   }, []);
 
+  async function downloadInventoryWorkbook() {
+    setIsBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(`${apiBase}/api/inventory/export.xlsx`, { method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, location: activeLocation,
+          rows: rows.map((row) => ({ ...row, itemName: row.item, itemCode: row.itemCode || row.id })) }) });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Inventory workbook could not be generated.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") || "";
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `TASETEMCO-INVENTORY-${activeLocation}-${period}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = url; link.download = filename;
+      document.body.appendChild(link); link.click(); link.remove(); window.URL.revokeObjectURL(url);
+      setMessage(`${activeLocation} inventory workbook downloaded.`);
+    } catch (downloadError) { setError(downloadError.message); } finally { setIsBusy(false); }
+  }
+
   const quantityField = (row, field, label) => (
-    <>
-      <Input className="inventory-no-print" type="number" min={0} step="any" size="sm" value={row[field]} isDisabled={!canEncode}
-        aria-label={`${row.item} ${label}`} minW="82px" textAlign="right" inputMode="decimal"
-        onChange={(event) => updateRow(row.id, field, event.target.value)} />
-      <Text className="inventory-print-only" display="none" textAlign="right">{row[field]}</Text>
-    </>
+    <Input type="number" min={0} step="any" size="sm" value={row[field]} isDisabled={!canEncode}
+      aria-label={`${row.item} ${label}`} minW="82px" textAlign="right" inputMode="decimal"
+      onChange={(event) => updateRow(row.id, field, event.target.value)} />
   );
 
   return (
-    <VStack className="inventory-print-area" align="stretch" spacing={5}>
-      <style>{`@media print {
-        body * { visibility: hidden !important; }
-        .inventory-print-area, .inventory-print-area * { visibility: visible !important; }
-        .inventory-print-area { position: absolute !important; left: 0; top: 0; width: 100%; border: 0 !important; padding: 0 !important; }
-        .inventory-no-print { display: none !important; }
-        .inventory-print-only { display: block !important; }
-        .inventory-category-panel { display: block !important; padding: 0 !important; }
-        .inventory-category { break-inside: avoid; }
-        .inventory-category .chakra-collapse { display: block !important; height: auto !important; overflow: visible !important; opacity: 1 !important; }
-        .inventory-print-area table { font-size: 8pt; }
-        .inventory-print-area th { white-space: normal; line-height: 1.1; }
-        .inventory-print-table { table-layout: fixed; width: 100%; }
-        .inventory-print-table th, .inventory-print-table td { padding: 2px 3px; }
-        @page { size: landscape; margin: 8mm; }
-      }`}</style>
-      <Box className="inventory-no-print" bg="blue.50" borderWidth="1px" borderColor="blue.200" borderRadius="lg" p={4}>
+    <VStack align="stretch" spacing={5}>
+      <Box bg="blue.50" borderWidth="1px" borderColor="blue.200" borderRadius="lg" p={4}>
         <Badge colorScheme="blue">Persistent operational inventory</Badge>
         <Text mt={2} color="blue.800">Sheets save to PostgreSQL with audit evidence. They do not post to the GL or affect financial statements.</Text>
       </Box>
-      <Box className="inventory-no-print" bg="white" borderWidth="1px" borderRadius="lg" p={5}>
+      <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
         <Flex justify="space-between" align="end" gap={4} wrap="wrap">
           <Box>
             <Heading size="md">Monthly Inventory Worksheet</Heading>
@@ -6894,20 +6896,12 @@ function MonthlyInventoryDraft({ user }) {
         </Tabs>
       </Box>
       <Box bg="white" borderWidth="1px" borderRadius="lg" p={5}>
-        <Box className="inventory-print-only" display="none" textAlign="center" mb={4}>
-          <Heading size="md">TABON SECONDARY TEACHER&apos;S MULTI-PURPOSE COOPERATIVE (TASETEMCO)</Heading>
-          <Text>Tabon, Bislig City</Text>
-          <Heading size="sm" mt={2}>{activeLocation.toUpperCase()} — Monthly Inventory Report</Heading>
-          <Text>As of {period} · Status: {sheetMeta?.status || "Not saved"}</Text>
-          {sheetMeta?.preparedBy ? <Text fontSize="sm">Prepared by {sheetMeta.preparedBy}</Text> : null}
-          <Text fontSize="sm" fontWeight="bold" mt={1}>Sheet totals — TGAS {totals.tgas} · Ending units {totals.endingInventory} · Sold / Used {totals.unitsSoldOrUsed} · Ending value {formatMoney(totals.endingValue)}</Text>
-        </Box>
         <Flex justify="space-between" align="end" gap={3} wrap="wrap" mb={4}>
           <Box><Heading size="sm">{activeLocation} · {period}</Heading>
             <Text color="gray.500" fontSize="sm">TGAS = Beginning + Purchases + Transfer In − Transfer Out</Text>
             <HStack mt={2}><Badge colorScheme={sheetMeta?.status === "Finalized" ? "green" : sheetMeta?.status === "Draft" ? "blue" : "gray"}>{sheetMeta?.status || "Loading"}</Badge>
               {sheetMeta?.preparedBy ? <Text fontSize="xs">Saved by {sheetMeta.preparedBy}</Text> : null}</HStack></Box>
-          {canConfigure ? <Flex className="inventory-no-print" gap={2} align="end" wrap="wrap">
+          {canConfigure ? <Flex gap={2} align="end" wrap="wrap">
             <FormControl><FormLabel fontSize="sm">New item</FormLabel>
               <Input size="sm" value={newItem} onChange={(event) => setNewItem(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter") addItem(); }} placeholder="Enter item name" />
@@ -6931,7 +6925,7 @@ function MonthlyInventoryDraft({ user }) {
           </Grid>
         ) : (
         <>
-          <Accordion className="inventory-no-print" defaultIndex={0} allowToggle>
+          <Accordion defaultIndex={0} allowToggle>
             {categoryGroups.map((group) => {
                 const groupTotals = group.rows.reduce((summary, row) => {
                   const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
@@ -6939,15 +6933,14 @@ function MonthlyInventoryDraft({ user }) {
                     sold: summary.sold + Math.max(0, tgas - row.endingInventory), value: summary.value + row.endingInventory * row.unitPrice };
                 }, { tgas: 0, ending: 0, sold: 0, value: 0 });
                 return <AccordionItem className="inventory-category" key={group.categoryCode} borderWidth="1px" borderRadius="md" mb={2}>
-                  <AccordionButton className="inventory-no-print" bg="green.50" _expanded={{ bg: "green.100" }}>
+                  <AccordionButton bg="green.50" _expanded={{ bg: "green.100" }}>
                     <Box flex="1" textAlign="left"><Text fontWeight="bold">{group.categoryName}</Text>
                       <Text fontSize="xs" color="gray.600">{group.rows.length} items · Ending value {formatMoney(groupTotals.value)}</Text></Box>
                     <AccordionIcon />
                   </AccordionButton>
                   <AccordionPanel className="inventory-category-panel" px={0} pb={0}>
                     <TableContainer><Table size="sm">
-                      <Thead><Tr className="inventory-print-only" display="none"><Th colSpan={10}>{group.categoryName}</Th></Tr>
-                        <Tr><Th>Item</Th><Th isNumeric>Beg. Invty.</Th><Th isNumeric>Purchases</Th><Th isNumeric>Transfer In</Th>
+                      <Thead><Tr><Th>Item</Th><Th isNumeric>Beg. Invty.</Th><Th isNumeric>Purchases</Th><Th isNumeric>Transfer In</Th>
                           <Th isNumeric>Transfer Out</Th><Th isNumeric>TGAS</Th><Th isNumeric>Invty End</Th><Th isNumeric>Sold / Used</Th>
                           <Th isNumeric>UP</Th><Th isNumeric>Ending Value</Th></Tr></Thead>
                       <Tbody>{group.rows.map((row) => {
@@ -6976,50 +6969,15 @@ function MonthlyInventoryDraft({ user }) {
                 </AccordionItem>;
               })}
           </Accordion>
-          <TableContainer className="inventory-no-print"><Table size="sm"><Tbody>
+          <TableContainer><Table size="sm"><Tbody>
               <Tr bg="gray.50"><Td fontWeight="bold">Sheet Total</Td><Td colSpan={4} /><Td isNumeric fontWeight="bold">{totals.tgas}</Td>
                 <Td isNumeric fontWeight="bold">{totals.endingInventory}</Td><Td isNumeric fontWeight="bold">{totals.unitsSoldOrUsed}</Td><Td />
                 <Td isNumeric fontWeight="bold">{formatMoney(totals.endingValue)}</Td></Tr>
           </Tbody></Table></TableContainer>
-          <Box className="inventory-print-only" display="none">
-            <TableContainer><Table className="inventory-print-table" size="sm">
-              <colgroup><col style={{ width: "32%" }} /><col style={{ width: "7.5%" }} /><col style={{ width: "8.5%" }} />
-                <col style={{ width: "7.5%" }} /><col style={{ width: "7.5%" }} /><col style={{ width: "6%" }} />
-                <col style={{ width: "7%" }} /><col style={{ width: "7%" }} /><col style={{ width: "6.5%" }} /><col style={{ width: "10.5%" }} /></colgroup>
-              <Thead><Tr><Th>Item</Th><Th isNumeric><Text>Beg.</Text><Text>Invty.</Text></Th><Th isNumeric>Purch.</Th>
-                <Th isNumeric><Text>Trans.</Text><Text>In</Text></Th><Th isNumeric><Text>Trans.</Text><Text>Out</Text></Th>
-                <Th isNumeric>TGAS</Th><Th isNumeric><Text>Invty</Text><Text>End</Text></Th><Th isNumeric><Text>Sold /</Text><Text>Used</Text></Th>
-                <Th isNumeric>UP</Th><Th isNumeric><Text>Ending</Text><Text>Value</Text></Th></Tr></Thead>
-              <Tbody>
-                {categoryGroups.flatMap((group) => {
-                  const groupTotals = group.rows.reduce((summary, row) => {
-                    const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
-                    return { tgas: summary.tgas + tgas, ending: summary.ending + row.endingInventory,
-                      sold: summary.sold + Math.max(0, tgas - row.endingInventory), value: summary.value + row.endingInventory * row.unitPrice };
-                  }, { tgas: 0, ending: 0, sold: 0, value: 0 });
-                  return [<Tr key={`print-category-${group.categoryCode}`} bg="green.100"><Td colSpan={10} fontWeight="bold">{group.categoryName} — Subtotal: TGAS {groupTotals.tgas} · Ending units {groupTotals.ending} · Sold / Used {groupTotals.sold} · Ending value {formatMoney(groupTotals.value)}</Td></Tr>,
-                    ...group.rows.map((row) => {
-                      const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
-                      return <Tr key={`print-${row.id}`}><Td>{row.item}</Td><Td isNumeric>{row.beginningInventory}</Td>
-                        <Td isNumeric>{row.purchases}</Td><Td isNumeric>{row.transferIn}</Td><Td isNumeric>{row.transferOut}</Td>
-                        <Td isNumeric>{tgas}</Td><Td isNumeric>{row.endingInventory}</Td>
-                        <Td isNumeric>{Math.max(0, tgas - row.endingInventory)}</Td><Td isNumeric>{formatMoney(row.unitPrice)}</Td>
-                        <Td isNumeric>{formatMoney(row.endingInventory * row.unitPrice)}</Td></Tr>;
-                    }),
-                    <Tr key={`print-subtotal-${group.categoryCode}`} bg="gray.50"><Td fontWeight="bold">{group.categoryName} Subtotal</Td><Td colSpan={4} />
-                      <Td isNumeric fontWeight="bold">{groupTotals.tgas}</Td><Td isNumeric fontWeight="bold">{groupTotals.ending}</Td>
-                      <Td isNumeric fontWeight="bold">{groupTotals.sold}</Td><Td /><Td isNumeric fontWeight="bold">{formatMoney(groupTotals.value)}</Td></Tr>];
-                })}
-                <Tr bg="gray.100"><Td fontWeight="bold">Sheet Total</Td><Td colSpan={4} /><Td isNumeric fontWeight="bold">{totals.tgas}</Td>
-                  <Td isNumeric fontWeight="bold">{totals.endingInventory}</Td><Td isNumeric fontWeight="bold">{totals.unitsSoldOrUsed}</Td><Td />
-                  <Td isNumeric fontWeight="bold">{formatMoney(totals.endingValue)}</Td></Tr>
-              </Tbody>
-            </Table></TableContainer>
-          </Box>
         </>
         )}
-        <Flex className="inventory-no-print" mt={4} justify="flex-end" gap={3} wrap="wrap">
-          <Button variant="outline" onClick={() => window.print()} isDisabled={!rows.length}>Print Inventory</Button>
+        <Flex mt={4} justify="flex-end" gap={3} wrap="wrap">
+          <Button variant="outline" onClick={downloadInventoryWorkbook} isLoading={isBusy} isDisabled={!rows.length}>Download Excel</Button>
           {canEncode ? <Button onClick={saveDraft} isLoading={isBusy}>Save Draft</Button> : null}
           {canFinalize && sheetMeta?.status === "Draft" ? <Button colorScheme="green" onClick={() => changeStatus("finalize")} isLoading={isBusy}>Finalize Month</Button> : null}
           {canCorrect && sheetMeta?.status === "Finalized" ? <>
