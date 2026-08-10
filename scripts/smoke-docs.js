@@ -87,8 +87,9 @@ function validateSite(directory) {
     "Monthly inventory persistence or accounting boundary is missing.");
   assert(index.includes("426 supplied item rows") && index.includes("seven") && index.includes("classifications"),
     "Confirmed Canteen A/B catalog scope is missing.");
-  assert(index.includes("quantities and prices are not") && index.includes("printed as a landscape table"),
-    "Inventory seed boundary or printable report guidance is missing.");
+  assert(index.includes("quantities and prices are not") && index.includes("Download Excel") &&
+    index.includes("unsaved grid entries") && index.includes("fit-to-one-page-wide"),
+    "Inventory seed boundary or Excel report guidance is missing.");
   assert(index.includes("confirmed 50-item") && index.includes("replacing the ten prototype"),
     "Confirmed Bodega catalog or prototype-retirement guidance is missing.");
   assert(index.includes("Loan Officer Cash Turnover"), "Loan Officer cash-turnover workflow is missing.");

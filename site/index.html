@@ -213,7 +213,7 @@
           <article><h3>Cost-Center Review</h3><p>Ledger or Members -> Cost Center Charges for date, center, status, and member reconciliation with drill-down.</p></article>
           <article><h3>Loan Work</h3><p>Loans -> Applications, Computations, Releases, or Collections according to the current handoff.</p></article>
           <article><h3>SUMMO</h3><p>Reports -> Regular Members Capture SUMMO for source reconciliation, monthly locking, reopening, analytical XLSX export, and the exact client-format six-sheet workbook.</p></article>
-          <article><h3>Monthly Inventory</h3><p>Inventory -> separate persistent Canteen A, Canteen B, and Bodega monthly sheets. Canteen A and B share the supplied 426-item catalog grouped into seven classifications; Bodega uses its confirmed 50-item catalog in seven school and office supply classifications. Includes item catalog expansion, printable grouped tables, Draft/Finalized controls, and calculated TGAS, sold/used units, and ending value.</p></article>
+          <article><h3>Monthly Inventory</h3><p>Inventory -> separate persistent Canteen A, Canteen B, and Bodega monthly sheets. Canteen A and B share the supplied 426-item catalog grouped into seven classifications; Bodega uses its confirmed 50-item catalog in seven school and office supply classifications. Includes item catalog expansion, grouped Excel downloads, Draft/Finalized controls, and calculated TGAS, sold/used units, and ending value.</p></article>
           <article><h3>Keyboard Selection</h3><p>Type to filter, use Up/Down, press Enter to select or Tab to select and advance, and Escape to close.</p></article>
         </div>
       </section>
@@ -540,7 +540,9 @@
             ending inventory, and unit price. TGAS equals beginning inventory plus purchases plus
             transfer in minus transfer out; the grid also calculates sold/used units and ending value.
             Items appear under classification headings with subtotals and a grand total, and the selected
-            location and month can be printed as a landscape table.
+            Download Excel exports the selected location and month, including current unsaved grid entries,
+            with every classification, subtotal, and grand total. The workbook freezes and repeats headings
+            and uses landscape, fit-to-one-page-wide print settings for printing or saving as PDF.
             Sheets are saved to PostgreSQL and move from Draft to Finalized; correction requires an
             audited reopen reason. System Administrator and General Manager have full inventory authority,
             Accountant/Bookkeeper can encode and finalize, Teller/Cashier can encode, Auditor can inspect
