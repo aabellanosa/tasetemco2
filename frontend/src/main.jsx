@@ -6850,9 +6850,12 @@ function MonthlyInventoryDraft({ user }) {
   }, []);
 
   const quantityField = (row, field, label) => (
-    <NumberInput min={0} size="sm" value={row[field]} isDisabled={!canEncode} onChange={(textValue) => updateRow(row.id, field, textValue)}>
-      <NumberInputField aria-label={`${row.item} ${label}`} minW="82px" textAlign="right" />
-    </NumberInput>
+    <>
+      <Input className="inventory-no-print" type="number" min={0} step="any" size="sm" value={row[field]} isDisabled={!canEncode}
+        aria-label={`${row.item} ${label}`} minW="82px" textAlign="right" inputMode="decimal"
+        onChange={(event) => updateRow(row.id, field, event.target.value)} />
+      <Text className="inventory-print-only" display="none" textAlign="right">{row[field]}</Text>
+    </>
   );
 
   return (
@@ -6865,7 +6868,11 @@ function MonthlyInventoryDraft({ user }) {
         .inventory-print-only { display: block !important; }
         .inventory-category-panel { display: block !important; padding: 0 !important; }
         .inventory-category { break-inside: avoid; }
+        .inventory-category .chakra-collapse { display: block !important; height: auto !important; overflow: visible !important; opacity: 1 !important; }
         .inventory-print-area table { font-size: 8pt; }
+        .inventory-print-area th { white-space: normal; line-height: 1.1; }
+        .inventory-print-table { table-layout: fixed; width: 100%; }
+        .inventory-print-table th, .inventory-print-table td { padding: 2px 3px; }
         @page { size: landscape; margin: 8mm; }
       }`}</style>
       <Box className="inventory-no-print" bg="blue.50" borderWidth="1px" borderColor="blue.200" borderRadius="lg" p={4}>
@@ -6893,6 +6900,7 @@ function MonthlyInventoryDraft({ user }) {
           <Heading size="sm" mt={2}>{activeLocation.toUpperCase()} — Monthly Inventory Report</Heading>
           <Text>As of {period} · Status: {sheetMeta?.status || "Not saved"}</Text>
           {sheetMeta?.preparedBy ? <Text fontSize="sm">Prepared by {sheetMeta.preparedBy}</Text> : null}
+          <Text fontSize="sm" fontWeight="bold" mt={1}>Sheet totals — TGAS {totals.tgas} · Ending units {totals.endingInventory} · Sold / Used {totals.unitsSoldOrUsed} · Ending value {formatMoney(totals.endingValue)}</Text>
         </Box>
         <Flex justify="space-between" align="end" gap={3} wrap="wrap" mb={4}>
           <Box><Heading size="sm">{activeLocation} · {period}</Heading>
@@ -6923,7 +6931,7 @@ function MonthlyInventoryDraft({ user }) {
           </Grid>
         ) : (
         <>
-          <Accordion defaultIndex={0} allowToggle>
+          <Accordion className="inventory-no-print" defaultIndex={0} allowToggle>
             {categoryGroups.map((group) => {
                 const groupTotals = group.rows.reduce((summary, row) => {
                   const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
@@ -6968,11 +6976,46 @@ function MonthlyInventoryDraft({ user }) {
                 </AccordionItem>;
               })}
           </Accordion>
-          <TableContainer><Table size="sm"><Tbody>
+          <TableContainer className="inventory-no-print"><Table size="sm"><Tbody>
               <Tr bg="gray.50"><Td fontWeight="bold">Sheet Total</Td><Td colSpan={4} /><Td isNumeric fontWeight="bold">{totals.tgas}</Td>
                 <Td isNumeric fontWeight="bold">{totals.endingInventory}</Td><Td isNumeric fontWeight="bold">{totals.unitsSoldOrUsed}</Td><Td />
                 <Td isNumeric fontWeight="bold">{formatMoney(totals.endingValue)}</Td></Tr>
           </Tbody></Table></TableContainer>
+          <Box className="inventory-print-only" display="none">
+            <TableContainer><Table className="inventory-print-table" size="sm">
+              <colgroup><col style={{ width: "32%" }} /><col style={{ width: "7.5%" }} /><col style={{ width: "8.5%" }} />
+                <col style={{ width: "7.5%" }} /><col style={{ width: "7.5%" }} /><col style={{ width: "6%" }} />
+                <col style={{ width: "7%" }} /><col style={{ width: "7%" }} /><col style={{ width: "6.5%" }} /><col style={{ width: "10.5%" }} /></colgroup>
+              <Thead><Tr><Th>Item</Th><Th isNumeric><Text>Beg.</Text><Text>Invty.</Text></Th><Th isNumeric>Purch.</Th>
+                <Th isNumeric><Text>Trans.</Text><Text>In</Text></Th><Th isNumeric><Text>Trans.</Text><Text>Out</Text></Th>
+                <Th isNumeric>TGAS</Th><Th isNumeric><Text>Invty</Text><Text>End</Text></Th><Th isNumeric><Text>Sold /</Text><Text>Used</Text></Th>
+                <Th isNumeric>UP</Th><Th isNumeric><Text>Ending</Text><Text>Value</Text></Th></Tr></Thead>
+              <Tbody>
+                {categoryGroups.flatMap((group) => {
+                  const groupTotals = group.rows.reduce((summary, row) => {
+                    const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
+                    return { tgas: summary.tgas + tgas, ending: summary.ending + row.endingInventory,
+                      sold: summary.sold + Math.max(0, tgas - row.endingInventory), value: summary.value + row.endingInventory * row.unitPrice };
+                  }, { tgas: 0, ending: 0, sold: 0, value: 0 });
+                  return [<Tr key={`print-category-${group.categoryCode}`} bg="green.100"><Td colSpan={10} fontWeight="bold">{group.categoryName} — Subtotal: TGAS {groupTotals.tgas} · Ending units {groupTotals.ending} · Sold / Used {groupTotals.sold} · Ending value {formatMoney(groupTotals.value)}</Td></Tr>,
+                    ...group.rows.map((row) => {
+                      const tgas = row.beginningInventory + row.purchases + row.transferIn - row.transferOut;
+                      return <Tr key={`print-${row.id}`}><Td>{row.item}</Td><Td isNumeric>{row.beginningInventory}</Td>
+                        <Td isNumeric>{row.purchases}</Td><Td isNumeric>{row.transferIn}</Td><Td isNumeric>{row.transferOut}</Td>
+                        <Td isNumeric>{tgas}</Td><Td isNumeric>{row.endingInventory}</Td>
+                        <Td isNumeric>{Math.max(0, tgas - row.endingInventory)}</Td><Td isNumeric>{formatMoney(row.unitPrice)}</Td>
+                        <Td isNumeric>{formatMoney(row.endingInventory * row.unitPrice)}</Td></Tr>;
+                    }),
+                    <Tr key={`print-subtotal-${group.categoryCode}`} bg="gray.50"><Td fontWeight="bold">{group.categoryName} Subtotal</Td><Td colSpan={4} />
+                      <Td isNumeric fontWeight="bold">{groupTotals.tgas}</Td><Td isNumeric fontWeight="bold">{groupTotals.ending}</Td>
+                      <Td isNumeric fontWeight="bold">{groupTotals.sold}</Td><Td /><Td isNumeric fontWeight="bold">{formatMoney(groupTotals.value)}</Td></Tr>];
+                })}
+                <Tr bg="gray.100"><Td fontWeight="bold">Sheet Total</Td><Td colSpan={4} /><Td isNumeric fontWeight="bold">{totals.tgas}</Td>
+                  <Td isNumeric fontWeight="bold">{totals.endingInventory}</Td><Td isNumeric fontWeight="bold">{totals.unitsSoldOrUsed}</Td><Td />
+                  <Td isNumeric fontWeight="bold">{formatMoney(totals.endingValue)}</Td></Tr>
+              </Tbody>
+            </Table></TableContainer>
+          </Box>
         </>
         )}
         <Flex className="inventory-no-print" mt={4} justify="flex-end" gap={3} wrap="wrap">

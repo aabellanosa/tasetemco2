@@ -582,7 +582,14 @@ const requiredSchemaColumns = {
   ]
 };
 
-app.use(express.json());
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "2mb" }));
+app.use((error, request, response, next) => {
+  if (error?.type === "entity.too.large") {
+    response.status(413).json({ error: "The submitted worksheet is too large. Contact the System Administrator if the inventory catalog has grown beyond the supported limit." });
+    return;
+  }
+  next(error);
+});
 app.use((request, response, next) => {
   const user = parseSession(request);
   const allowedWhileChanging = ["/api/me", "/api/logout", "/api/change-password"];

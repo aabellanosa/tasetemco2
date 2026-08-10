@@ -4599,6 +4599,34 @@ async function run() {
       throw new Error("Member payable movements must show derived paid amount, balance, and payment status.");
     }
 
+    const largeInventoryRows = Array.from({ length: 426 }, (_, index) => ({
+      itemCode: `LOAD-${String(index + 1).padStart(4, "0")}`,
+      itemName: `Inventory payload regression item ${String(index + 1).padStart(4, "0")} ${"x".repeat(100)}`,
+      categoryCode: "SCHOOL_SUPPLIES",
+      categoryName: "School Supplies",
+      categoryDisplayOrder: 1,
+      itemDisplayOrder: index + 1,
+      beginningInventory: 0,
+      purchases: 0,
+      transferIn: 0,
+      transferOut: 0,
+      endingInventory: 0,
+      unitPrice: 0
+    }));
+    const largeInventoryBody = JSON.stringify({ period: "2099-12", location: "Canteen A", rows: largeInventoryRows });
+    if (Buffer.byteLength(largeInventoryBody) <= 100 * 1024) {
+      throw new Error("Inventory payload regression fixture must exceed Express's former 100 KB default limit.");
+    }
+    const largeInventorySave = await fetch(`${baseUrl}/api/inventory/sheets`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      body: largeInventoryBody
+    });
+    const largeInventorySaveBody = await largeInventorySave.json();
+    if (!largeInventorySave.ok || largeInventorySaveBody.rows?.length !== 426) {
+      throw new Error(`A complete 426-row inventory worksheet must save successfully: ${JSON.stringify(largeInventorySaveBody)}`);
+    }
+
     console.log(`TASETEMCO API ${smokeMode} smoke test passed.`);
   } catch (error) {
     error.message = `${error.message}\n\nServer output:\n${output}`;
