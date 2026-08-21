@@ -2667,6 +2667,57 @@ async function run() {
       throw new Error("Statement of Financial Condition should balance posted assets against liabilities and equity.");
     }
 
+    const hybridPeriod = new Date().toISOString().slice(0, 7);
+    const hybridStatements = await fetch(`${baseUrl}/api/reports/financial-statements/${hybridPeriod}`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const hybridBody = await hybridStatements.json();
+    if (
+      !hybridStatements.ok ||
+      hybridBody.period !== hybridPeriod ||
+      hybridBody.openQuestionCount !== 4 ||
+      !hybridBody.fsc.lines.some((line) => line.code === "PROPERTY_COST" && line.sourceType === "Carried forward") ||
+      !hybridBody.fsc.lines.some((line) => line.code === "PREPAID_INSURANCE" && line.amount === 14332.77) ||
+      !hybridBody.fso.lines.some((line) => line.code === "NET_SURPLUS" && line.sourceType === "Calculated")
+    ) {
+      throw new Error("Hybrid financial statements should expose provisional sources, assumptions, and questions.");
+    }
+
+    const savedHybridStatements = await fetch(`${baseUrl}/api/reports/financial-statements/${hybridPeriod}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: bookkeeperCookie },
+      body: JSON.stringify({
+        values: [{ statement: "FSC", lineCode: "CASH_IN_BANK", amount: 125000, sourceType: "Manual",
+          note: "Smoke-test bank reconciliation", supportReference: "BANK-TEST-001" }],
+        questions: [{ id: "UNEARNED-INTEREST", status: "Open", response: "Awaiting detailed schedule" }]
+      })
+    });
+    const savedHybridBody = await savedHybridStatements.json();
+    const savedBankLine = savedHybridBody.fsc?.lines?.find((line) => line.code === "CASH_IN_BANK");
+    if (!savedHybridStatements.ok || savedHybridBody.periodState.status !== "Provisional" ||
+      savedBankLine?.amount !== 125000 || savedBankLine?.supportReference !== "BANK-TEST-001") {
+      throw new Error("Bookkeeper should be able to save controlled hybrid financial-statement values.");
+    }
+
+    const prematureFinalization = await fetch(`${baseUrl}/api/reports/financial-statements/${hybridPeriod}/status`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: managerCookie },
+      body: JSON.stringify({ action: "finalize" })
+    });
+    if (prematureFinalization.status !== 409) {
+      throw new Error("Hybrid financial statements must not finalize with open questions or an FSC difference.");
+    }
+
+    const hybridWorkbook = await fetch(`${baseUrl}/api/reports/financial-statements/${hybridPeriod}/export.xlsx`, {
+      headers: { Cookie: bookkeeperCookie }
+    });
+    const hybridWorkbookBuffer = Buffer.from(await hybridWorkbook.arrayBuffer());
+    const parsedHybridWorkbook = new ExcelJS.Workbook();
+    await parsedHybridWorkbook.xlsx.load(hybridWorkbookBuffer);
+    if (!hybridWorkbook.ok || !parsedHybridWorkbook.getWorksheet("Financial Condition") ||
+      !parsedHybridWorkbook.getWorksheet("Outstanding Questions")) {
+      throw new Error("Hybrid financial-statement export should include statements and outstanding questions.");
+    }
+
     const forbiddenPayment = await fetch(`${baseUrl}/api/initial-member-payments`, {
       method: "POST",
       headers: {

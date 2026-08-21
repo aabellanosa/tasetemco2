@@ -188,9 +188,13 @@ const memoryInventoryItems = ["Bottled Water", "Soft Drinks", "Instant Coffee", 
   .map((itemName, index) => ({ itemCode: `INV-${String(index + 1).padStart(3, "0")}`, itemName, status: "Active" }));
 const memoryInventorySheets = [];
 const memoryInventoryAuditEvents = [];
+const memoryFinancialStatementPeriods = new Map();
+const memoryFinancialStatementAuditEvents = [];
 let pool = null;
 
 const persistedTables = [
+  "financial_statement_audit_events",
+  "financial_statement_periods",
   "inventory_audit_events",
   "inventory_sheet_rows",
   "inventory_sheets",
@@ -256,6 +260,8 @@ const persistedTables = [
 ];
 
 const requiredSchemaColumns = {
+  financial_statement_periods: ["report_period", "status", "version", "manual_values", "question_resolutions", "prepared_by", "approved_by"],
+  financial_statement_audit_events: ["report_period", "event_type", "performed_by", "details", "created_at"],
   inventory_categories: ["category_code", "category_name", "display_order", "status"],
   inventory_item_locations: ["item_code", "location", "category_code", "display_order", "status"],
   inventory_items: ["item_code", "item_name", "status", "created_by", "updated_by"],
@@ -9150,6 +9156,337 @@ async function getStatementOfFinancialConditionReport() {
   };
 }
 
+const financialStatementSourceTypes = ["System", "Manual", "Carried forward", "Calculated", "Unresolved"];
+const financialStatementOpeningValues = {
+  "FSC:UNEARNED_INTEREST": { amount: 85425.39, sourceType: "Manual", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx",
+    note: "Provisional December 2025 amount; detailed loan-schedule support remains outstanding." },
+  "FSC:PREPAID_INSURANCE": { amount: 14332.77, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx",
+    note: "Included as an asset; the source workbook omitted this cell from Total Current Assets." },
+  "FSC:ADVANCES_TO_SUPPLIERS": { amount: 34811, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:PROPERTY_COST": { amount: 2657322.59, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx",
+    note: "Provisional opening cost; the detailed 2026 property register is lower by PHP 275,488.65." },
+  "FSC:ACCUMULATED_DEPRECIATION": { amount: 1391182.55, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx",
+    note: "Provisional December 2025 opening balance pending asset-register reconciliation." },
+  "FSC:INVESTMENTS": { amount: 389112.57, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:DUE_UNION": { amount: 108655.42, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:OTHER_PESO_SAVINGS": { amount: 58951.8, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:RETIREMENT_PAYABLE": { amount: 805936, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:LOANS_PAYABLE": { amount: 944370.33, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:GRANT_CAPITAL": { amount: 600000, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:DONATED_CAPITAL": { amount: 77790.93, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" },
+  "FSC:STATUTORY_FUNDS": { amount: 1618437.79, sourceType: "Carried forward", supportReference: "FOR EXTERNAL AUDITOR V2.xlsx" }
+};
+const financialStatementQuestions = [
+  { id: "UNEARNED-INTEREST", statement: "FSC", lineCode: "UNEARNED_INTEREST", severity: "warning",
+    question: "Provide the detailed loan schedule supporting unearned interest and confirm the calculation method.",
+    assumption: "Use PHP 85,425.39 provisionally as a deduction from Regular Loans Receivable." },
+  { id: "PROPERTY-REGISTER", statement: "FSC", lineCode: "PROPERTY_COST", severity: "warning",
+    question: "Reconcile the PHP 275,488.65 difference between FSC property cost and the detailed asset register.",
+    assumption: "Use the external-auditor FSC cost of PHP 2,657,322.59 as the provisional opening balance." },
+  { id: "PREPAID-INSURANCE", statement: "FSC", lineCode: "PREPAID_INSURANCE", severity: "error",
+    question: "Confirm the offsetting correction for prepaid insurance omitted from the source workbook's Total Current Assets formula.",
+    assumption: "Include PHP 14,332.77 as an asset and expose any resulting FSC balance difference." },
+  { id: "NET-INCOME", statement: "FSC", lineCode: "NET_INCOME", severity: "warning",
+    question: "Provide the matching full-year or year-to-date FSO supporting FSC net income.",
+    assumption: "Use system-derived year-to-date income when available; otherwise retain a documented manual amount." }
+];
+
+function financialStatementPeriodIsValid(period) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(period || ""));
+}
+
+function financialStatementPeriodBounds(period) {
+  const [year, month] = period.split("-").map(Number);
+  return { yearStart: `${year}-01-01`, monthStart: `${period}-01`, nextMonth: new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10) };
+}
+
+function mapFinancialStatementPeriod(row) {
+  return {
+    period: row.reportPeriod || row.period,
+    status: row.status || "Draft",
+    version: Number(row.version || 1),
+    manualValues: row.manualValues || {},
+    questionResolutions: row.questionResolutions || {},
+    preparedBy: row.preparedBy || "",
+    preparedAt: row.preparedAt || "",
+    approvedBy: row.approvedBy || "",
+    approvedAt: row.approvedAt || "",
+    reopenedBy: row.reopenedBy || "",
+    reopenedAt: row.reopenedAt || "",
+    reopenReason: row.reopenReason || ""
+  };
+}
+
+async function getFinancialStatementPeriod(period) {
+  const db = await getPool();
+  if (!db) return memoryFinancialStatementPeriods.get(period) || mapFinancialStatementPeriod({ period });
+  const [rows] = await db.execute(`SELECT report_period AS "reportPeriod", status, version,
+    manual_values AS "manualValues", question_resolutions AS "questionResolutions",
+    prepared_by AS "preparedBy", prepared_at AS "preparedAt", approved_by AS "approvedBy",
+    approved_at AS "approvedAt", reopened_by AS "reopenedBy", reopened_at AS "reopenedAt",
+    reopen_reason AS "reopenReason" FROM financial_statement_periods WHERE report_period = ?`, [period]);
+  return rows[0] ? mapFinancialStatementPeriod(rows[0]) : mapFinancialStatementPeriod({ period });
+}
+
+async function recordFinancialStatementEvent(period, eventType, user, details = {}) {
+  const event = { period, eventType, performedBy: user.username, details, createdAt: new Date().toISOString() };
+  const db = await getPool();
+  if (!db) { memoryFinancialStatementAuditEvents.unshift(event); return; }
+  await db.execute(`INSERT INTO financial_statement_audit_events
+    (report_period, event_type, performed_by, details) VALUES (?, ?, ?, ?)`,
+  [period, eventType, user.username, JSON.stringify(details)]);
+}
+
+async function saveFinancialStatementPeriod(period, input, user) {
+  const current = await getFinancialStatementPeriod(period);
+  if (current.status === "Final") return { error: "Reopen the final statement before changing values.", statusCode: 409 };
+  const manualValues = { ...current.manualValues };
+  for (const item of input.values || []) {
+    const statement = String(item.statement || "").toUpperCase();
+    const lineCode = String(item.lineCode || "").toUpperCase();
+    const sourceType = String(item.sourceType || "Manual");
+    const amount = Number(item.amount || 0);
+    const budget = Number(item.budget || 0);
+    if (!["FSC", "FSO"].includes(statement) || !/^[A-Z0-9_]+$/.test(lineCode)) continue;
+    if (!financialStatementSourceTypes.includes(sourceType) || !isMoney(Math.abs(amount)) || !isMoney(Math.abs(budget))) {
+      return { error: "Manual values must use a valid source and amounts with no more than two decimal places.", statusCode: 400 };
+    }
+    manualValues[`${statement}:${lineCode}`] = { amount: moneyValue(amount), budget: moneyValue(budget), sourceType,
+      note: String(item.note || "").trim().slice(0, 1000), supportReference: String(item.supportReference || "").trim().slice(0, 300) };
+  }
+  const questionResolutions = { ...current.questionResolutions };
+  for (const item of input.questions || []) {
+    const id = String(item.id || "");
+    if (!financialStatementQuestions.some((question) => question.id === id)) continue;
+    const response = String(item.response || "").trim().slice(0, 1500);
+    if (item.status === "Resolved" && !response) return { error: "A client response or supporting reference is required to resolve a question.", statusCode: 400 };
+    questionResolutions[id] = { status: item.status === "Resolved" ? "Resolved" : "Open",
+      response, resolvedBy: item.status === "Resolved" ? user.username : "",
+      resolvedAt: item.status === "Resolved" ? new Date().toISOString() : "" };
+  }
+  const next = { ...current, period, status: "Provisional", version: current.version + 1, manualValues,
+    questionResolutions, preparedBy: user.username, preparedAt: new Date().toISOString(), approvedBy: "", approvedAt: "" };
+  const db = await getPool();
+  if (!db) memoryFinancialStatementPeriods.set(period, next);
+  else await db.execute(`INSERT INTO financial_statement_periods
+    (report_period, status, version, manual_values, question_resolutions, prepared_by, prepared_at)
+    VALUES (?, 'Provisional', 1, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT (report_period) DO UPDATE SET status = 'Provisional', version = financial_statement_periods.version + 1,
+      manual_values = EXCLUDED.manual_values, question_resolutions = EXCLUDED.question_resolutions,
+      prepared_by = EXCLUDED.prepared_by, prepared_at = CURRENT_TIMESTAMP, approved_by = '', approved_at = NULL,
+      updated_at = CURRENT_TIMESTAMP`, [period, JSON.stringify(manualValues), JSON.stringify(questionResolutions), user.username]);
+  await recordFinancialStatementEvent(period, "SAVED", user, { valueCount: Object.keys(manualValues).length });
+  return getFinancialStatementReport(period);
+}
+
+async function financialStatementLedgerBalances(period) {
+  const bounds = financialStatementPeriodBounds(period);
+  const entries = await listJournalEntries();
+  const balances = new Map();
+  for (const entry of entries) {
+    const date = String(entry.postedAt || "").slice(0, 10);
+    if (date && date >= bounds.nextMonth) continue;
+    for (const line of entry.lines || []) {
+      const row = balances.get(line.accountCode) || { code: line.accountCode, name: line.accountName, debit: 0, credit: 0,
+        monthDebit: 0, monthCredit: 0, ytdDebit: 0, ytdCredit: 0 };
+      row.debit = addMoney(row.debit, line.debit); row.credit = addMoney(row.credit, line.credit);
+      if (date >= bounds.monthStart && date < bounds.nextMonth) {
+        row.monthDebit = addMoney(row.monthDebit, line.debit); row.monthCredit = addMoney(row.monthCredit, line.credit);
+      }
+      if (date >= bounds.yearStart && date < bounds.nextMonth) {
+        row.ytdDebit = addMoney(row.ytdDebit, line.debit); row.ytdCredit = addMoney(row.ytdCredit, line.credit);
+      }
+      balances.set(line.accountCode, row);
+    }
+  }
+  return balances;
+}
+
+function financialValue(state, statement, code, fallback = {}) {
+  return { ...fallback, ...(financialStatementOpeningValues[`${statement}:${code}`] || {}), ...(state.manualValues[`${statement}:${code}`] || {}) };
+}
+
+function fsLine(code, label, amount, sourceType, options = {}) {
+  return { code, label, amount: moneyValue(amount || 0), sourceType, editable: ["Manual", "Carried forward", "Unresolved"].includes(sourceType),
+    note: options.note || "", supportReference: options.supportReference || "", questionId: options.questionId || "", indent: options.indent || 0,
+    calculation: options.calculation || "", budget: moneyValue(options.budget || 0), ytdAmount: moneyValue(options.ytdAmount ?? amount ?? 0), kind: options.kind || "line" };
+}
+
+function lineAmount(lines, code) { return lines.find((line) => line.code === code)?.amount || 0; }
+
+async function getFinancialStatementReport(period) {
+  const state = await getFinancialStatementPeriod(period);
+  const balances = await financialStatementLedgerBalances(period);
+  const gl = (code, normal = "debit", scope = "ending") => {
+    const row = balances.get(code) || {};
+    const debit = scope === "month" ? row.monthDebit : scope === "ytd" ? row.ytdDebit : row.debit;
+    const credit = scope === "month" ? row.monthCredit : scope === "ytd" ? row.ytdCredit : row.credit;
+    return normal === "debit" ? subtractMoney(debit || 0, credit || 0) : subtractMoney(credit || 0, debit || 0);
+  };
+  const manual = (statement, code, fallback = {}) => financialValue(state, statement, code, fallback);
+  let inventoryAmount = 0;
+  try {
+    for (const location of inventoryLocations) inventoryAmount = addMoney(inventoryAmount, (await getInventorySheet(period, location, true)).summary?.endingValue || 0);
+  } catch { inventoryAmount = 0; }
+
+  const fso = [];
+  const addFso = (code, label, autoAccount, normal = "credit", fallback = {}, indent = 0) => {
+    const configured = manual("FSO", code, fallback);
+    const auto = autoAccount ? gl(autoAccount, normal, "month") : null;
+    const autoYtd = autoAccount ? gl(autoAccount, normal, "ytd") : null;
+    fso.push(fsLine(code, label, autoAccount ? auto : configured.amount, autoAccount ? "System" : (configured.sourceType || "Unresolved"),
+      { ...configured, indent, ytdAmount: autoAccount ? autoYtd : configured.amount, budget: configured.budget || 0 }));
+  };
+  addFso("CANTEEN_SALES", "Canteen sales", "4060");
+  addFso("CONSUMERS_SALES", "Consumers sales", null, "credit", { sourceType: "Unresolved", note: "Awaiting confirmed operational mapping." });
+  const sales = sumMoney(fso.slice(-2).map((line) => line.amount));
+  fso.push(fsLine("TOTAL_SALES", "Total sales", sales, "Calculated", { kind: "total", calculation: "Canteen + Consumers",
+    ytdAmount: sumMoney(fso.slice(-2).map((line) => line.ytdAmount)) }));
+  addFso("BEGINNING_INVENTORY", "Beginning inventory", null, "credit", { sourceType: "Unresolved", note: "Previous finalized ending inventory." });
+  addFso("PURCHASES", "Purchases", null, "credit", { sourceType: "Unresolved", note: "Canteen and Consumers purchases." });
+  const endingInventory = manual("FSO", "ENDING_INVENTORY", inventoryAmount ? { amount: inventoryAmount, sourceType: "System",
+    note: "Finalized monthly inventory ending value." } : { sourceType: "Unresolved", note: "Finalize monthly inventory or enter a supported value." });
+  fso.push(fsLine("ENDING_INVENTORY", "Less: Ending inventory", endingInventory.amount, endingInventory.sourceType, endingInventory));
+  const cogs = subtractMoney(addMoney(lineAmount(fso, "BEGINNING_INVENTORY"), lineAmount(fso, "PURCHASES")), lineAmount(fso, "ENDING_INVENTORY"));
+  fso.push(fsLine("COST_OF_SALES", "Cost of goods sold", cogs, "Calculated", { kind: "total", calculation: "Beginning inventory + Purchases - Ending inventory" }));
+  fso.push(fsLine("GROSS_SURPLUS", "Gross surplus from sales", subtractMoney(sales, cogs), "Calculated", { kind: "total" }));
+  addFso("INTEREST_INCOME", "Interest income from loans", "4010");
+  addFso("SERVICE_FEES", "Service fees", "4030");
+  addFso("MISC_INCOME", "Miscellaneous and penalty income", "4040");
+  addFso("OTHER_INCOME", "Other service income", "4080");
+  const revenue = addMoney(lineAmount(fso, "GROSS_SURPLUS"), ...fso.filter((line) => ["INTEREST_INCOME", "SERVICE_FEES", "MISC_INCOME", "OTHER_INCOME"].includes(line.code)).map((line) => line.amount));
+  fso.push(fsLine("TOTAL_REVENUE", "Total revenue", revenue, "Calculated", { kind: "total" }));
+  const expenseDefinitions = [
+    ["CANTEEN_EXPENSE", "Canteen expenses", "5010"], ["WRS_EXPENSE", "Water-refilling operating expenses", "5020"],
+    ["REPAIR_EXPENSE", "Building, repair and maintenance", "5030"], ["TRAVEL_EXPENSE", "Travel and transportation", "5040"],
+    ["OTHER_OPERATING_EXPENSE", "Other operating expenses", "5090"]
+  ];
+  for (const [code, label, account] of expenseDefinitions) addFso(code, label, account, "debit");
+  for (const [code, label, note] of [
+    ["DEPRECIATION", "Depreciation", "Pending reconciled fixed-asset register."],
+    ["PROBABLE_LOSSES", "Allowance for probable losses", "Periodic client-approved adjustment."],
+    ["RETIREMENT_PROVISION", "Provision for retirement", "Periodic client-approved adjustment."],
+    ["ADMIN_EXPENSES", "Administrative expenses", "Enter unsupported administrative expenses with reference."],
+    ["FINANCING_COST", "Financing cost", "Enter borrowing and savings interest until subsidiary schedules are available."]
+  ]) addFso(code, label, null, "credit", { sourceType: "Unresolved", note });
+  const expenseCodes = [...expenseDefinitions.map((item) => item[0]), "DEPRECIATION", "PROBABLE_LOSSES", "RETIREMENT_PROVISION", "ADMIN_EXPENSES", "FINANCING_COST"];
+  const totalExpenses = sumMoney(fso.filter((line) => expenseCodes.includes(line.code)).map((line) => line.amount));
+  fso.push(fsLine("TOTAL_EXPENSES", "Total expenses", totalExpenses, "Calculated", { kind: "total" }));
+  const netSurplus = subtractMoney(revenue, totalExpenses);
+  fso.push(fsLine("NET_SURPLUS", "Net surplus", netSurplus, "Calculated", { kind: "grand-total", calculation: "Total revenue - Total expenses" }));
+
+  const fsc = [];
+  const addFscManual = (code, label, fallback, options = {}) => { const configured = manual("FSC", code, fallback);
+    fsc.push(fsLine(code, label, configured.amount, configured.sourceType || "Unresolved", { ...configured, ...options })); };
+  fsc.push(fsLine("CASH_ON_HAND", "Cash on hand", gl("1010"), "System"));
+  addFscManual("GCASH_LOAD", "GCash and load", { sourceType: "Unresolved", note: "Separate cash account is not yet available." });
+  addFscManual("CASH_IN_BANK", "Cash in bank", { sourceType: "Unresolved", note: "Enter reconciled bank balances." });
+  fsc.push(fsLine("REGULAR_LOANS", "Regular loans receivable", gl("1050"), "System", { note: "Currently includes all system loan portfolios." }));
+  addFscManual("UNEARNED_INTEREST", "Less: Unearned interest", {}, { questionId: "UNEARNED-INTEREST" });
+  addFscManual("OTHER_LOAN_PORTFOLIOS", "Associates, Micro Project and past-due loans", { sourceType: "Unresolved",
+    note: "Portfolio classifications are not yet available in the ledger." });
+  addFscManual("ALLOWANCE_LOSSES", "Less: Allowance for probable losses", { sourceType: "Unresolved" });
+  const inventoryFsc = manual("FSC", "MERCHANDISE_INVENTORY", inventoryAmount ? { amount: inventoryAmount, sourceType: "System" } : { sourceType: "Unresolved" });
+  fsc.push(fsLine("MERCHANDISE_INVENTORY", "Merchandise inventory", inventoryFsc.amount, inventoryFsc.sourceType, inventoryFsc));
+  addFscManual("PREPAID_INSURANCE", "Prepaid insurance", {}, { questionId: "PREPAID-INSURANCE" });
+  addFscManual("ADVANCES_TO_SUPPLIERS", "Advances to suppliers", {});
+  const currentAssetCodes = ["CASH_ON_HAND", "GCASH_LOAD", "CASH_IN_BANK", "REGULAR_LOANS", "OTHER_LOAN_PORTFOLIOS", "MERCHANDISE_INVENTORY", "PREPAID_INSURANCE", "ADVANCES_TO_SUPPLIERS"];
+  const deductions = addMoney(lineAmount(fsc, "UNEARNED_INTEREST"), lineAmount(fsc, "ALLOWANCE_LOSSES"));
+  const currentAssets = subtractMoney(sumMoney(fsc.filter((line) => currentAssetCodes.includes(line.code)).map((line) => line.amount)), deductions);
+  fsc.push(fsLine("TOTAL_CURRENT_ASSETS", "Total current assets", currentAssets, "Calculated", { kind: "total" }));
+  addFscManual("PROPERTY_COST", "Property and equipment, at cost", {}, { questionId: "PROPERTY-REGISTER" });
+  addFscManual("ACCUMULATED_DEPRECIATION", "Less: Accumulated depreciation", {});
+  fsc.push(fsLine("PROPERTY_NET", "Property and equipment, net", subtractMoney(lineAmount(fsc, "PROPERTY_COST"), lineAmount(fsc, "ACCUMULATED_DEPRECIATION")), "Calculated", { kind: "total" }));
+  addFscManual("INVESTMENTS", "Investments", {});
+  const totalAssets = addMoney(currentAssets, lineAmount(fsc, "PROPERTY_NET"), lineAmount(fsc, "INVESTMENTS"));
+  fsc.push(fsLine("TOTAL_ASSETS", "Total assets", totalAssets, "Calculated", { kind: "grand-total" }));
+  fsc.push(fsLine("SAVINGS_DEPOSITS", "Savings deposits", gl("2020", "credit"), "System"));
+  fsc.push(fsLine("TFEA_PAYABLE", "TFEA payable", gl("2030", "credit"), "System"));
+  fsc.push(fsLine("SECURED_SAVINGS", "Secured savings payable", gl("2040", "credit"), "System"));
+  addFscManual("DUE_UNION", "Due to union/federation", {}); addFscManual("OTHER_PESO_SAVINGS", "Other peso savings", {});
+  addFscManual("INTEREST_REFUND_PAYABLE", "Interest on share capital and refund payable", { sourceType: "Unresolved" });
+  addFscManual("RETIREMENT_PAYABLE", "Retirement fund payable", {}); addFscManual("LOANS_PAYABLE", "Loans payable", {});
+  const liabilityCodes = ["SAVINGS_DEPOSITS", "TFEA_PAYABLE", "SECURED_SAVINGS", "DUE_UNION", "OTHER_PESO_SAVINGS", "INTEREST_REFUND_PAYABLE", "RETIREMENT_PAYABLE", "LOANS_PAYABLE"];
+  const totalLiabilities = sumMoney(fsc.filter((line) => liabilityCodes.includes(line.code)).map((line) => line.amount));
+  fsc.push(fsLine("TOTAL_LIABILITIES", "Total liabilities", totalLiabilities, "Calculated", { kind: "grand-total" }));
+  fsc.push(fsLine("SHARE_CAPITAL", "Share capital", gl("3010", "credit"), "System"));
+  addFscManual("GRANT_CAPITAL", "Grant capital", {}); addFscManual("DONATED_CAPITAL", "Donated capital", {});
+  addFscManual("RETAINED_EARNINGS", "Retained earnings", { sourceType: "Unresolved" });
+  const ledgerYtdIncome = sumMoney([...balances.values()].filter((row) => String(row.code).startsWith("4"))
+    .map((row) => subtractMoney(row.ytdCredit || 0, row.ytdDebit || 0)));
+  const ledgerYtdExpenses = sumMoney([...balances.values()].filter((row) => String(row.code).startsWith("5"))
+    .map((row) => subtractMoney(row.ytdDebit || 0, row.ytdCredit || 0)));
+  const ytdNetIncome = subtractMoney(ledgerYtdIncome, ledgerYtdExpenses);
+  fsc.push(fsLine("NET_INCOME", "Year-to-date net income", ytdNetIncome, "Calculated", { questionId: "NET-INCOME", note: "Calculated from year-to-date posted income and expense accounts." }));
+  addFscManual("STATUTORY_FUNDS", "Statutory funds", {});
+  const equityCodes = ["SHARE_CAPITAL", "GRANT_CAPITAL", "DONATED_CAPITAL", "RETAINED_EARNINGS", "NET_INCOME", "STATUTORY_FUNDS"];
+  const totalEquity = sumMoney(fsc.filter((line) => equityCodes.includes(line.code)).map((line) => line.amount));
+  fsc.push(fsLine("TOTAL_EQUITY", "Total equity", totalEquity, "Calculated", { kind: "grand-total" }));
+  const totalLiabilitiesEquity = addMoney(totalLiabilities, totalEquity);
+  fsc.push(fsLine("TOTAL_LIABILITIES_EQUITY", "Total liabilities and equity", totalLiabilitiesEquity, "Calculated", { kind: "grand-total" }));
+  const balanceDifference = subtractMoney(totalAssets, totalLiabilitiesEquity);
+
+  const questions = financialStatementQuestions.map((question) => ({ ...question,
+    status: state.questionResolutions[question.id]?.status || "Open",
+    response: state.questionResolutions[question.id]?.response || "",
+    resolvedBy: state.questionResolutions[question.id]?.resolvedBy || "",
+    resolvedAt: state.questionResolutions[question.id]?.resolvedAt || "" }));
+  return { generatedAt: new Date().toISOString(), period, periodState: state,
+    provisional: state.status !== "Final", basis: "Hybrid system-derived, controlled manual, carried-forward, and calculated values",
+    legend: { System: "green", Manual: "blue", "Carried forward": "blue", Calculated: "gray", Unresolved: "yellow" },
+    fso: { lines: fso, summary: { totalRevenue: revenue, totalExpenses, netSurplus } },
+    fsc: { lines: fsc, summary: { totalAssets, totalLiabilities, totalEquity, totalLiabilitiesAndEquity: totalLiabilitiesEquity,
+      difference: balanceDifference, status: moneyCents(balanceDifference) === 0 ? "Balanced" : "Out of Balance" } },
+    questions, openQuestionCount: questions.filter((question) => question.status !== "Resolved").length };
+}
+
+async function changeFinancialStatementStatus(period, action, reason, user) {
+  const report = await getFinancialStatementReport(period);
+  if (action === "finalize" && (moneyCents(report.fsc.summary.difference) !== 0 || report.openQuestionCount > 0)) {
+    return { error: "Resolve all questions and balance the FSC before final approval.", statusCode: 409 };
+  }
+  const status = action === "finalize" ? "Final" : "Provisional";
+  const db = await getPool();
+  if (!db) {
+    const next = { ...report.periodState, status, version: report.periodState.version + 1,
+      approvedBy: action === "finalize" ? user.username : "", approvedAt: action === "finalize" ? new Date().toISOString() : "",
+      reopenedBy: action === "reopen" ? user.username : "", reopenedAt: action === "reopen" ? new Date().toISOString() : "",
+      reopenReason: action === "reopen" ? String(reason || "") : "" };
+    memoryFinancialStatementPeriods.set(period, next);
+  } else if (action === "finalize") await db.execute(`UPDATE financial_statement_periods SET status = 'Final', approved_by = ?,
+    approved_at = CURRENT_TIMESTAMP, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE report_period = ?`, [user.username, period]);
+  else await db.execute(`UPDATE financial_statement_periods SET status = 'Provisional', approved_by = '', approved_at = NULL,
+    reopened_by = ?, reopened_at = CURRENT_TIMESTAMP, reopen_reason = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP
+    WHERE report_period = ?`, [user.username, String(reason || "").slice(0, 1000), period]);
+  await recordFinancialStatementEvent(period, action === "finalize" ? "FINALIZED" : "REOPENED", user, { reason: String(reason || "") });
+  return getFinancialStatementReport(period);
+}
+
+async function buildFinancialStatementWorkbook(report) {
+  const workbook = new ExcelJS.Workbook(); workbook.creator = "TASETEMCO Cooperative Management System";
+  const colors = { System: "FFC6EFCE", Manual: "FFDDEBFF", "Carried forward": "FFDDEBFF", Calculated: "FFE7E6E6", Unresolved: "FFFFEB9C" };
+  const addSheet = (name, lines, summaryLabel) => {
+    const sheet = workbook.addWorksheet(name, { pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1 } });
+    sheet.columns = [{ width: 42 }, { width: 18 }, { width: 20 }, { width: 55 }];
+    sheet.mergeCells("A1:D1"); sheet.getCell("A1").value = "TABON SECONDARY TEACHERS AND EMPLOYEES MULTI-PURPOSE COOPERATIVE";
+    sheet.getCell("A1").font = { bold: true, size: 14 }; sheet.getCell("A1").alignment = { horizontal: "center" };
+    sheet.mergeCells("A2:D2"); sheet.getCell("A2").value = `${name} · ${report.period} · ${report.provisional ? "PROVISIONAL — SUBJECT TO CLIENT CONFIRMATION" : "FINAL"}`;
+    sheet.getCell("A2").font = { bold: true, color: { argb: report.provisional ? "FF9C6500" : "FF006100" } };
+    sheet.addRow([]); sheet.addRow(["Report entry", "Amount", "Source", "Note / support reference"]);
+    sheet.getRow(4).font = { bold: true, color: { argb: "FFFFFFFF" } }; sheet.getRow(4).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+    for (const line of lines) { const row = sheet.addRow([line.label, line.amount, line.sourceType, [line.note, line.supportReference].filter(Boolean).join(" · ")]);
+      row.getCell(2).numFmt = '₱#,##0.00;[Red](₱#,##0.00)'; row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: colors[line.sourceType] || colors.Unresolved } };
+      if (line.kind !== "line") row.font = { bold: true }; }
+    sheet.addRow([]); sheet.addRow([summaryLabel]); sheet.lastRow.font = { bold: true };
+  };
+  addSheet("Statement of Operations", report.fso.lines, `Net surplus: ${report.fso.summary.netSurplus}`);
+  addSheet("Financial Condition", report.fsc.lines, `Balance difference: ${report.fsc.summary.difference}`);
+  const questions = workbook.addWorksheet("Outstanding Questions"); questions.columns = [{ width: 20 }, { width: 18 }, { width: 35 }, { width: 65 }, { width: 65 }, { width: 18 }];
+  questions.addRow(["ID", "FS line", "Status", "Question", "Current assumption", "Client response"]); questions.getRow(1).font = { bold: true };
+  for (const question of report.questions) questions.addRow([question.id, `${question.statement}:${question.lineCode}`, question.status, question.question, question.assumption, question.response]);
+  return workbook.xlsx.writeBuffer();
+}
+
 function mapSummoImportBatch(row) {
   return {
     importNo: row.importNo,
@@ -15994,6 +16331,52 @@ app.get("/api/reports/daily-cash-position", async (request, response) => {
   }
 
   response.json(await getDailyCashPositionReport());
+});
+
+app.get("/api/reports/financial-statements/:period", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:view")) return response.status(403).json({ error: "Access denied" });
+  const period = String(request.params.period || "");
+  if (!financialStatementPeriodIsValid(period)) return response.status(400).json({ error: "Reporting period must be YYYY-MM." });
+  return response.json(await getFinancialStatementReport(period));
+});
+
+app.put("/api/reports/financial-statements/:period", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:fs:prepare") && !isAdminUser(user)) return response.status(403).json({ error: "Financial-statement preparation access is required." });
+  const period = String(request.params.period || "");
+  if (!financialStatementPeriodIsValid(period)) return response.status(400).json({ error: "Reporting period must be YYYY-MM." });
+  const result = await saveFinancialStatementPeriod(period, request.body || {}, user);
+  if (result.error) return response.status(result.statusCode || 400).json({ error: result.error });
+  return response.json(result);
+});
+
+app.post("/api/reports/financial-statements/:period/status", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:fs:approve") && !isAdminUser(user)) return response.status(403).json({ error: "Financial-statement approval access is required." });
+  const period = String(request.params.period || "");
+  const action = String(request.body?.action || "");
+  if (!financialStatementPeriodIsValid(period) || !["finalize", "reopen"].includes(action)) return response.status(400).json({ error: "Valid period and action are required." });
+  if (action === "reopen" && !String(request.body?.reason || "").trim()) return response.status(400).json({ error: "A reopening reason is required." });
+  const result = await changeFinancialStatementStatus(period, action, request.body?.reason, user);
+  if (result.error) return response.status(result.statusCode || 400).json({ error: result.error });
+  return response.json(result);
+});
+
+app.get("/api/reports/financial-statements/:period/export.xlsx", async (request, response) => {
+  const user = parseSession(request);
+  if (!user) return response.status(401).json({ error: "Login required" });
+  if (!hasPermission(user, "reports:view")) return response.status(403).json({ error: "Access denied" });
+  const period = String(request.params.period || "");
+  if (!financialStatementPeriodIsValid(period)) return response.status(400).json({ error: "Reporting period must be YYYY-MM." });
+  const report = await getFinancialStatementReport(period);
+  const buffer = await buildFinancialStatementWorkbook(report);
+  response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  response.setHeader("Content-Disposition", `attachment; filename="TASETEMCO-FS-${period}-${report.provisional ? "PROVISIONAL" : "FINAL"}.xlsx"`);
+  return response.send(Buffer.from(buffer));
 });
 
 app.get("/api/inventory/items", async (request, response) => {

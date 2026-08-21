@@ -591,6 +591,10 @@ Priority reports:
 - Audit Trail
 - User Activity Report
 
+### Provisional FSC and FSO
+
+The client-shaped FSC/FSO workflow supports a controlled hybrid of system-derived values, manual values with evidence, carried-forward approved balances, calculated totals, and unresolved items. Green cells are system-derived, blue cells are manual or carried forward, gray cells are calculated, and yellow cells require confirmation. The FSC always displays its real balance difference; the system has no anonymous balancing field. A provisional report can be saved and exported with its assumptions and Outstanding Questions sheet, but Manager/Admin finalization is blocked until every question is resolved and the FSC balances. Reopening a final period requires a reason and retains audit evidence.
+
 ## 6. Access Control Principles
 
 TASETEMCO should use role-based access control with optional permission overrides.

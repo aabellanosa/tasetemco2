@@ -6990,8 +6990,134 @@ function MonthlyInventoryDraft({ user }) {
   );
 }
 
+function HybridFinancialStatements({ user }) {
+  const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [statement, setStatement] = useState("FSC");
+  const [report, setReport] = useState(null);
+  const [drafts, setDrafts] = useState({});
+  const [questionDrafts, setQuestionDrafts] = useState({});
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
+  const canPrepare = user.permissions.includes("reports:fs:prepare");
+  const canApprove = user.permissions.includes("reports:fs:approve");
+  const sourceColors = { System: "green.50", Manual: "blue.50", "Carried forward": "blue.50", Calculated: "gray.100", Unresolved: "yellow.100" };
+  const sourceBadges = { System: "green", Manual: "blue", "Carried forward": "blue", Calculated: "gray", Unresolved: "yellow" };
+
+  const populateDrafts = useCallback((data) => {
+    const next = {};
+    for (const statementName of ["FSC", "FSO"]) {
+      for (const line of data?.[statementName.toLowerCase()]?.lines || []) {
+        if (line.editable) next[`${statementName}:${line.code}`] = { amount: String(line.amount ?? 0), budget: String(line.budget ?? 0),
+          sourceType: line.sourceType, note: line.note || "", supportReference: line.supportReference || "" };
+      }
+    }
+    setDrafts(next);
+    setQuestionDrafts(Object.fromEntries((data?.questions || []).map((question) => [question.id,
+      { status: question.status, response: question.response || "" }])));
+  }, []);
+
+  const load = useCallback(async () => {
+    setBusy(true); setError(""); setMessage("");
+    try { const data = await api(`/api/reports/financial-statements/${period}`); setReport(data); populateDrafts(data); }
+    catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  }, [period, populateDrafts]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const values = Object.entries(drafts).map(([key, value]) => { const [statementName, lineCode] = key.split(":");
+        return { statement: statementName, lineCode, ...value, amount: Number(value.amount || 0), budget: Number(value.budget || 0) }; });
+      const questions = Object.entries(questionDrafts).map(([id, value]) => ({ id, ...value }));
+      const data = await api(`/api/reports/financial-statements/${period}`, { method: "PUT", body: JSON.stringify({ values, questions }) });
+      setReport(data); populateDrafts(data); setMessage("Provisional financial statements saved with audit evidence.");
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  }
+
+  async function changeStatus(action) {
+    setBusy(true); setError(""); setMessage("");
+    try { const data = await api(`/api/reports/financial-statements/${period}/status`, { method: "POST",
+      body: JSON.stringify({ action, reason: reopenReason }) }); setReport(data); populateDrafts(data);
+      setMessage(action === "finalize" ? "Financial statements finalized." : "Financial statements reopened as provisional."); setReopenReason(""); }
+    catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  }
+
+  const lines = statement === "FSC" ? report?.fsc?.lines || [] : report?.fso?.lines || [];
+  const summary = report?.fsc?.summary;
+  const statusColor = report?.periodState?.status === "Final" ? "green" : "orange";
+  return <VStack align="stretch" spacing={5}>
+    <Box bg="orange.50" borderWidth="1px" borderColor="orange.300" borderRadius="lg" p={4}>
+      <Flex justify="space-between" gap={3} wrap="wrap"><Box><Heading size="sm">Provisional TASETEMCO Financial Statements</Heading>
+        <Text mt={1}>System values, controlled manual entries, carry-forwards, formulas, and unresolved assumptions remain visibly identified.</Text></Box>
+        <Badge alignSelf="flex-start" colorScheme={statusColor}>{report?.periodState?.status || "Draft"}</Badge></Flex>
+    </Box>
+    <Flex gap={3} wrap="wrap" align="end">
+      <FormControl maxW="190px"><FormLabel>Reporting month</FormLabel><Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></FormControl>
+      <FormControl maxW="280px"><FormLabel>Statement</FormLabel><Select value={statement} onChange={(event) => setStatement(event.target.value)}>
+        <option value="FSC">Statement of Financial Condition</option><option value="FSO">Statement of Operations</option></Select></FormControl>
+      <Button onClick={load} isLoading={busy}>Refresh</Button>
+      <Button as="a" href={`${apiBase}/api/reports/financial-statements/${period}/export.xlsx`} variant="outline">Export Excel</Button>
+    </Flex>
+    {message ? <Text color="green.700">{message}</Text> : null}{error ? <Text color="red.600">{error}</Text> : null}
+    <Flex gap={3} wrap="wrap" fontSize="sm">{Object.entries({ System: "green", Manual: "blue", "Carried forward": "blue", Calculated: "gray", Unresolved: "yellow" })
+      .map(([label, color]) => <Badge key={label} colorScheme={color}>{label}</Badge>)}</Flex>
+    {statement === "FSC" && summary ? <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3}>
+      {[['Assets', summary.totalAssets], ['Liabilities', summary.totalLiabilities], ['Equity', summary.totalEquity], ['Balance difference', summary.difference]].map(([label, value]) =>
+        <Box key={label} p={3} bg={label === "Balance difference" && Math.abs(value) >= .01 ? "red.50" : "white"} borderWidth="1px" borderRadius="md">
+          <Text fontSize="sm" color="gray.600">{label}</Text><Text fontWeight="bold">{formatMoney(value)}</Text></Box>)}</Grid> : null}
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+      <TableContainer><Table size="sm"><Thead><Tr><Th>Report entry</Th><Th isNumeric>Amount</Th>{statement === "FSO" ? <Th isNumeric>YTD</Th> : null}<Th>Source</Th><Th>Note / evidence</Th></Tr></Thead><Tbody>
+        {lines.map((line) => { const key = `${statement}:${line.code}`, draft = drafts[key]; return <Tr key={line.code} bg={sourceColors[line.sourceType] || "yellow.50"} fontWeight={line.kind !== "line" ? "bold" : "normal"}>
+          <Td pl={4 + Number(line.indent || 0) * 4}>{line.label}{line.questionId ? <Badge ml={2} colorScheme="orange">Question</Badge> : null}</Td>
+          <Td isNumeric minW="165px">{line.editable && canPrepare && report?.periodState?.status !== "Final" ? <Input size="sm" type="number" step="0.01" textAlign="right"
+            value={draft?.amount ?? line.amount} onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, amount: event.target.value } }))} /> : formatMoney(line.amount)}</Td>
+          {statement === "FSO" ? <Td isNumeric>{formatMoney(line.ytdAmount)}</Td> : null}
+          <Td>{line.editable && canPrepare && report?.periodState?.status !== "Final" ? <Select size="xs" value={draft?.sourceType || line.sourceType}
+            onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, sourceType: event.target.value } }))}>
+            <option>Unresolved</option><option>Manual</option><option>Carried forward</option></Select>
+            : <Badge colorScheme={sourceBadges[line.sourceType] || "yellow"}>{line.sourceType}</Badge>}</Td>
+          <Td minW="300px">{line.editable && canPrepare && report?.periodState?.status !== "Final" ? <VStack align="stretch" spacing={1}>
+            <Input size="xs" placeholder="Required source document/reference" value={draft?.supportReference || ""}
+              onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, supportReference: event.target.value } }))} />
+            <Input size="xs" placeholder="Assumption or explanation" value={draft?.note || ""}
+              onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, note: event.target.value } }))} /></VStack>
+            : <Text fontSize="xs">{[line.note, line.supportReference].filter(Boolean).join(" · ") || line.calculation || "—"}</Text>}</Td></Tr>; })}
+      </Tbody></Table></TableContainer>
+    </Box>
+    <Box bg="white" borderWidth="1px" borderRadius="lg" p={4}><Flex justify="space-between" gap={3} wrap="wrap"><Box><Heading size="sm">Outstanding Questions</Heading>
+      <Text color="gray.600" fontSize="sm">A final statement requires every question to be resolved and the FSC to balance.</Text></Box>
+      <Badge colorScheme={report?.openQuestionCount ? "orange" : "green"}>{report?.openQuestionCount || 0} open</Badge></Flex>
+      <VStack align="stretch" mt={4} spacing={3}>{(report?.questions || []).map((question) => { const draft = questionDrafts[question.id] || {}; return <Box key={question.id}
+        borderWidth="1px" borderColor={question.status === "Resolved" ? "green.200" : question.severity === "error" ? "red.300" : "orange.300"} borderRadius="md" p={3}>
+        <Flex justify="space-between" gap={3}><Text fontWeight="bold">{question.question}</Text><Badge colorScheme={question.status === "Resolved" ? "green" : "orange"}>{question.status}</Badge></Flex>
+        <Text mt={1} fontSize="sm"><b>Current assumption:</b> {question.assumption}</Text>
+        {canPrepare && report?.periodState?.status !== "Final" ? <Grid mt={2} templateColumns={{ base: "1fr", md: "1fr 180px" }} gap={2}><Textarea size="sm" value={draft.response || ""}
+          placeholder="Record the client's response or supporting reference" onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, response: event.target.value } }))} />
+          <Select size="sm" value={draft.status || "Open"} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, status: event.target.value } }))}>
+            <option>Open</option><option>Resolved</option></Select></Grid> : question.response ? <Text mt={2} fontSize="sm"><b>Response:</b> {question.response}</Text> : null}
+      </Box>; })}</VStack></Box>
+    <Flex justify="flex-end" gap={3} wrap="wrap">
+      {canPrepare && report?.periodState?.status !== "Final" ? <Button colorScheme="blue" onClick={save} isLoading={busy}>Save Provisional Report</Button> : null}
+      {canApprove && report?.periodState?.status !== "Final" ? <Button colorScheme="green" onClick={() => changeStatus("finalize")} isLoading={busy}
+        isDisabled={report?.openQuestionCount > 0 || Math.abs(summary?.difference || 0) >= .01}>Finalize</Button> : null}
+      {canApprove && report?.periodState?.status === "Final" ? <><Input maxW="360px" value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} placeholder="Required reopening reason" />
+        <Button colorScheme="orange" onClick={() => changeStatus("reopen")} isDisabled={!reopenReason.trim()} isLoading={busy}>Reopen</Button></> : null}
+    </Flex>
+  </VStack>;
+}
+
 function Reports({ user }) {
   const reportOptions = [
+    {
+      id: "hybrid-financial-statements",
+      title: "Provisional FSC & FSO",
+      description: "Client-shaped hybrid statements with source colors, assumptions, questions, and balance validation."
+    },
     {
       id: "summo-regular-capture",
       title: "SUMMO — Regular Members Capture",
@@ -7028,7 +7154,7 @@ function Reports({ user }) {
       description: "Balance-sheet view from posted general ledger balances."
     }
   ];
-  const [selectedReport, setSelectedReport] = useState("daily-cash-position");
+  const [selectedReport, setSelectedReport] = useState("hybrid-financial-statements");
   const [dailyCashReport, setDailyCashReport] = useState(null);
   const [memberLedgerReport, setMemberLedgerReport] = useState(null);
   const [controlReconciliationReport, setControlReconciliationReport] = useState(null);
@@ -7133,6 +7259,7 @@ function Reports({ user }) {
 
       {selectedReport === "summo-regular-capture" ? <SummoReport user={user} /> : null}
       {selectedReport === "monthly-inventory-draft" ? <MonthlyInventoryDraft user={user} /> : null}
+      {selectedReport === "hybrid-financial-statements" ? <HybridFinancialStatements user={user} /> : null}
 
       {selectedReport === "daily-cash-position" && summary ? (
         <>

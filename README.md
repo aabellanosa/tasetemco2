@@ -319,6 +319,8 @@ The Reports screen includes a Control Account Reconciliation report that compare
 
 The Reports screen includes Trial Balance and Statement of Financial Condition reports generated from posted general ledger balances.
 
+The Reports screen also includes provisional client-shaped FSC and FSO templates. Each line is visibly marked as System, Manual, Carried forward, Calculated, or Unresolved. Authorized Bookkeepers can save supported manual values and client responses; Manager/Admin approval is blocked until outstanding questions are resolved and the FSC balance difference is zero. Provisional Excel exports include both statements, source colors, notes, and an Outstanding Questions sheet. Initial assumptions come from the December 2025 external-auditor FSC and remain explicitly provisional, including unearned interest, property balances, and prepaid insurance. Run `npm run pg:migrate` before deployment; no seed or reset is required.
+
 ## Workflow UI
 
 The Workflow screen shows the recommended access matrix for all 9 cooperative roles. It also acts as the first guided workflow area: buttons such as Add member, Release loan, View journal, Post batch, Export CSV, Add user, Search, Notifications, and New transaction now route to workflow step panels instead of doing nothing.
@@ -401,6 +403,10 @@ The root-level `server.js`, `app.js`, `src/db.js`, `index.html`, and `styles.css
 - `GET /api/reports/control-account-reconciliation`
 - `GET /api/reports/trial-balance`
 - `GET /api/reports/statement-of-financial-condition`
+- `GET /api/reports/financial-statements/:period`
+- `PUT /api/reports/financial-statements/:period`
+- `POST /api/reports/financial-statements/:period/status`
+- `GET /api/reports/financial-statements/:period/export.xlsx`
 - `GET /api/users`
 - `GET /api/roles`
 
