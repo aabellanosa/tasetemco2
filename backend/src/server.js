@@ -9314,6 +9314,48 @@ function fsLine(code, label, amount, sourceType, options = {}) {
 
 function lineAmount(lines, code) { return lines.find((line) => line.code === code)?.amount || 0; }
 
+const consumerRemittanceSourceCodes = new Set(["GMAR", "CATERING", "LOADER", "GCASH", "POS"]);
+
+async function financialStatementConsumerSales(period) {
+  const bounds = financialStatementPeriodBounds(period);
+  const monthBreakdown = new Map();
+  const ytdBreakdown = new Map();
+  const batches = (await listDailyRemittanceBatches()).filter((batch) => batch.status === "Posted");
+  for (const batch of batches) {
+    const date = String(batch.remittanceDate || "").slice(0, 10);
+    if (!date || date < bounds.yearStart || date >= bounds.nextMonth) continue;
+    const details = await getDailyRemittanceBatch(batch.batchNo);
+    for (const entry of details.entries || []) {
+      const sourceCode = String(entry.sourceCode || "").toUpperCase();
+      const isWrs = String(entry.reportingGroup || "").toUpperCase() === "WRS";
+      if (!isWrs && !consumerRemittanceSourceCodes.has(sourceCode)) continue;
+      const label = isWrs ? "WRS" : sourceCode;
+      ytdBreakdown.set(label, addMoney(ytdBreakdown.get(label) || 0, entry.amount));
+      if (date >= bounds.monthStart) monthBreakdown.set(label, addMoney(monthBreakdown.get(label) || 0, entry.amount));
+    }
+  }
+  const describe = (breakdown) => [...breakdown.entries()].filter(([, amount]) => amount)
+    .map(([label, amount]) => `${label} ${moneyValue(amount).toFixed(2)}`).join("; ");
+  return { amount: sumMoney([...monthBreakdown.values()]), ytdAmount: sumMoney([...ytdBreakdown.values()]),
+    note: `Posted Daily Remittance: ${describe(monthBreakdown) || "no qualifying entries"}.` };
+}
+
+async function financialStatementInventory(period) {
+  const result = { period, finalized: true, endingValue: 0, beginningValue: 0, missingLocations: [] };
+  for (const location of inventoryLocations) {
+    const sheet = await getInventorySheet(period, location, false);
+    if (sheet.sheet?.status !== "Finalized") {
+      result.finalized = false;
+      result.missingLocations.push(location);
+      continue;
+    }
+    result.endingValue = addMoney(result.endingValue, sheet.summary?.endingValue || 0);
+    result.beginningValue = addMoney(result.beginningValue,
+      sumMoney((sheet.rows || []).map((row) => moneyValue((row.beginningInventory || 0) * (row.unitPrice || 0)))));
+  }
+  return result;
+}
+
 async function getFinancialStatementReport(period) {
   const state = await getFinancialStatementPeriod(period);
   const balances = await financialStatementLedgerBalances(period);
@@ -9324,10 +9366,9 @@ async function getFinancialStatementReport(period) {
     return normal === "debit" ? subtractMoney(debit || 0, credit || 0) : subtractMoney(credit || 0, debit || 0);
   };
   const manual = (statement, code, fallback = {}) => financialValue(state, statement, code, fallback);
-  let inventoryAmount = 0;
-  try {
-    for (const location of inventoryLocations) inventoryAmount = addMoney(inventoryAmount, (await getInventorySheet(period, location, true)).summary?.endingValue || 0);
-  } catch { inventoryAmount = 0; }
+  const consumerSales = await financialStatementConsumerSales(period);
+  const currentInventory = await financialStatementInventory(period);
+  const priorInventory = await financialStatementInventory(previousPeriod(period));
 
   const fso = [];
   const addFso = (code, label, autoAccount, normal = "credit", fallback = {}, indent = 0) => {
@@ -9338,14 +9379,21 @@ async function getFinancialStatementReport(period) {
       { ...configured, indent, ytdAmount: autoAccount ? autoYtd : configured.amount, budget: configured.budget || 0 }));
   };
   addFso("CANTEEN_SALES", "Canteen sales", "4060");
-  addFso("CONSUMERS_SALES", "Consumers sales", null, "credit", { sourceType: "Unresolved", note: "Awaiting confirmed operational mapping." });
+  fso.push(fsLine("CONSUMERS_SALES", "Consumers sales", consumerSales.amount, "System", {
+    ytdAmount: consumerSales.ytdAmount, note: consumerSales.note
+  }));
   const sales = sumMoney(fso.slice(-2).map((line) => line.amount));
   fso.push(fsLine("TOTAL_SALES", "Total sales", sales, "Calculated", { kind: "total", calculation: "Canteen + Consumers",
     ytdAmount: sumMoney(fso.slice(-2).map((line) => line.ytdAmount)) }));
-  addFso("BEGINNING_INVENTORY", "Beginning inventory", null, "credit", { sourceType: "Unresolved", note: "Previous finalized ending inventory." });
+  const beginningInventory = manual("FSO", "BEGINNING_INVENTORY", priorInventory.finalized
+    ? { amount: priorInventory.endingValue, sourceType: "System", note: `Ending inventory of ${priorInventory.period}.` }
+    : { sourceType: "Unresolved", note: `Finalize ${priorInventory.period} inventory for: ${priorInventory.missingLocations.join(", ")}.` });
+  fso.push(fsLine("BEGINNING_INVENTORY", "Beginning inventory", beginningInventory.amount,
+    beginningInventory.sourceType || "Unresolved", beginningInventory));
   addFso("PURCHASES", "Purchases", null, "credit", { sourceType: "Unresolved", note: "Canteen and Consumers purchases." });
-  const endingInventory = manual("FSO", "ENDING_INVENTORY", inventoryAmount ? { amount: inventoryAmount, sourceType: "System",
-    note: "Finalized monthly inventory ending value." } : { sourceType: "Unresolved", note: "Finalize monthly inventory or enter a supported value." });
+  const endingInventory = manual("FSO", "ENDING_INVENTORY", currentInventory.finalized
+    ? { amount: currentInventory.endingValue, sourceType: "System", note: "Finalized ending inventory of Canteen A, Canteen B, Bodega, and Consumer." }
+    : { sourceType: "Unresolved", note: `Finalize ${period} inventory for: ${currentInventory.missingLocations.join(", ")}.` });
   fso.push(fsLine("ENDING_INVENTORY", "Less: Ending inventory", endingInventory.amount, endingInventory.sourceType, endingInventory));
   const cogs = subtractMoney(addMoney(lineAmount(fso, "BEGINNING_INVENTORY"), lineAmount(fso, "PURCHASES")), lineAmount(fso, "ENDING_INVENTORY"));
   fso.push(fsLine("COST_OF_SALES", "Cost of goods sold", cogs, "Calculated", { kind: "total", calculation: "Beginning inventory + Purchases - Ending inventory" }));
@@ -9386,7 +9434,10 @@ async function getFinancialStatementReport(period) {
   addFscManual("OTHER_LOAN_PORTFOLIOS", "Associates, Micro Project and past-due loans", { sourceType: "Unresolved",
     note: "Portfolio classifications are not yet available in the ledger." });
   addFscManual("ALLOWANCE_LOSSES", "Less: Allowance for probable losses", { sourceType: "Unresolved" });
-  const inventoryFsc = manual("FSC", "MERCHANDISE_INVENTORY", inventoryAmount ? { amount: inventoryAmount, sourceType: "System" } : { sourceType: "Unresolved" });
+  const inventoryFsc = manual("FSC", "MERCHANDISE_INVENTORY", currentInventory.finalized
+    ? { amount: currentInventory.beginningValue, sourceType: "System",
+      note: "Client rule: total beginning inventory of Canteen A, Canteen B, Bodega, and Consumer." }
+    : { sourceType: "Unresolved", note: `Finalize ${period} inventory for: ${currentInventory.missingLocations.join(", ")}.` });
   fsc.push(fsLine("MERCHANDISE_INVENTORY", "Merchandise inventory", inventoryFsc.amount, inventoryFsc.sourceType, inventoryFsc));
   addFscManual("PREPAID_INSURANCE", "Prepaid insurance", {}, { questionId: "PREPAID-INSURANCE" });
   addFscManual("ADVANCES_TO_SUPPLIERS", "Advances to suppliers", {});
@@ -13340,10 +13391,10 @@ function isAdminUser(user) {
   return user?.username === "admin" && user?.role === "System Administrator";
 }
 
-const inventoryLocations = ["Canteen A", "Canteen B", "Bodega"];
+const inventoryLocations = ["Canteen A", "Canteen B", "Bodega", "Consumer"];
 
 function inventorySheetNo(period, location) {
-  const locationCode = { "Canteen A": "CA", "Canteen B": "CB", Bodega: "BO" }[location];
+  const locationCode = { "Canteen A": "CA", "Canteen B": "CB", Bodega: "BO", Consumer: "CO" }[location];
   return `INV-${period.replace("-", "")}-${locationCode}`;
 }
 

@@ -1011,12 +1011,12 @@ async function run() {
       headers: { Cookie: tellerCookie }
     });
     const remittanceSourceRows = await remittanceSourcesResponse.json();
-    if (!remittanceSourcesResponse.ok || !["GCASH", "LOADER", "POS"].every((code) =>
-      remittanceSourceRows.some((row) => row.code === code && row.name === code &&
-        row.reportingGroup === code && row.costCenterCode === "" &&
+    if (!remittanceSourcesResponse.ok || !["GMAR", "GCASH", "LOADER", "POS"].every((code) =>
+      remittanceSourceRows.some((row) => row.code === code &&
+        (code === "GMAR" ? row.costCenterCode === "GMAR" : row.name === code && row.reportingGroup === code && row.costCenterCode === "") &&
         row.incomeAccountCode === "4080" && row.incomeAccountName === "Other Operating Income" &&
         row.status === "Active"))) {
-      throw new Error("GCASH, LOADER, and POS should be active non-cost-center Daily Remittance sources.");
+      throw new Error("G-mars, GCASH, LOADER, and POS should be active Daily Remittance sources.");
     }
 
     const remittanceDate = new Date().toISOString().slice(0, 10);
@@ -2678,6 +2678,10 @@ async function run() {
       hybridBody.openQuestionCount !== 4 ||
       !hybridBody.fsc.lines.some((line) => line.code === "PROPERTY_COST" && line.sourceType === "Carried forward") ||
       !hybridBody.fsc.lines.some((line) => line.code === "PREPAID_INSURANCE" && line.amount === 14332.77) ||
+      !hybridBody.fso.lines.some((line) => line.code === "CONSUMERS_SALES" && line.sourceType === "System" &&
+        line.amount === 50 && line.note.includes("WRS 50.00")) ||
+      !hybridBody.fso.lines.some((line) => line.code === "BEGINNING_INVENTORY" && line.sourceType === "Unresolved" &&
+        line.note.includes("Consumer")) ||
       !hybridBody.fso.lines.some((line) => line.code === "NET_SURPLUS" && line.sourceType === "Calculated")
     ) {
       throw new Error("Hybrid financial statements should expose provisional sources, assumptions, and questions.");

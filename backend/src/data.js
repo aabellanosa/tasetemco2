@@ -691,6 +691,7 @@ export const remittanceSources = [
   { code: "WRS", name: "WRS", reportingGroup: "WRS", costCenterCode: "WRS", incomeAccountCode: "4070", incomeAccountName: "Water Refilling Income", displayOrder: 30, status: "Active" },
   { code: "WATER-BOTTLE-A", name: "Water Bottle A", reportingGroup: "WRS", costCenterCode: "WRS", incomeAccountCode: "4070", incomeAccountName: "Water Refilling Income", displayOrder: 40, status: "Active" },
   { code: "WATER-BOTTLE-B", name: "Water Bottle B", reportingGroup: "WRS", costCenterCode: "WRS", incomeAccountCode: "4070", incomeAccountName: "Water Refilling Income", displayOrder: 50, status: "Active" },
+  { code: "GMAR", name: "G-mars", reportingGroup: "G-mars", costCenterCode: "GMAR", incomeAccountCode: "4080", incomeAccountName: "Other Operating Income", displayOrder: 55, status: "Active" },
   ...["Piso WiFi A", "Piso WiFi B", "Printing & Photocopy", "Water Vendo A", "Water Vendo B", "Catering", "GCASH", "LOADER", "POS"].map((name, index) => ({
     code: name.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/(^-|-$)/g, ""), name,
     reportingGroup: name, costCenterCode: "", incomeAccountCode: "4080",

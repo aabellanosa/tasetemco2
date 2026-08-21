@@ -6724,7 +6724,7 @@ function SummoReport({ user }) {
   );
 }
 
-const inventoryLocations = ["Canteen A", "Canteen B", "Bodega"];
+const inventoryLocations = ["Canteen A", "Canteen B", "Bodega", "Consumer"];
 const inventoryDummyItems = [
   "Bottled Water", "Soft Drinks", "Instant Coffee", "Biscuits", "Crackers",
   "Cup Noodles", "Canned Goods", "Rice", "Sugar", "Cooking Oil"
@@ -6885,7 +6885,7 @@ function MonthlyInventoryDraft({ user }) {
         <Flex justify="space-between" align="end" gap={4} wrap="wrap">
           <Box>
             <Heading size="md">Monthly Inventory Worksheet</Heading>
-            <Text color="gray.600" mt={1}>Physical inventory draft for Canteen A, Canteen B, and Bodega.</Text>
+            <Text color="gray.600" mt={1}>Physical inventory draft for Canteen A, Canteen B, Bodega, and Consumer.</Text>
           </Box>
           <FormControl maxW="220px"><FormLabel>Inventory month</FormLabel>
             <Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
@@ -7126,7 +7126,7 @@ function Reports({ user }) {
     {
       id: "monthly-inventory-draft",
       title: "Monthly Inventory",
-      description: "Persistent quantity and ending-value sheets for Canteen A, Canteen B, and Bodega."
+      description: "Persistent quantity and ending-value sheets for Canteen A, Canteen B, Bodega, and Consumer."
     },
     {
       id: "daily-cash-position",

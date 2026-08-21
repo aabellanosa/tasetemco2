@@ -139,6 +139,7 @@ INSERT INTO remittance_sources (code, name, reporting_group, cost_center_code, i
   ('WRS', 'WRS', 'WRS', 'WRS', '4070', 'Water Refilling Income', 30),
   ('WATER-BOTTLE-A', 'Water Bottle A', 'WRS', 'WRS', '4070', 'Water Refilling Income', 40),
   ('WATER-BOTTLE-B', 'Water Bottle B', 'WRS', 'WRS', '4070', 'Water Refilling Income', 50),
+  ('GMAR', 'G-mars', 'G-mars', 'GMAR', '4080', 'Other Operating Income', 55),
   ('PISO-WIFI-A', 'Piso WiFi A', 'Piso WiFi A', '', '4080', 'Other Operating Income', 60),
   ('PISO-WIFI-B', 'Piso WiFi B', 'Piso WiFi B', '', '4080', 'Other Operating Income', 70),
   ('PRINTING-PHOTOCOPY', 'Printing & Photocopy', 'Printing & Photocopy', '', '4080', 'Other Operating Income', 80),

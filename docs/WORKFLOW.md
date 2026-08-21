@@ -883,6 +883,8 @@ After cash count and Bookkeeper review, posting debits `1010 - Cash on Hand` and
 
 When backend work begins, the application should treat the general ledger as the source of financial statements. Member savings, share capital, and loans should have subsidiary ledgers that reconcile to their related general ledger control accounts.
 
+For the provisional FSO, Consumers sales are derived from posted Daily Remittance entries for WRS (including water-bottle sources), G-mars, Catering, Load, GCash, and POS. Beginning inventory comes from the previous month's finalized ending inventory, while ending inventory comes from the current finalized inventory sheets. Inventory must be finalized for Canteen A, Canteen B, Bodega, and Consumer; otherwise the affected report line remains visibly unresolved. Under the current client-approved template rule, FSC Merchandise inventory is the combined beginning-inventory value of those four locations.
+
 For example:
 
 - Total savings subsidiary balances should reconcile to Savings Deposits Payable.
