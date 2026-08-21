@@ -740,6 +740,25 @@ Priority reports:
 - Regular Members Capture SUMMO
 - Cost Center Charge Reconciliation
 
+### 5.1 Provisional FSC and FSO Workflow
+
+The implemented application makes the client-shaped hybrid statements discoverable at **Reports → Provisional FSC & FSO**. Select a `YYYY-MM` reporting month, then switch between Statement of Financial Condition and Statement of Operations.
+
+Report values retain visible provenance:
+
+- Green — system-derived from posted transactions or supported system records.
+- Blue — controlled manual or carried-forward value.
+- Gray — calculated subtotal, total, surplus, or balance check.
+- Yellow — unresolved source or accounting treatment.
+
+Accountant/Bookkeeper and Admin may prepare a period. Every supported manual value records its amount, source type, reference, explanation, actor, and timestamp. The page also records the current assumption and client response for each outstanding question. A question cannot be marked Resolved without a response or supporting reference.
+
+The FSC always calculates and displays `Total assets - Total liabilities - Total equity`. There is no anonymous balancing entry. General Manager or Admin cannot finalize while this difference is nonzero or a question remains open. Reopening a Final period requires a reason and retains audit evidence.
+
+**Excel test:** Select **Export Excel**. A provisional download is named like `TASETEMCO-FS-2026-08-PROVISIONAL.xlsx` and contains `Statement of Operations`, `Financial Condition`, and `Outstanding Questions`. It is labeled `PROVISIONAL — SUBJECT TO CLIENT CONFIRMATION` until properly finalized.
+
+**Deployment:** Run `npm run pg:migrate` before first PostgreSQL use. This adds `financial_statement_periods` and `financial_statement_audit_events`; it does not seed or reset operational data. In memory mode the workflow is testable, but saved periods disappear when the backend restarts.
+
 ## 6. Access Control Principles
 
 TASETEMCO should use role-based access control with optional permission overrides.

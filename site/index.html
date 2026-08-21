@@ -511,6 +511,7 @@
         </div>
 
         <div class="report-list">
+          <span>Provisional FSC &amp; FSO</span>
           <span>Daily Cash Position</span>
           <span>Member Subsidiary Ledger</span>
           <span>SUMMO — Regular Members Capture</span>
@@ -528,6 +529,27 @@
           <span>Member Statement</span>
           <span>Member Share Capital Ledger</span>
           <span>Audit Trail</span>
+        </div>
+        <div class="section-heading">
+          <h3>Find and test the provisional FSC &amp; FSO</h3>
+          <p>
+            Sign in, open <strong>Reports</strong>, and select <strong>Provisional FSC &amp; FSO</strong>.
+            Choose a reporting month and switch between Statement of Financial Condition and
+            Statement of Operations. Green values come from the system, blue values are supported
+            manual or carried-forward balances, gray rows are calculated, and yellow values remain
+            unresolved. Accountant/Bookkeeper or Admin can save provisional values with a source
+            reference and explanation. General Manager or Admin can finalize only after every
+            outstanding question is resolved and the FSC balance difference is zero.
+          </p>
+          <p>
+            Select <strong>Export Excel</strong> to download a workbook containing Statement of
+            Operations, Financial Condition, and Outstanding Questions sheets. Draft exports are
+            clearly labeled <strong>PROVISIONAL — SUBJECT TO CLIENT CONFIRMATION</strong>. Before
+            first use against PostgreSQL, run <code>npm run pg:migrate</code>; no seed or reset is
+            required. A useful acceptance test is to save a bank balance with its bank-statement
+            reference, refresh to confirm persistence, verify that an unresolved or out-of-balance
+            report cannot finalize, and reopen the downloaded workbook to inspect all three sheets.
+          </p>
         </div>
         <div class="section-heading">
           <h3>Monthly Inventory access and accounting boundary</h3>
