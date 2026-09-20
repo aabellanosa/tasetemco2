@@ -14,6 +14,18 @@ const loanProductSeedPath = path.join(process.cwd(), "backend", "database", "see
 const inventoryCanteenSeedPath = path.join(process.cwd(), "backend", "database", "seed.inventory-canteens.postgres.sql");
 const backupDir = path.join(process.cwd(), "data", "backups");
 const connectionTimeoutMillis = Number(process.env.PGCONNECT_TIMEOUT_MS || 8000);
+const goLivePreservedTables = [
+  "users",
+  "user_security_events",
+  "loan_products",
+  "cost_centers",
+  "remittance_sources",
+  "disbursement_categories",
+  "summo_rules",
+  "inventory_categories",
+  "inventory_items",
+  "inventory_item_locations"
+];
 
 const tables = [
   "inventory_audit_events",
@@ -60,12 +72,26 @@ const tables = [
 ];
 
 function requireCommand() {
-  const commands = ["schema", "seed", "seed-loan-products", "backup", "reset-demo"];
+  const commands = ["schema", "seed", "seed-loan-products", "backup", "reset-demo", "prepare-go-live"];
 
   if (!commands.includes(command)) {
     console.error(`Usage: node scripts/pg-maintenance.js <${commands.join("|")}>`);
     process.exit(1);
   }
+}
+
+function quoteIdentifier(identifier) {
+  return `"${String(identifier).replace(/"/g, '""')}"`;
+}
+
+async function listPublicTables(pool) {
+  const result = await pool.query(
+    `SELECT tablename
+     FROM pg_catalog.pg_tables
+     WHERE schemaname = 'public'
+     ORDER BY tablename`
+  );
+  return result.rows.map((row) => row.tablename);
 }
 
 function hasPostgresConfig() {
@@ -163,8 +189,9 @@ async function backupDatabase() {
   fs.mkdirSync(backupDir, { recursive: true });
 
   try {
-    for (const table of tables) {
-      const result = await pool.query(`SELECT * FROM ${table}`);
+    const publicTables = await listPublicTables(pool);
+    for (const table of publicTables) {
+      const result = await pool.query(`SELECT * FROM public.${quoteIdentifier(table)}`);
       backup.tables[table] = result.rows;
     }
   } finally {
@@ -173,6 +200,69 @@ async function backupDatabase() {
 
   fs.writeFileSync(backupPath, `${JSON.stringify(backup, null, 2)}\n`);
   console.log(`Backup written to ${backupPath}`);
+  return backupPath;
+}
+
+function requireGoLiveClearAuthorization() {
+  const databaseName = getDatabaseName();
+  const expectedConfirmation = `CLEAR ${databaseName} KEEP USERS AND MASTERS`;
+  if (process.env.ALLOW_GO_LIVE_DATA_CLEAR !== expectedConfirmation) {
+    throw new Error(
+      `Go-live confirmation missing. Set ALLOW_GO_LIVE_DATA_CLEAR='${expectedConfirmation}' for this one-off operation.`
+    );
+  }
+}
+
+async function prepareGoLive() {
+  requireGoLiveClearAuthorization();
+  const backupPath = await backupDatabase();
+  const pool = createPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    const publicTables = await listPublicTables(client);
+    if (!publicTables.includes("users")) {
+      throw new Error("The users table was not found; refusing to clear the database.");
+    }
+
+    const adminResult = await client.query(
+      `SELECT username, role_name, password_hash
+       FROM public.users
+       WHERE username = 'admin'
+       FOR UPDATE`
+    );
+    const admin = adminResult.rows[0];
+    if (!admin || admin.role_name !== "System Administrator" || !admin.password_hash) {
+      throw new Error("A password-protected System Administrator account named 'admin' is required.");
+    }
+
+    const missingPreservedTables = goLivePreservedTables.filter((table) => !publicTables.includes(table));
+    if (missingPreservedTables.length) {
+      throw new Error(
+        `Required preserved table(s) not found: ${missingPreservedTables.join(", ")}. Refusing to clear the database.`
+      );
+    }
+
+    const clearTables = publicTables.filter((table) => !goLivePreservedTables.includes(table));
+    if (clearTables.length) {
+      const targets = clearTables.map((table) => `public.${quoteIdentifier(table)}`).join(", ");
+      await client.query(`TRUNCATE TABLE ${targets} RESTART IDENTITY CASCADE`);
+    }
+
+    const userCountResult = await client.query("SELECT COUNT(*)::int AS count FROM public.users");
+    await client.query("COMMIT");
+    console.log(`Go-live cleanup complete. Preserved ${userCountResult.rows[0].count} system user account(s).`);
+    console.log(`Preserved tables: ${goLivePreservedTables.join(", ")}`);
+    console.log(`Pre-cleanup backup: ${backupPath}`);
+    console.log("Remove ALLOW_GO_LIVE_DATA_CLEAR from the environment now.");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
 }
 
 async function clearDatabase() {
@@ -211,6 +301,11 @@ async function main() {
 
   if (command === "backup") {
     await backupDatabase();
+    return;
+  }
+
+  if (command === "prepare-go-live") {
+    await prepareGoLive();
     return;
   }
 

@@ -30,6 +30,16 @@ npm run pg:reset-demo
 npm run pg:backup
 ```
 
+For the one-time transition from client testing to live encoding, use the Render Shell command below. It backs up every public table and preserves system users, user-security history, and the required configuration/master tables: `users`, `user_security_events`, `loan_products`, `cost_centers`, `remittance_sources`, `disbursement_categories`, `summo_rules`, `inventory_categories`, `inventory_items`, and `inventory_item_locations`. It clears every other public table without applying demo seeds.
+
+```bash
+export ALLOW_GO_LIVE_DATA_CLEAR='CLEAR tasetemco KEEP USERS AND MASTERS'
+npm run pg:prepare-go-live
+unset ALLOW_GO_LIVE_DATA_CLEAR
+```
+
+The confirmation must contain the configured database name exactly. Download a Demo Maintenance backup before opening the shell as an additional durable copy; Render shell files may be ephemeral. Remove `ALLOW_GO_LIVE_DATA_CLEAR` from the Render environment immediately after the command if it was configured in the dashboard rather than only in the shell session.
+
 ## Running The Spike
 
 Install dependencies:
