@@ -882,19 +882,6 @@ export const tellerBatches = [
   }
 ];
 
-export const dashboard = {
-  metrics: [
-    { label: "Total assets", value: 14525300, note: "Sample demonstration data" },
-    { label: "Member deposits", value: 9453800, note: "Savings and time deposits" },
-    { label: "Loan portfolio", value: 490100, note: "Sample active loans" },
-    { label: "Net surplus", value: 438500, note: "Before allocations" }
-  ],
-  watchItems: [
-    { title: "Unposted teller batch", value: "1 branch batch pending review" },
-    { title: "Dormant savings", value: "18 accounts flagged" }
-  ]
-};
-
 export function publicUser(user) {
   const additionalRoles = Array.isArray(user.additionalRoles) ? user.additionalRoles : [];
   const assignedRoles = [user.role, ...additionalRoles].filter((role, index, list) =>

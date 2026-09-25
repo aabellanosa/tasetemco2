@@ -8,7 +8,6 @@ import express from "express";
 import multer from "multer";
 import pg from "pg";
 import {
-  dashboard,
   cbuWithdrawals,
   costCenters,
   remittanceSources,
@@ -14424,6 +14423,54 @@ app.get("/api/me", (request, response) => {
   response.json({ user: parseSession(request) });
 });
 
+async function getDashboardSummary() {
+  const [financialCondition, trialBalance, memberRows] = await Promise.all([
+    getStatementOfFinancialConditionReport(),
+    getTrialBalanceReport(),
+    listMembers()
+  ]);
+  const assetBalance = (accountCode) => financialCondition.sections.assets
+    .filter((row) => row.accountCode === accountCode)
+    .reduce((total, row) => addMoney(total, row.amount), 0);
+  const liabilityBalance = (accountCode) => financialCondition.sections.liabilities
+    .filter((row) => row.accountCode === accountCode)
+    .reduce((total, row) => addMoney(total, row.amount), 0);
+  const activeMemberCount = memberRows.filter((member) => member.status === "Active").length;
+  const ledgerStatus = financialCondition.summary.status === "Balanced"
+    ? "Balanced"
+    : `Out of balance by ₱${Math.abs(financialCondition.summary.difference).toFixed(2)}`;
+
+  return {
+    metrics: [
+      {
+        label: "Total assets",
+        value: financialCondition.summary.totalAssets,
+        note: `Posted ledger · ${ledgerStatus}`
+      },
+      {
+        label: "Member deposits",
+        value: addMoney(liabilityBalance("2020"), liabilityBalance("2040")),
+        note: "Posted savings and secured savings"
+      },
+      {
+        label: "Loan portfolio",
+        value: assetBalance("1050"),
+        note: "Posted loans receivable"
+      },
+      {
+        label: "Net surplus",
+        value: financialCondition.summary.currentPeriodSurplus,
+        note: "Posted revenue less expenses"
+      }
+    ],
+    watchItems: [
+      { title: "General ledger", value: ledgerStatus },
+      { title: "Active members", value: `${activeMemberCount} active member${activeMemberCount === 1 ? "" : "s"}` },
+      { title: "Posted journal accounts", value: `${trialBalance.summary.accountCount} account${trialBalance.summary.accountCount === 1 ? "" : "s"}` }
+    ]
+  };
+}
+
 app.get("/api/dashboard", async (request, response) => {
   const user = parseSession(request);
 
@@ -14433,8 +14480,7 @@ app.get("/api/dashboard", async (request, response) => {
   }
 
   const dashboardPayload = {
-    ...dashboard,
-    watchItems: dashboard.watchItems.filter((item) => item.title !== "Past due loans"),
+    ...(await getDashboardSummary()),
     loanAlerts: canViewLoanPortfolioAlerts(user)
       ? await buildLoanPortfolioAlerts()
       : {
